@@ -52,7 +52,7 @@ class OrderBook:
         symbol: str,
         client=None,
         limit: int = DEFAULT_DEPTH_LIMIT,
-        retry_policy: Optional[RetryPolicy] = DEFAULT_RETRY_POLICY
+        retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY
     ) -> None:
         self.asks = SequencedList()
         self.bids = SequencedList()
@@ -111,7 +111,7 @@ class OrderBook:
 
     def set_retry_policy(
         self,
-        retry_policy: Optional[RetryPolicy]
+        retry_policy: Optional[RetryPolicy] = None
     ) -> None:
         """Sets the retry policy for the orderbook.
 

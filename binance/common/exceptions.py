@@ -1,10 +1,7 @@
 # coding=utf-8
 
 import json
-from typing import (
-    Any,
-    Optional
-)
+from typing import Any
 
 from aiohttp import ClientResponse
 
@@ -192,7 +189,7 @@ class OrderBookFetchAbandonedException(Exception):
     def __init__(
         self,
         symbol: str,
-        exception: Optional[Exception] = None
+        exception: Exception
     ) -> None:
         self.symbol = symbol
         self.exception = exception

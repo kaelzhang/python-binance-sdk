@@ -1,9 +1,7 @@
 import traceback
 from datetime import datetime
 import sys
-from typing import (
-    Optional, TextIO
-)
+from typing import TextIO
 
 from binance.common.constants import (
     STREAM_TYPE_MAP,
@@ -22,14 +20,14 @@ class HandlerExceptionHandlerBase(Handler):
     def receive(
         _,
         e: Exception,
-        file: Optional[TextIO] = sys.stderr
+        file: TextIO = sys.stderr
     ):
         """
         Print current datetime and error call stacks
 
         Args:
             e (Exception): the error
-            file (:obj:`TextIO`, optional): output target of the printer
+            file (:obj:`TextIO`, optional): output target of the printer, defaults to `sys.stderr`
 
         Returns:
             Exception: the error itself
