@@ -322,11 +322,11 @@ Close stream connection, clear all stream subscriptions and clear all handlers.
 
 ### client.handler(*handlers) -> self
 
-- **handlers** `List[Union[HandlerExceptionHandler,TradeHandlerBase,...]]`
+- **handlers** `List[Union[HandlerExceptionHandlerBase,TradeHandlerBase,...]]`
 
 Register message handlers for streams. If we've subscribed to a stream of a certain `subtype` with no corresponding handler provided, the messages of `subtype` will not be handled.
 
-Except for `HandlerExceptionHandler`, handlers each of whose name ends with `Base` should be inherited before use.
+Except for `HandlerExceptionHandlerBase`, handlers each of whose name ends with `Base` should be inherited before use.
 
 Typically, we need to override the `def receive(self, payload)` method.
 
