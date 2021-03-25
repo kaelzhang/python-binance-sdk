@@ -1,4 +1,9 @@
 import traceback
+from datetime import datetime
+import sys
+from typing import (
+    Optional, TextIO
+)
 
 from binance.common.constants import (
     STREAM_TYPE_MAP,
@@ -14,8 +19,25 @@ from .base import Handler
 
 
 class HandlerExceptionHandlerBase(Handler):
-    def receive(self, e):
-        traceback.print_exc()
+    def receive(
+        _,
+        e: Exception,
+        file: Optional[TextIO] = sys.stderr
+    ):
+        """
+        Print current datetime and error call stacks
+
+        Args:
+            e (Exception): the error
+            file (:obj:`TextIO`, optional): output target of the printer
+
+        Returns:
+            Exception: the error itself
+        """
+
+        print(f'[{datetime.now()}] ', end='', file=file)
+        traceback.print_exc(file=file)
+
         return e
 
 

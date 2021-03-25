@@ -4,6 +4,17 @@ from aiohttp import web
 
 from binance.common.utils import json_stringify
 
+
+ACCOUNT_INFO = {
+    'e': 'outboundAccountInfo',
+    'E': 1499405658849,
+    'm': 0,
+    't': 0,
+    'b': 0,
+    's': 0,
+}
+
+
 MAX_PRINT = 150
 
 

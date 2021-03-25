@@ -1,5 +1,6 @@
 files = binance test *.py
 test_target = *
+# test_target = exception_handler
 
 test:
 	pytest -s -v test/test_$(test_target).py --doctest-modules --cov binance --cov-config=.coveragerc --cov-report term-missing

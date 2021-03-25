@@ -36,13 +36,10 @@ class Client(
     ):
         """Binance API Client constructor
 
-        :param api_key: API Key
-        :type api_key: str.
-        :param api_secret: API Secret
-        :type api_secret: str.
-        :param requests_params: optional - Dictionary of requests params to use for all calls
-        :type requests_params: dict.
-
+        Args:
+            api_key (str): API Key
+            api_secret (str): API Secret
+            requests_params (:obj:`dict`, optional): Dictionary of requests params to use for all calls
         """
 
         self._api_key = None

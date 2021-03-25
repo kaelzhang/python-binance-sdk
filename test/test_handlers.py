@@ -12,26 +12,17 @@ from binance import (
     OrderUpdateHandlerBase,
     OrderListStatusHandlerBase,
     AllMarketMiniTickersHandlerBase,
-    AllMarketTickersHandlerBase,
-
-    HandlerExceptionHandlerBase
+    AllMarketTickersHandlerBase
 )
 from binance.common.utils import create_future
+
+from .common import ACCOUNT_INFO
 
 
 @pytest.fixture
 def client():
     return Client('api_key').start()
 
-
-ACCOUNT_INFO = {
-    'e': 'outboundAccountInfo',
-    'E': 1499405658849,
-    'm': 0,
-    't': 0,
-    'b': 0,
-    's': 0,
-}
 
 ACCOUNT_POSITION = {
     'e': 'outboundAccountPosition',
@@ -223,35 +214,6 @@ async def test_all_market_ticker(client):
     await run_handler(client, AllMarketTickersHandlerBase, [
         ticker
     ], expect_ticker, '!ticker@arr')
-
-
-@pytest.mark.asyncio
-async def test_handler_exception_handler(client):
-    future = create_future()
-
-    e = ValueError('this is an exception for testing, not a bug')
-
-    class ExceptionHandler(HandlerExceptionHandlerBase):
-        def receive(self, e):
-            e = super().receive(e)
-            future.set_exception(e)
-
-    class AccountInfoHandler(AccountInfoHandlerBase):
-        def receive(self, payload):
-            raise e
-
-    client.start()
-    client.handler(ExceptionHandler())
-    client.handler(AccountInfoHandler())
-
-    await client._receive({
-        'data': ACCOUNT_INFO
-    })
-
-    try:
-        await future
-    except Exception as catched:
-        assert catched is e
 
 
 def test_handler_reuse():
