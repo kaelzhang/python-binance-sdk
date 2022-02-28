@@ -20,8 +20,8 @@ import datetime
 # -- Project information -----------------------------------------------------
 
 project = 'binance-sdk'
-copyright = f'2019-{datetime.date.today().year}, Kael Zhang<i@kael.me> and contributors'
-author = 'Kael Zhang <i@kael.me>'
+copyright = f'2019-{datetime.date.today().year}, Master God <you-dont-know-who@gmail.com> and contributors'
+author = 'Master God <you-dont-know-who@gmail.com>'
 
 
 # -- General configuration ---------------------------------------------------

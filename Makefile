@@ -27,6 +27,6 @@ build-doc:
 
 publish:
 	make build
-	twine upload --config-file ~/.pypirc -r pypi dist/*
+	twine upload --config-file ~/.pypirc -r pypiorg dist/*
 
 .PHONY: test build
