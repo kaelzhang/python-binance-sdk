@@ -1,8 +1,8 @@
-[![](https://travis-ci.org/kaelzhang/python-binance-sdk.svg?branch=master)](https://travis-ci.org/kaelzhang/python-binance-sdk)
-[![](https://codecov.io/gh/kaelzhang/python-binance-sdk/branch/master/graph/badge.svg)](https://codecov.io/gh/kaelzhang/python-binance-sdk)
-[![](https://img.shields.io/pypi/v/binance-sdk.svg)](https://pypi.org/project/binance-sdk/)
-[![](https://img.shields.io/pypi/pyversions/binance-sdk.svg)](https://pypi.org/project/binance-sdk/)
-[![](https://img.shields.io/pypi/l/binance-sdk.svg)](https://github.com/kaelzhang/python-binance-sdk)
+<!-- [![](https://travis-ci.org/kaelzhang/python-binance-sdk.svg?branch=master)](https://travis-ci.org/kaelzhang/python-binance-sdk) -->
+<!-- [![](https://codecov.io/gh/kaelzhang/python-binance-sdk/branch/master/graph/badge.svg)](https://codecov.io/gh/kaelzhang/python-binance-sdk) -->
+<!-- [![](https://img.shields.io/pypi/v/binance-sdk.svg)](https://pypi.org/project/binance-sdk/) -->
+<!-- [![](https://img.shields.io/pypi/pyversions/binance-sdk.svg)](https://pypi.org/project/binance-sdk/) -->
+<!-- [![](https://img.shields.io/pypi/l/binance-sdk.svg)](https://github.com/kaelzhang/python-binance-sdk) -->
 
 # [binance-sdk](https://github.com/kaelzhang/python-binance-sdk)
 
