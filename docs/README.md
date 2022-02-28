@@ -1,10 +1,4 @@
-<!-- [![](https://travis-ci.org/kaelzhang/python-binance-sdk.svg?branch=master)](https://travis-ci.org/kaelzhang/python-binance-sdk) -->
-<!-- [![](https://codecov.io/gh/kaelzhang/python-binance-sdk/branch/master/graph/badge.svg)](https://codecov.io/gh/kaelzhang/python-binance-sdk) -->
-<!-- [![](https://img.shields.io/pypi/v/binance-sdk.svg)](https://pypi.org/project/binance-sdk/) -->
-<!-- [![](https://img.shields.io/pypi/pyversions/binance-sdk.svg)](https://pypi.org/project/binance-sdk/) -->
-<!-- [![](https://img.shields.io/pypi/l/binance-sdk.svg)](https://github.com/kaelzhang/python-binance-sdk) -->
-
-# [binance-sdk](https://github.com/kaelzhang/python-binance-sdk)
+# binance-sdk
 
 `binance-sdk` is an another unofficial Binance SDK for python 3.7+, which:
 
@@ -205,10 +199,6 @@ All arguments of the constructor Client are keyworded arguments and all optional
 - **stream_host?** `str='wss://stream.binance.com'` to specify another stream host for websocket connections.
 
 Create a binance client.
-
-Then with `client`, you could call
-- [Rest APIs](https://github.com/kaelzhang/python-binance-sdk/blob/master/binance/apis/rest.py#L225)
-- [Withdraw APIs](https://github.com/kaelzhang/python-binance-sdk/blob/master/binance/apis/wapi.py#L144).
 
 Each API method accepts only keyworded arguments (kwargs) and has verbosed Python doc strings (Google style) which you could check out when you are coding.
 

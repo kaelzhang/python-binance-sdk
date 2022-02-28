@@ -40,7 +40,7 @@ settings = dict(
     },
     license='MIT',
     keywords='binance exchange sdk rest api bitcoin btc bnb ethereum eth neo',
-    url='https://github.com/kaelzhang/python-binance-sdk',
+    url='https://github.com/mastergod/binance-sdk',
     long_description=read('README.md'),
     long_description_content_type='text/markdown',
     python_requires='>=3.7',
