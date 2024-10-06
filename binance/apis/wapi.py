@@ -42,12 +42,12 @@ APIS = [
         path='accountStatus'
     ),
 
-    dict(
-        name='get_system_status',
-        path='systemStatus',
-        params=False,
-        security_type=SecurityType.NONE
-    ),
+    # dict(
+    #     name='get_system_status',
+    #     path='systemStatus',
+    #     params=False,
+    #     security_type=SecurityType.NONE
+    # ),
 
     dict(
         name='get_account_api_trading_status',
