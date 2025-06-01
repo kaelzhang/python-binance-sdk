@@ -38,7 +38,7 @@ settings = dict(
     extras_require={
         'pandas': ['pandas']
     },
-    license='MIT',
+    license_files=['LICENSE'],
     keywords='binance exchange sdk rest api bitcoin btc bnb ethereum eth neo',
     url='https://github.com/mastergod/binance-sdk',
     long_description=read('README.md'),
@@ -49,8 +49,7 @@ settings = dict(
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: Implementation :: PyPy',
-        'Topic :: Software Development :: Libraries :: Python Modules',
-        'License :: OSI Approved :: MIT License',
+        'Topic :: Software Development :: Libraries :: Python Modules'
     ]
 )
 
