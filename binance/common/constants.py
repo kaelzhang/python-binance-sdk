@@ -37,6 +37,7 @@ class KlineInterval(Enum):
     M30 = '30m'
 
     H = '1h'
+    H1 = '1h'
     H2 = '2h'
     H4 = '4h'
     H6 = '6h'
