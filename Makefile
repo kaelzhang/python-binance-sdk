@@ -1,5 +1,5 @@
 files = binance test *.py
-test_target = *
+test_files = *
 # test_target = exception_handler
 
 test:

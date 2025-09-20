@@ -57,7 +57,7 @@ FREE_CASES = [
         name='get_klines',
         ka=dict(
             symbol='BTCUSDT',
-            interval=KlineInterval.DAY
+            interval=KlineInterval.D1
         )
     ),
     dict(

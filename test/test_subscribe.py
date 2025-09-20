@@ -138,7 +138,7 @@ async def test_client_kline_handler(client):
             f.set_result(payload)
 
     client.handler(KlineHandler())
-    await client.subscribe(SubType.KLINE, 'BTCUSDT', KlineInterval.DAY)
+    await client.subscribe(SubType.KLINE, 'BTCUSDT', KlineInterval.D1)
 
     payload = await f
 
