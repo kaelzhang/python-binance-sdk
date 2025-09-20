@@ -1,0 +1,86 @@
+[build-system]
+# Minimum requirements for the build system to execute.
+# See https://github.com/scipy/scipy/pull/12940 for the AIX issue.
+
+# Should sync to [project.optional-dependencies]
+requires = [
+  "setuptools",
+  "build"
+]
+
+build-backend = "setuptools.build_meta"
+
+[project]
+name = 'binance-sdk'
+dynamic = ['version']
+description='Binance Python SDK'
+readme = 'docs/README.md'
+authors = [
+  { name = 'Master God', email='you-dont-know-who@gmail.com' }
+]
+license = 'MIT'
+license-files = ['LICENSE']
+requires-python = '>=3.9'
+dependencies = [
+  "aiohttp",
+  "aioretry >= 6.0.0",
+  "websockets",
+  "stock-pandas >= 2.1.2"
+]
+classifiers=[
+    'Programming Language :: Python',
+    'Programming Language :: Python :: 3.9',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: Implementation :: CPython',
+    'Natural Language :: English',
+    'Intended Audience :: Developers',
+    'Intended Audience :: Financial and Insurance Industry',
+    'Operating System :: OS Independent',
+    'Development Status :: 4 - Beta',
+    'Topic :: Utilities'
+]
+
+[project.urls]
+Homepage = "https://github.com/mastergod/binance-sdk"
+
+[project.optional-dependencies]
+dev = [
+  "codecov",
+  "coverage",
+  "ruff",
+  "pytest",
+  "pytest-asyncio",
+  "pytest-cov",
+  "twine",
+  "setuptools>=77.0.0",
+  "mypy",
+  "build"
+]
+
+[tool.setuptools]
+packages = [
+  'binance',
+  'binance.apis',
+  'binance.client',
+  'binance.common',
+  'binance.handlers',
+  'binance.processors',
+  'binance.subscribe'
+]
+
+[tool.setuptools.dynamic]
+version = {attr = "binance.__version__"}
+
+# [tool.setuptools.package-data]
+# stock_pandas = [
+#   "py.typed"
+# ]
+
+[tool.mypy]
+warn_return_any = true
+ignore_missing_imports = true
+no_implicit_optional = true
+strict_optional = true
+disable_error_code = ['return-value', 'no-any-return']

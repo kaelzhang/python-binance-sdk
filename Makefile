@@ -3,22 +3,24 @@ test_target = *
 # test_target = exception_handler
 
 test:
-	pytest -s -v test/test_$(test_target).py --doctest-modules --cov binance --cov-config=.coveragerc --cov-report term-missing
-
-install:
-	pip install -U -r requirements.txt -r test-requirements.txt
-	pip install pandas
+	STOCK_PANDAS_COW=1 pytest -s -v test/test_$(test_files).py --doctest-modules --cov stock_pandas --cov-config=.coveragerc --cov-report term-missing
 
 lint:
-	flake8 $(files)
+	@echo "\033[1m>> Running ruff... <<\033[0m"
+	@ruff check $(files)
+	@echo "\033[1m>> Running mypy... <<\033[0m"
+	@mypy $(files)
 
 fix:
-	autopep8 --in-place -r $(files)
+	ruff check --fix $(files)
+
+install:
+	pip install -U .[dev]
 
 report:
 	codecov
 
-build:
+build: binance
 	rm -rf dist
 	python setup.py sdist bdist_wheel
 
@@ -29,4 +31,4 @@ publish:
 	make build
 	twine upload --config-file ~/.pypirc -r pypiorg dist/*
 
-.PHONY: test build
+.PHONY: test build report install

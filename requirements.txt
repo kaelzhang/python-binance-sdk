@@ -1,3 +1,0 @@
-aiohttp
-aioretry >= 6.0.0
-websockets
