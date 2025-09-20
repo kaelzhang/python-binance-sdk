@@ -20,9 +20,14 @@ install:
 report:
 	codecov
 
-build: binance
-	rm -rf dist
-	python setup.py sdist bdist_wheel
+clean:
+	rm -rf dist build
+	rm -rf binance_sdk.egg-info/
+	rm -rf binance/binance_sdk.egg-info/
+
+build:
+	make clean
+	@python -m build --sdist --wheel
 
 build-doc:
 	sphinx-build -b html docs build_docs
