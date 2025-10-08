@@ -153,8 +153,8 @@ class Stream:
 
         self._uri = uri
 
-        # Initialize rate limiter for 5 messages per second
-        self._rate_limiter = RateLimiter(max_messages=5, time_window=1.0)
+        # Initialize rate limiter for 4 messages per second
+        self._rate_limiter = RateLimiter(max_messages=4, time_window=1.0)
 
     def _set_socket(self, socket) -> None:
         if self._open_future:
