@@ -153,8 +153,8 @@ class Stream:
 
         self._uri = uri
 
-        # Initialize rate limiter for 4 messages per second
-        self._rate_limiter = RateLimiter(max_messages=4, time_window=1.0)
+        # Initialize rate limiter for 2 messages per second
+        self._rate_limiter = RateLimiter(max_messages=2, time_window=1.0)
 
     def _set_socket(self, socket) -> None:
         if self._open_future:
@@ -389,6 +389,8 @@ class Stream:
     # For WebSocket streams, users are limited to five incoming messages per second, including Ping frames, Pong frames, and JSON-controlled messages such as subscribe/unsubscribe commands. Connections exceeding this limit are disconnected, and repeated violations may result in an IP ban.
 
     # A single connection can handle a maximum of 1,024 streams, making it suitable for large-scale data monitoring setups in high-frequency trading or analytics platforms.
+
+    # > actually 2 messages per second according to testing
 
     async def send(
         self,
