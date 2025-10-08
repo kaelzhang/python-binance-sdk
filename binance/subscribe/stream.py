@@ -58,6 +58,7 @@ logger = logging.getLogger(__name__)
 
 ON_MESSAGE = 'on_message'
 ON_CONNECTED = 'on_connected'
+ON_RECONNECTED = 'on_reconnected'
 
 
 class Stream:
@@ -80,6 +81,7 @@ class Stream:
         uri: str,
         on_message: EventCallback,
         on_connected: Optional[EventCallback] = None,
+        on_reconnected: Optional[EventCallback] = None,
         # We redundant the default value here,
         #   because `binance.Stream` is also a public class
         retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
@@ -92,6 +94,12 @@ class Stream:
         self._on_connected = wrap_event_callback(
             on_connected,
             ON_CONNECTED,
+            False
+        )
+
+        self._on_reconnected = wrap_event_callback(
+            on_reconnected,
+            ON_RECONNECTED,
             False
         )
 
@@ -122,6 +130,8 @@ class Stream:
         self._before_connect()
 
         self._conn_task = asyncio.create_task(self._connect())
+        # Add exception handler to prevent "Future exception was never retrieved" warnings
+        self._conn_task.add_done_callback(self._handle_task_exception)
         return self
 
     async def _emit(
@@ -173,7 +183,23 @@ class Stream:
             msg = await asyncio.wait_for(
                 self._socket.recv(), timeout=self._timeout)
         except asyncio.TimeoutError:
-            await self._socket.ping()
+            try:
+                # Send ping and wait for pong with a shorter timeout
+                pong_waiter = await self._socket.ping()
+                await asyncio.wait_for(pong_waiter, timeout=10.0)
+                logger.debug("WebSocket ping successful")
+            except asyncio.TimeoutError:
+                logger.warning("WebSocket ping timeout - connection may be stale")
+                # Let the connection retry mechanism handle this
+                raise ConnectionClosedError(None, None, "ping timeout")
+            except Exception as e:
+                logger.error(
+                    format_msg(
+                        'WebSocket ping failed: %s',
+                        repr_exception(e)
+                    )
+                )
+                raise e
             return
 
         # Other exceptions for socket.recv():
@@ -209,6 +235,8 @@ class Stream:
             self._connected_task = asyncio.create_task(
                 self._emit(ON_CONNECTED)
             )
+            # Add exception handler to prevent "Future exception was never retrieved" warnings
+            self._connected_task.add_done_callback(self._handle_task_exception)
 
             try:
                 # Do not receive messages if the stream is closing
@@ -244,8 +272,16 @@ class Stream:
 
             try:
                 await self._connected_task
-            except Exception:
+            except asyncio.CancelledError:
+                # Expected when cancelling
                 pass
+            except Exception as e:
+                logger.error(
+                    format_msg(
+                        'Error cleaning up connected task: %s',
+                        repr_exception(e)
+                    )
+                )
 
             self._connected_task = None
 
@@ -283,9 +319,17 @@ class Stream:
 
         self._conn_task.cancel()
 
+        # Also cancel the connected task if it exists
+        if self._connected_task:
+            self._connected_task.cancel()
+
         # Make sure:
         # - conn_task is cancelled
         # - socket is closed
+        # - connected_task is cancelled
+        if self._connected_task:
+            tasks.append(self._connected_task)
+
         for coro in asyncio.as_completed(tasks):
             try:
                 await coro
@@ -343,3 +387,26 @@ class Stream:
 
         await socket.send(json_stringify(msg))
         return await future
+
+    def _handle_task_exception(self, task):
+        """Handle exceptions from background tasks to prevent 'Future exception was never retrieved' warnings"""
+        try:
+            # Retrieve the exception if the task failed
+            exception = task.exception()
+            if exception is not None:
+                logger.error(
+                    format_msg(
+                        'Background task failed with exception: %s',
+                        repr_exception(exception)
+                    )
+                )
+        except asyncio.CancelledError:
+            # Task was cancelled, which is expected during cleanup
+            pass
+        except Exception as e:
+            logger.error(
+                format_msg(
+                    'Error handling task exception: %s',
+                    repr_exception(e)
+                )
+            )

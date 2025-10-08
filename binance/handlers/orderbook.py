@@ -206,7 +206,31 @@ class OrderBook:
     def _start_fetching(self) -> None:
         if not self._fetching:
             self._fetching = True
-            asyncio.create_task(self._fetch())
+            task = asyncio.create_task(self._fetch())
+            # Add exception handler to prevent "Future exception was never retrieved" warnings
+            task.add_done_callback(self._handle_fetch_exception)
+
+    def _handle_fetch_exception(self, task):
+        """Handle exceptions from fetch task to prevent 'Future exception was never retrieved' warnings"""
+        try:
+            # Retrieve the exception if the task failed
+            exception = task.exception()
+            if exception is not None:
+                # Log the error but don't re-raise as this is a background task
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(
+                    f'Fetch task failed with exception: {exception}'
+                )
+        except asyncio.CancelledError:
+            # Task was cancelled, which is expected during cleanup
+            pass
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f'Error handling fetch task exception: {e}'
+            )
 
     async def fetch(self) -> None:
         """Manually fetches the new snapshot. Most usually, you should not call this method directly.
