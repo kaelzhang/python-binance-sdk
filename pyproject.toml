@@ -23,7 +23,7 @@ requires-python = '>=3.9'
 dependencies = [
   "aiohttp",
   "aioretry >= 6.0.0",
-  "websockets",
+  "websockets >= 15.0.0",
   "stock-pandas >= 2.1.2"
 ]
 classifiers=[
