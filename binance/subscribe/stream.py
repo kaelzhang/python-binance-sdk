@@ -10,7 +10,7 @@ from typing import (
 
 from websockets import (
     connect,
-    WebSocketClientProtocol
+    ClientConnection
 )
 from websockets.exceptions import (
     ConnectionClosed,
@@ -72,7 +72,7 @@ class Stream:
         timeout (float): timeout in seconds to receive the next websocket message
     """
 
-    _socket: Optional[WebSocketClientProtocol]
+    _socket: Optional[ClientConnection]
     _message_futures: Dict[int, Future]
     _retry_policy: RetryPolicy
 
