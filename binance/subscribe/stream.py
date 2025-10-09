@@ -150,6 +150,7 @@ class Stream:
 
         self._open_future = None
         self._closing = False
+        self._connection_error = False
 
         self._uri = uri
 
@@ -239,16 +240,21 @@ class Stream:
                         repr_exception(e)
                     )
                 )
+
+                # Other exceptions for socket.recv():
+                # - ConnectionClosed
+                # - ConnectionClosedOK
+                # - ConnectionClosedError
+                # which should be handled by self._connect()
                 raise e
             return
-
-        # Other exceptions for socket.recv():
-        # - ConnectionClosed
-        # - ConnectionClosedOK
-        # - ConnectionClosedError
-        # which should be handled by self._connect()
-
         else:
+            if self._connection_error:
+                self._connection_error = False
+                logger.info(
+                    format_msg('Websocket connection recovered')
+                )
+
             try:
                 parsed = json.loads(msg)
             except ValueError as e:
@@ -294,6 +300,8 @@ class Stream:
                 if self._closing:
                     # The socket is closed by `await self.close()`
                     return
+
+                self._connection_error = True
 
                 # Raise, so aioretry will reconnecting
                 raise e
@@ -444,23 +452,13 @@ class Stream:
 
     def _handle_task_exception(self, task):
         """Handle exceptions from background tasks to prevent 'Future exception was never retrieved' warnings"""
-        try:
-            # Retrieve the exception if the task failed
-            exception = task.exception()
-            if exception is not None:
-                logger.error(
-                    format_msg(
-                        'Background task failed with exception: %s',
-                        repr_exception(exception)
-                    )
-                )
-        except asyncio.CancelledError:
-            # Task was cancelled, which is expected during cleanup
-            pass
-        except Exception as e:
+
+        # Retrieve the exception if the task failed
+        exception = task.exception()
+        if exception is not None:
             logger.error(
                 format_msg(
-                    'Error handling task exception: %s',
-                    repr_exception(e)
+                    'Background task failed with exception: %s',
+                    repr_exception(exception)
                 )
             )
