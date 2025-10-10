@@ -301,12 +301,12 @@ class Stream:
                     # The socket is closed by `await self.close()`
                     return
 
-                self._connection_error = True
-
                 # Raise, so aioretry will reconnecting
                 raise e
 
     async def _reconnect(self, info: RetryInfo) -> None:
+        self._connection_error = True
+
         self._logger.error(
             format_msg(
                 'socket error %s, reconnecting %s...',
