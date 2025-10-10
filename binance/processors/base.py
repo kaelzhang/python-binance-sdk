@@ -29,7 +29,10 @@ class Processor:
     # subtype used by client.subscribe
     SUB_TYPE: Optional[SubType] = None
 
-    def __init__(self, client):
+    def __init__(
+        self,
+        client
+    ):
         self._client = client
 
         self._handlers = set()

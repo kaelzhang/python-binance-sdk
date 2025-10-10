@@ -1,5 +1,4 @@
 import json
-import logging
 import asyncio
 import time
 from asyncio import Future
@@ -8,6 +7,7 @@ from typing import (
     Dict,
     Any
 )
+from logging import Logger
 
 from websockets import (
     connect,
@@ -54,8 +54,6 @@ from binance.common.types import (
     Timeout
 )
 
-
-logger = logging.getLogger(__name__)
 
 ON_MESSAGE = 'on_message'
 ON_CONNECTED = 'on_connected'
@@ -114,6 +112,7 @@ class Stream:
         self,
         uri: str,
         on_message: EventCallback,
+        logger: Logger,
         on_connected: Optional[EventCallback] = None,
         on_reconnected: Optional[EventCallback] = None,
         # We redundant the default value here,
@@ -156,6 +155,7 @@ class Stream:
 
         # Initialize rate limiter for 2 messages per second
         self._rate_limiter = RateLimiter(max_messages=2, time_window=1.0)
+        self._logger = logger
 
     def _set_socket(self, socket) -> None:
         if self._open_future:
@@ -228,13 +228,13 @@ class Stream:
                 # Send ping and wait for pong with a shorter timeout
                 pong_waiter = await self._socket.ping()
                 await asyncio.wait_for(pong_waiter, timeout=10.0)
-                logger.debug("WebSocket ping successful")
+                self._logger.debug("WebSocket ping successful")
             except asyncio.TimeoutError:
-                logger.warning("WebSocket ping timeout - connection may be stale")
+                self._logger.warning("WebSocket ping timeout - connection may be stale")
                 # Let the connection retry mechanism handle this
                 raise ConnectionClosedError(None, None, "ping timeout")
             except Exception as e:
-                logger.error(
+                self._logger.error(
                     format_msg(
                         'WebSocket ping failed: %s',
                         repr_exception(e)
@@ -251,14 +251,14 @@ class Stream:
         else:
             if self._connection_error:
                 self._connection_error = False
-                logger.info(
+                self._logger.info(
                     format_msg('Websocket connection recovered')
                 )
 
             try:
                 parsed = json.loads(msg)
             except ValueError as e:
-                logger.error(
+                self._logger.error(
                     format_msg(
                         'stream message "%s" is an invalid JSON: reason: %s',
                         msg,
@@ -307,7 +307,7 @@ class Stream:
                 raise e
 
     async def _reconnect(self, info: RetryInfo) -> None:
-        logger.error(
+        self._logger.error(
             format_msg(
                 'socket error %s, reconnecting %s...',
                 repr_exception(info.exception),
@@ -324,7 +324,7 @@ class Stream:
                 # Expected when cancelling
                 pass
             except Exception as e:
-                logger.error(
+                self._logger.error(
                     format_msg(
                         'Error cleaning up connected task: %s',
                         repr_exception(e)
@@ -382,7 +382,7 @@ class Stream:
             try:
                 await coro
             except Exception as e:
-                logger.error(
+                self._logger.error(
                     format_msg('close tasks error: %s', e)
                 )
 
@@ -456,7 +456,7 @@ class Stream:
         # Retrieve the exception if the task failed
         exception = task.exception()
         if exception is not None:
-            logger.error(
+            self._logger.error(
                 format_msg(
                     'Background task failed with exception: %s',
                     repr_exception(exception)

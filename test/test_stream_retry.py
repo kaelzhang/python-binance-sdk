@@ -8,7 +8,9 @@ from .common import (
     PORT,
     SocketServer
 )
+from logging import getLogger
 
+logger = getLogger(__name__)
 
 @pytest.mark.asyncio
 async def test_stream_timeout_disconnect_reconnect():
@@ -54,7 +56,8 @@ async def test_stream_timeout_disconnect_reconnect():
         on_message=on_message,
         on_connected=error_on_connected,
         retry_policy=retry_policy,
-        timeout=0.1
+        timeout=0.1,
+        logger=logger
     ).connect()
 
     # During the 500ms, there might be a lot of disconnection

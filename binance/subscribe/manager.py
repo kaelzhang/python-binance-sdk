@@ -5,6 +5,7 @@ from typing import (
     Tuple,
     Optional
 )
+from logging import Logger
 
 from aioretry import RetryPolicy
 
@@ -24,6 +25,7 @@ class SubscriptionManager:
     _stream_host: str
     _stream_retry_policy: RetryPolicy
     _stream_timeout: Timeout
+    _logger: Logger
 
     def start(self):
         """Starts receiving messages.
@@ -84,7 +86,8 @@ class SubscriptionManager:
                 on_message=self._receive,
                 on_connected=self._resubscribe,
                 retry_policy=self._stream_retry_policy,
-                timeout=self._stream_timeout
+                timeout=self._stream_timeout,
+                logger=self._logger
             ).connect()
 
         return self._data_stream

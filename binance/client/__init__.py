@@ -1,3 +1,5 @@
+from logging import getLogger, Logger
+
 from binance.apis import (
     RestAPIGetters,
     WapiAPIGetters
@@ -32,7 +34,8 @@ class Client(
         # website_host=WEBSITE_HOST,
         stream_host: str = STREAM_HOST,
         stream_retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
-        stream_timeout: Timeout = DEFAULT_STREAM_TIMEOUT
+        stream_timeout: Timeout = DEFAULT_STREAM_TIMEOUT,
+        logger: Logger = getLogger(__name__)
     ):
         """Binance API Client constructor
 
@@ -59,6 +62,11 @@ class Client(
         self._handler_ctx = None
         self._data_stream = None
         self._subscribed = set()
+        self._logger = logger
+
+    @property
+    def logger(self) -> Logger:
+        return self._logger
 
     def key(self, key):
         """Defines or changes api key. This method is unnecessary if we only request APIs of `SecurityType.NONE`

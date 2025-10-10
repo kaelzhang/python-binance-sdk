@@ -100,24 +100,12 @@ class UserProcessor(Processor):
 
     def _handle_keep_alive_exception(self, task):
         """Handle exceptions from keep-alive task to prevent 'Future exception was never retrieved' warnings"""
-        try:
-            # Retrieve the exception if the task failed
-            exception = task.exception()
-            if exception is not None:
-                # Log the error but don't re-raise as this is a background task
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(
-                    f'Keep-alive task failed with exception: {exception}'
-                )
-        except asyncio.CancelledError:
-            # Task was cancelled, which is expected during cleanup
-            pass
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(
-                f'Error handling keep-alive task exception: {e}'
+
+        # Retrieve the exception if the task failed
+        exception = task.exception()
+        if exception is not None:
+            self._client.logger.error(
+                f'Keep-alive task failed with exception: {exception}'
             )
 
     async def _close_stream(self) -> None:

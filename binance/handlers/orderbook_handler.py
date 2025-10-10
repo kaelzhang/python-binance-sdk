@@ -100,10 +100,11 @@ class OrderBookHandlerBase(Handler):
         if symbol in self._orderbooks:
             return self._orderbooks[symbol]
 
-        orderbook = OrderBook(symbol,
-                              limit=self._limit,
-                              retry_policy=self._retry_policy
-                              )
+        orderbook = OrderBook(
+            symbol,
+            limit=self._limit,
+            retry_policy=self._retry_policy
+        )
 
         if self._client:
             orderbook.set_client(self._client)

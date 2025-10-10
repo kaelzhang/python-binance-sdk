@@ -1,5 +1,6 @@
 import pytest
 import asyncio
+from logging import getLogger
 
 from binance import (
     Stream,
@@ -16,6 +17,9 @@ from .common import (
 )
 
 
+logger = getLogger(__name__)
+
+
 async def run_stream():
     f = create_future()
 
@@ -24,7 +28,8 @@ async def run_stream():
 
     stream = Stream(
         STREAM_HOST + '/stream',
-        on_message
+        on_message,
+        logger=logger
     )
 
     stream.connect()
@@ -71,7 +76,8 @@ async def test_stream_never_connect():
     with pytest.raises(StreamDisconnectedException, match='never connected'):
         await Stream(
             STREAM_HOST + '/stream',
-            on_message
+            on_message,
+            logger=logger
         ).send({})
 
 
@@ -80,7 +86,8 @@ async def test_stream_close_before_connect():
     with pytest.raises(StreamDisconnectedException, match='never connected'):
         await Stream(
             STREAM_HOST + '/stream',
-            on_message
+            on_message,
+            logger=logger
         ).close()
 
 
@@ -89,7 +96,7 @@ def test_stream_invalid_on_message():
         ValueError,
         match='event callback `on_message` is required'
     ):
-        Stream('fake url', None)  # type: ignore
+        Stream('fake url', None, logger=logger)  # type: ignore
 
 
 @pytest.mark.asyncio
@@ -102,7 +109,8 @@ async def test_json_error():
     print('connecting', uri)
     stream = Stream(
         uri,
-        on_message
+        on_message,
+        logger=logger
     ).connect()
 
     await asyncio.sleep(1)
