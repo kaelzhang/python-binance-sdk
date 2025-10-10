@@ -22,7 +22,9 @@ from binance.common.constants import (
 
 from binance.common.utils import (
     normalize_symbol,
-    create_future
+    create_future,
+    format_msg,
+    repr_exception
 )
 from binance.common.exceptions import OrderBookFetchAbandonedException
 
@@ -221,7 +223,10 @@ class OrderBook:
         if exception is not None and self._client is not None:
             # Log the error but don't re-raise as this is a background task
             self._client.logger.error(
-                f'Fetch task failed with exception: {exception}'
+                format_msg(
+                    'Fetch task failed with exception: %s',
+                    repr_exception(exception)
+                )
             )
 
     async def fetch(self) -> None:

@@ -10,6 +10,10 @@ from binance.common.constants import (
 )
 
 from binance.common.exceptions import UserStreamNotSubscribedException
+from binance.common.utils import (
+    format_msg,
+    repr_exception
+)
 
 from binance.handlers.user_handlers import (
     AccountInfoHandlerBase,
@@ -108,7 +112,10 @@ class UserProcessor(Processor):
         exception = task.exception()
         if exception is not None:
             self._client.logger.error(
-                f'Keep-alive task failed with exception: {exception}'
+                format_msg(
+                    'Keep-alive task failed with exception: %s',
+                    repr_exception(exception)
+                )
             )
 
     async def _close_stream(self) -> None:
