@@ -213,6 +213,9 @@ class OrderBook:
     def _handle_fetch_exception(self, task):
         """Handle exceptions from fetch task to prevent 'Future exception was never retrieved' warnings"""
 
+        if task.cancelled():
+            return
+
         # Retrieve the exception if the task failed
         exception = task.exception()
         if exception is not None and self._client is not None:

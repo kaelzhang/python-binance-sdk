@@ -453,6 +453,9 @@ class Stream:
     def _handle_task_exception(self, task):
         """Handle exceptions from background tasks to prevent 'Future exception was never retrieved' warnings"""
 
+        if task.cancelled():
+            return
+
         # Retrieve the exception if the task failed
         exception = task.exception()
         if exception is not None:

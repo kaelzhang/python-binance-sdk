@@ -101,6 +101,9 @@ class UserProcessor(Processor):
     def _handle_keep_alive_exception(self, task):
         """Handle exceptions from keep-alive task to prevent 'Future exception was never retrieved' warnings"""
 
+        if task.cancelled():
+            return
+
         # Retrieve the exception if the task failed
         exception = task.exception()
         if exception is not None:
