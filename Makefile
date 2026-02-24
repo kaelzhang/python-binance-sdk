@@ -3,7 +3,7 @@ test_files = *
 # test_target = exception_handler
 
 test:
-	STOCK_PANDAS_COW=1 pytest -s -v test/test_$(test_files).py --doctest-modules --cov stock_pandas --cov-config=.coveragerc --cov-report term-missing
+	STOCK_PANDAS_COW=1 pytest -s -v test/test_$(test_files).py --doctest-modules --cov binance --cov-config=.coveragerc --cov-report term-missing
 
 lint:
 	@echo "\033[1m>> Running ruff... <<\033[0m"
