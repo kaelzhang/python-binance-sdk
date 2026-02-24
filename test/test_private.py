@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 
 from binance import (
@@ -6,12 +5,8 @@ from binance import (
     SubType,
     UserStreamNotSubscribedException
 )
-from binance.processors.user_processor import UserProcessor
 
 from .common import print_json
-
-
-UserProcessor.KEEP_ALIVE_INTERVAL = .1
 
 
 try:
@@ -39,7 +34,6 @@ async def test_user_stream():
         await client.unsubscribe(SubType.USER)
 
     await client.subscribe(SubType.USER)
-    await asyncio.sleep(.2)
 
     await client.unsubscribe(SubType.USER)
 

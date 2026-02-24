@@ -11,6 +11,7 @@ from binance.subscribe.manager import SubscriptionManager
 from binance.common.constants import (
     REST_API_HOST,
     STREAM_HOST,
+    WS_API_HOST,
     DEFAULT_RETRY_POLICY, DEFAULT_STREAM_TIMEOUT
 )
 from binance.common.types import Timeout
@@ -33,6 +34,7 @@ class Client(
         api_host: str = REST_API_HOST,
         # website_host=WEBSITE_HOST,
         stream_host: str = STREAM_HOST,
+        ws_api_host: str = WS_API_HOST,
         stream_retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
         stream_timeout: Timeout = DEFAULT_STREAM_TIMEOUT,
         logger: Logger = getLogger(__name__)
@@ -55,12 +57,14 @@ class Client(
         self._api_host = api_host
 
         self._stream_host = stream_host
+        self._ws_api_host = ws_api_host
         self._stream_retry_policy = stream_retry_policy
         self._stream_timeout = stream_timeout
 
         self._receiving = True
         self._handler_ctx = None
         self._data_stream = None
+        self._user_stream = None
         self._subscribed = set()
         self._logger = logger
 

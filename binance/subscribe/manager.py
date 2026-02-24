@@ -9,7 +9,10 @@ from logging import Logger
 
 from aioretry import RetryPolicy
 
-from binance.common.constants import DEFAULT_STREAM_CLOSE_CODE
+from binance.common.constants import (
+    DEFAULT_STREAM_CLOSE_CODE,
+    SubType
+)
 from binance.common.exceptions import InvalidHandlerException
 from binance.common.types import Timeout
 
@@ -21,8 +24,10 @@ from .handler_context import HandlerContext
 
 class SubscriptionManager:
     _data_stream: Optional[Stream]
+    _user_stream: Optional[Stream]
     _subscribed: Set[tuple]
     _stream_host: str
+    _ws_api_host: str
     _stream_retry_policy: RetryPolicy
     _stream_timeout: Timeout
     _logger: Logger
@@ -67,6 +72,10 @@ class SubscriptionManager:
             await self._data_stream.close(code)
             self._data_stream = None
 
+        if self._user_stream:
+            await self._user_stream.close(code)
+            self._user_stream = None
+
         self._handler_ctx = None
 
     async def _receive(self, msg) -> None:
@@ -92,6 +101,34 @@ class SubscriptionManager:
 
         return self._data_stream
 
+    def _get_user_stream(self) -> Stream:
+        if self._user_stream is None:
+            self._user_stream = Stream(
+                self._ws_api_host,
+                on_message=self._receive,
+                on_connected=self._resubscribe_user,
+                retry_policy=self._stream_retry_policy,
+                timeout=self._stream_timeout,
+                logger=self._logger
+            ).connect()
+
+        return self._user_stream
+
+    def _split_subscriptions(
+        self,
+        subscriptions: Iterable[tuple]
+    ) -> Tuple[List[tuple], List[tuple]]:
+        market_subscriptions = []
+        user_subscriptions = []
+
+        for subscription in subscriptions:
+            if len(subscription) > 0 and subscription[0] == SubType.USER:
+                user_subscriptions.append(subscription)
+            else:
+                market_subscriptions.append(subscription)
+
+        return market_subscriptions, user_subscriptions
+
     async def _subscribe_only(
         self,
         subscribe: bool,
@@ -109,6 +146,32 @@ class SubscriptionManager:
             'params': params
         })
 
+    async def _subscribe_user_only(
+        self,
+        subscribe: bool,
+        subscriptions: Iterable[tuple]
+    ) -> None:
+        params = await self._get_handler_ctx().subscribe_params(
+            subscribe,
+            subscriptions
+        )
+
+        stream = self._get_user_stream()
+
+        for param in params:
+            method = (
+                'userDataStream.subscribe.signature'
+                if subscribe
+                else 'userDataStream.unsubscribe'
+            )
+
+            req = {'method': method}
+
+            if param:
+                req['params'] = param
+
+            await stream.send(req)
+
     # subscribe to the stream for symbols
     async def _subscribe(
         self,
@@ -116,8 +179,15 @@ class SubscriptionManager:
         args: Tuple
     ):
         subscriptions = self._get_handler_ctx().overload_subscriptions(*args)
+        market_subscriptions, user_subscriptions = self._split_subscriptions(
+            subscriptions
+        )
 
-        await self._subscribe_only(subscribe, subscriptions)
+        if len(market_subscriptions) > 0:
+            await self._subscribe_only(subscribe, market_subscriptions)
+
+        if len(user_subscriptions) > 0:
+            await self._subscribe_user_only(subscribe, user_subscriptions)
 
         for param in subscriptions:
             if subscribe:
@@ -126,8 +196,14 @@ class SubscriptionManager:
                 self._subscribed.discard(param)
 
     async def _resubscribe(self) -> None:
-        if len(self._subscribed) > 0:
-            await self._subscribe_only(True, self._subscribed)
+        market_subscriptions, _ = self._split_subscriptions(self._subscribed)
+        if len(market_subscriptions) > 0:
+            await self._subscribe_only(True, market_subscriptions)
+
+    async def _resubscribe_user(self) -> None:
+        _, user_subscriptions = self._split_subscriptions(self._subscribed)
+        if len(user_subscriptions) > 0:
+            await self._subscribe_user_only(True, user_subscriptions)
 
     async def subscribe(self, *args):
         return await self._subscribe(True, args)

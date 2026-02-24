@@ -1,8 +1,3 @@
-import asyncio
-from typing import (
-    Optional
-)
-
 from binance.common.constants import (
     SubType,
     KEY_PAYLOAD,
@@ -10,10 +5,6 @@ from binance.common.constants import (
 )
 
 from binance.common.exceptions import UserStreamNotSubscribedException
-from binance.common.utils import (
-    format_msg,
-    repr_exception
-)
 
 from binance.handlers.user_handlers import (
     AccountInfoHandlerBase,
@@ -29,11 +20,7 @@ from .base import Processor
 
 
 class UserProcessor(Processor):
-    _listen_key: Optional[str]
-
     SUB_TYPE = SubType.USER
-
-    KEEP_ALIVE_INTERVAL = 60 * 30
 
     PAYLOAD_TYPES = (
         'outboundAccountInfo',
@@ -54,8 +41,7 @@ class UserProcessor(Processor):
     def __init__(self, *args) -> None:
         super().__init__(*args)
 
-        self._listen_key = None
-        self._keep_alive_task = None
+        self._subscribed = False
 
         self._handlers = {}
 
@@ -63,66 +49,26 @@ class UserProcessor(Processor):
         self,
         subscribe: bool,
         t: SubType
-    ) -> str:
+    ) -> dict:
         if not subscribe:
-            key = self._listen_key
-
-            if key is None:
+            if not self._subscribed:
                 raise UserStreamNotSubscribedException()
 
-            await self._close_stream()
-            self._listen_key = None
+            self._subscribed = False
+            return {}
 
-            return key
-
-        key = await self._client.get_listen_key()
-
-        self._listen_key = key
-        self._start_keep_alive()
-
-        return key
-
-    async def _keep_alive(self) -> None:
-        # Send a keepalive requests every 30 minutes
-        while True:
-            await asyncio.sleep(self.KEEP_ALIVE_INTERVAL)
-            if self._listen_key is not None:
-                await self._client.keepalive_listen_key(self._listen_key)
-
-    def _start_keep_alive(self) -> None:
-        self._stop_keep_alive()
-        self._keep_alive_task = asyncio.create_task(self._keep_alive())
-        # Add exception handler to prevent "Future exception was never retrieved" warnings
-        self._keep_alive_task.add_done_callback(
-            self._handle_keep_alive_exception
-        )
-
-    def _stop_keep_alive(self) -> None:
-        if self._keep_alive_task:
-            self._keep_alive_task.cancel()
-            self._keep_alive_task = None
-
-    def _handle_keep_alive_exception(self, task):
-        """Handle exceptions from keep-alive task to prevent 'Future exception was never retrieved' warnings"""
-
-        if task.cancelled():
-            return
-
-        # Retrieve the exception if the task failed
-        exception = task.exception()
-        if exception is not None:
-            self._client.logger.error(
-                format_msg(
-                    'Keep-alive task failed with exception: %s',
-                    repr_exception(exception)
-                )
-            )
-
-    async def _close_stream(self) -> None:
-        self._stop_keep_alive()
-        await self._client.close_listen_key(self._listen_key)
+        # New user stream flow uses WebSocket API.
+        params = self._client._ws_api_signature_params()
+        self._subscribed = True
+        return params
 
     def is_message_type(self, msg):
+        event = msg.get('event')
+        if event is not None and \
+                type(event) is dict and \
+                event.get(KEY_PAYLOAD_TYPE) in self.PAYLOAD_TYPES:
+            return True, event
+
         payload = msg.get(KEY_PAYLOAD)
 
         if payload is not None and \

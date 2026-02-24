@@ -10,6 +10,7 @@ from binance import (
 
     TickerHandlerBase,
     KlineHandlerBase,
+    AccountInfoHandlerBase,
 
     InvalidHandlerException,
     OrderBookHandlerBase,
@@ -144,6 +145,32 @@ async def test_client_kline_handler(client):
 
     assert payload['e'] == 'kline'
     assert payload['s'] == 'BTCUSDT'
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_user_handler_ws_api_event(client):
+    f = create_future()
+
+    class AccountInfoHandler(AccountInfoHandlerBase):
+        def receive(self, payload):
+            f.set_result(payload)
+
+    client.handler(AccountInfoHandler())
+
+    await client._receive({
+        'subscriptionId': 0,
+        'event': {
+            'e': 'outboundAccountInfo',
+            'foo': 'bar'
+        }
+    })
+
+    payload = await f
+
+    assert payload['e'] == 'outboundAccountInfo'
+    assert payload['foo'] == 'bar'
 
     await client.close()
 

@@ -57,6 +57,7 @@ def NO_RETRY_POLICY(_) -> RetryPolicyStrategy:
 
 
 STREAM_HOST = 'wss://stream.binance.com'
+WS_API_HOST = 'wss://ws-api.binance.com/ws-api/v3'
 
 DEFAULT_STREAM_TIMEOUT = 5
 

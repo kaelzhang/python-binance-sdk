@@ -5,7 +5,8 @@ from typing import (
     Iterable,
     Set,
     Dict,
-    Tuple
+    Tuple,
+    Union
 )
 
 from binance.processors import (
@@ -125,7 +126,7 @@ class HandlerContext:
         self,
         subscribe: bool,
         subscriptions: Iterable[tuple]
-    ) -> Tuple[str]:
+    ) -> Tuple[Union[str, dict], ...]:
         tasks = [
             self._subscribe_param(subscribe, *params)
             for params in subscriptions
@@ -137,7 +138,7 @@ class HandlerContext:
         self,
         subscribe: bool,
         *args
-    ) -> str:
+    ) -> Union[str, dict]:
         processor = self._get_processor(args[0])
         return await wrap_coroutine(
             processor.subscribe_param(subscribe, *args)

@@ -136,7 +136,8 @@ client.secret(api_secret)
 # client = Client(api_key, api_secret)
 # ```
 
-# binance-sdk will handle user listen key internally without your concern
+# binance-sdk handles user stream subscription internally via
+# WebSocket API `userDataStream.subscribe.signature`
 await client.subscribe(SubType.USER)
 ```
 
@@ -187,6 +188,7 @@ All arguments of the constructor Client are keyworded arguments and all optional
 - **stream_timeout?** `int=5` seconds util the stream reach an timeout error
 - **api_host?** `str='https://api.binance.com'` to specify another API host for rest API requests. 这个参数的存在意义，使用方法，不累述，你懂的。
 - **stream_host?** `str='wss://stream.binance.com'` to specify another stream host for websocket connections.
+- **ws_api_host?** `str='wss://ws-api.binance.com/ws-api/v3'` to specify WebSocket API host for user stream subscription.
 
 Create a binance client.
 

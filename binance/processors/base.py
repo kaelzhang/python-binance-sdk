@@ -3,7 +3,8 @@ import inspect
 from typing import (
     Optional,
     Set,
-    Awaitable
+    Awaitable,
+    Union
 )
 
 from binance.common.exceptions import (
@@ -66,7 +67,7 @@ class Processor:
         subscribe: bool,
         t: SubType,
         *args
-    ) -> str:
+    ) -> Union[str, dict]:
         symbol = self._get_param_symbol(t, args)
 
         return f'{normalize_symbol(symbol)}@{t}'

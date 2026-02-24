@@ -151,6 +151,26 @@ class ClientBase:
 
         return m.hexdigest()
 
+    def _ws_api_signature_params(
+        self,
+        **params
+    ) -> dict:
+        """Build signed params for WebSocket API requests."""
+        if self._api_key is None:
+            raise APIKeyNotDefinedException('userDataStream.subscribe.signature')
+
+        if self._api_secret is None:
+            raise APISecretNotDefinedException('userDataStream.subscribe.signature')
+
+        signed = {
+            **params,
+            'apiKey': self._api_key,
+            'timestamp': int(time.time() * 1000)
+        }
+        signed['signature'] = self._generate_signature(signed)
+
+        return signed
+
     async def _handle_response(
         self,
         response: ClientResponse

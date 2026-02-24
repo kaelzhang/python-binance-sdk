@@ -74,3 +74,11 @@ async def test_user_steam_not_subscribed():
     with pytest.raises(UserStreamNotSubscribedException):
         client = Client()
         await client.unsubscribe(SubType.USER)
+
+
+@pytest.mark.asyncio
+async def test_user_stream_no_secret():
+    client = Client('api_key')
+
+    with pytest.raises(APISecretNotDefinedException, match='api_secret'):
+        await client.subscribe(SubType.USER)

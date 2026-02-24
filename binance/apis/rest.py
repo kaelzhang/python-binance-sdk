@@ -1239,44 +1239,5 @@ class RestAPIGetters:
         """
         ...  # pragma: no cover
 
-    # User data stream endpoints
-
-    async def get_listen_key(self) -> str:
-        """Starts a new user data stream and returns the listen key. The stream will close after 60 minutes unless a keepalive is sent.
-
-        Returns:
-            The listen key
-        """
-        res = await self.post(  # type: ignore
-            self._rest_uri('userDataStream'),
-            security_type=SecurityType.USER_STREAM
-        )
-        return res['listenKey']
-
-    def keepalive_listen_key(self, listen_key: str) -> Awaitable:
-        """Keepalives a user data stream to prevent a time out. User data streams will close after 60 minutes. It's recommended to send a ping about every 30 minutes.
-
-        Args：
-            listen_key: user stream listen key
-        """
-        return self.put(  # type: ignore
-            self._rest_uri('userDataStream'),
-            security_type=SecurityType.USER_STREAM,
-            listenKey=listen_key
-        )
-
-    def close_listen_key(self, listen_key: str) -> Awaitable:
-        """Closes out a user data stream.
-
-        Args:
-            listen_key: user stream listen key
-        """
-        return self.delete(  # type: ignore
-            self._rest_uri('userDataStream'),
-            security_type=SecurityType.USER_STREAM,
-            listenKey=listen_key
-        )
-
-
 for getter_setting in APIS:
     define_getter(RestAPIGetters, **getter_setting)
