@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 
-import pandas
+from stock_pandas import StockDataFrame
 
 from binance import (
     Client,
@@ -50,7 +50,7 @@ async def test_ticker_handler(client):
     await client._receive(TICKER_RES)
 
     assert TickerPrinter.DATA == TICKER_RES['data']
-    assert isinstance(TickerPrinter.DF, pandas.DataFrame)
+    assert isinstance(TickerPrinter.DF, StockDataFrame)
     await client.close()
 
 
@@ -164,9 +164,9 @@ async def run_orderbook_handler(client, init_orderbook_first):
     await client.subscribe(SubType.ORDER_BOOK, 'BTCUSDT')
 
     info, [bids, asks] = await f
-    assert isinstance(info, pandas.DataFrame)
-    assert isinstance(bids, pandas.DataFrame)
-    assert isinstance(asks, pandas.DataFrame)
+    assert isinstance(info, StockDataFrame)
+    assert isinstance(bids, StockDataFrame)
+    assert isinstance(asks, StockDataFrame)
 
     if not init_orderbook_first:
         orderbook = handler.orderbook('BTCUSDT')

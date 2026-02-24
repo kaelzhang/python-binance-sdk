@@ -1,4 +1,5 @@
 from aioretry import RetryPolicy
+from stock_pandas import StockDataFrame
 
 from binance.common.constants import (
     STREAM_TYPE_MAP,
@@ -13,10 +14,7 @@ from binance.common.utils import (
 
 from binance.common.types import DictPayload
 
-from .base import (
-    Handler,
-    pd
-)
+from .base import Handler
 
 from .orderbook import (
     OrderBook,
@@ -40,7 +38,7 @@ ORDER_BOOK_COLUMNS = ORDER_BOOK_COLUMNS_MAP.keys()
 
 
 def create_depth_df(depth_list: list):
-    return pd.DataFrame([
+    return StockDataFrame([
         {'price': x[0], 'quantity': x[1]} for x in depth_list
     ])
 

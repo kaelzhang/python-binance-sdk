@@ -4,7 +4,7 @@
 
 - Based on [Binance Official API Docs v3](https://github.com/binance/binance-official-api-docs).
 - Uses Binance's new websocket stream which supports live pub/sub so that we only need **ONE** websocket connection.
-- Has an optional `pandas.DataFrame` support. If `pandas` is installed, columns of all stream data frames are renamed for readability.
+- Returns `StockDataFrame` (from `stock-pandas`) for stream payloads with renamed columns.
 - Based on python `async`/`await`
 - Manages the order book for you (handled by `OrderBookHandlerBase`), so that you need not to worry about websocket reconnection and message losses. For details, see the section [`OrderBookHandlerBase`](#orderbookhandlerbasekwargs)
 - Supports to change API endpoints, so that we could use faster API hosts.
@@ -12,15 +12,7 @@
 ## Install
 
 ```sh
-# Without pandas support
 pip install binance-sdk
-```
-
-or
-
-```sh
-# With pandas support
-pip install binance-sdk[pandas]
 ```
 
 ## Basic Usage
@@ -63,9 +55,7 @@ async def main():
                 message['data'] of the original stream message
             """
 
-            # If binance-sdk is installed with pandas support, then
-            #   `ticker` will be a `DataFrame` with columns renamed
-            # Otherwise, it is unnecessary to call `super().receive`.
+            # `ticker_df` is a StockDataFrame with columns renamed
             ticker_df = super().receive(payload)
 
             # Just print the ticker
@@ -83,7 +73,7 @@ loop.run_until_complete(main())
 # Run the loop forever to keep receiving messages
 loop.run_forever()
 
-# It prints a pandas.DataFrame for each message
+# It prints a StockDataFrame for each message
 
 #    type        event_time     symbol   open            high            low            ...
 # 0  24hrTicker  1581597461196  BTCUSDT  10328.26000000  10491.00000000  10080.00000000 ...
@@ -323,12 +313,8 @@ Typically, we need to override the `def receive(self, payload)` method.
 ```py
 class MyTradeHandler(TradeHandlerBase):
     async def receive(self, payload):
-        # If pandas is installed, then `payload` is a `pandas.DataFrame`,
-        #   otherwise is a dict.
+        # `payload` is a StockDataFrame.
         df = super().receive(payload)
-
-        # If you don't want the `pandas.DataFrame`, use `payload` directly
-
         await saveTrade(df)
 
 client.handler(MyTradeHandler())
