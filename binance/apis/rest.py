@@ -418,7 +418,7 @@ class RestAPIGetters:
 
         Args:
             symbol (str):
-            interval (KlineInterval):
+            interval (TimeFrame):
             startTime (:obj:`long`, optional):
             endTime (:obj:`long`, optional):
             limit (:obj:`int`, optional): Defaults to 500, max 1000.

@@ -1,3 +1,5 @@
+from stock_pandas import TimeFrame
+
 from binance.handlers.handlers import (
     HandlerExceptionHandlerBase,
     KlineHandlerBase,
@@ -13,7 +15,6 @@ from binance.handlers.orderbook_handler import OrderBookHandlerBase
 
 from binance.common.constants import (
     SubType,
-    KlineInterval,
     KLINE_TYPE_PREFIX,
     KEY_STREAM_TYPE,
     KEY_PAYLOAD
@@ -41,11 +42,11 @@ class KlineProcessor(Processor):
             interval = args[1]
         else:
             raise InvalidSubTypeParamException(
-                t, 'interval', '`KlineInterval` enum expected but not specified')
+                t, 'interval', '`TimeFrame` expected but not specified')
 
-        if not isinstance(interval, KlineInterval):
+        if not isinstance(interval, TimeFrame):
             raise InvalidSubTypeParamException(
-                t, 'interval', '`KlineInterval` enum expected but got `%s`' % symbol)
+                t, 'interval', '`TimeFrame` expected but got `%s`' % symbol)
 
         return f'{normalize_symbol(symbol)}@{KLINE_TYPE_PREFIX}{interval}'
 

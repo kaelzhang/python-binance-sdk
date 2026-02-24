@@ -3,7 +3,7 @@ import pytest
 
 # pylint: disable=no-member
 
-from binance import Client, KlineInterval
+from binance import Client, TimeFrame
 
 from .common import print_json
 
@@ -57,7 +57,7 @@ FREE_CASES = [
         name='get_klines',
         ka=dict(
             symbol='BTCUSDT',
-            interval=KlineInterval.D1
+            interval=TimeFrame.D1
         )
     ),
     dict(

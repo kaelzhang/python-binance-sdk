@@ -5,10 +5,11 @@ from aioretry import (
     RetryPolicyStrategy,
     RetryInfo
 )
+from stock_pandas import TimeFrame
+
 from binance.client import Client
 from binance.common.constants import (
     SubType,
-    KlineInterval,
     SecurityType,
     RequestMethod,
     OrderSide,

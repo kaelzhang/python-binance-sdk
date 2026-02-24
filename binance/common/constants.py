@@ -5,9 +5,6 @@ from aioretry import (
     RetryInfo
 )
 
-from stock_pandas import TimeFrame
-
-
 KLINE_TYPE_PREFIX = 'kline_'
 
 
@@ -29,9 +26,6 @@ class SubType(Enum):
     ALL_MARKET_TICKERS = 'allMarketTickers'
 
     USER = 'user'
-
-
-KlineInterval = TimeFrame
 
 
 MSG_PREFIX = '[BinanceSDK] '

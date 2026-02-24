@@ -6,7 +6,7 @@ import pandas
 from binance import (
     Client,
     SubType,
-    KlineInterval,
+    TimeFrame,
 
     TickerHandlerBase,
     KlineHandlerBase,
@@ -104,7 +104,7 @@ async def test_invalid_subtype_symbol(client):
     with pytest.raises(InvalidSubTypeParamException, match='not specified'):
         await client.subscribe(SubType.KLINE, 'BTCUSDT')
 
-    with pytest.raises(InvalidSubTypeParamException, match='KlineInterval'):
+    with pytest.raises(InvalidSubTypeParamException, match='TimeFrame'):
         await client.subscribe(SubType.KLINE, 'BTCUSDT', 1)
 
 
@@ -138,7 +138,7 @@ async def test_client_kline_handler(client):
             f.set_result(payload)
 
     client.handler(KlineHandler())
-    await client.subscribe(SubType.KLINE, 'BTCUSDT', KlineInterval.D1)
+    await client.subscribe(SubType.KLINE, 'BTCUSDT', TimeFrame.D1)
 
     payload = await f
 

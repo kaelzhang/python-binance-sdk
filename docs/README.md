@@ -2,7 +2,7 @@
 
 `binance-sdk` is an another unofficial Binance SDK for python 3.7+, which:
 
-- Based on [Binance Official API Docs v3](https://github.com/binance-exchange/binance-official-api-docs).
+- Based on [Binance Official API Docs v3](https://github.com/binance/binance-official-api-docs).
 - Uses Binance's new websocket stream which supports live pub/sub so that we only need **ONE** websocket connection.
 - Has an optional `pandas.DataFrame` support. If `pandas` is installed, columns of all stream data frames are renamed for readability.
 - Based on python `async`/`await`
@@ -265,7 +265,7 @@ Send a GET/POST/PUT/DELETE HTTPs request.
 Subscribe to a stream or multiple streams. If no websocket connection is made up, `client.subscribe` will also create a websocket connection.
 
 ```py
-from binance import SubType, KlineInterval
+from binance import SubType, TimeFrame
 
 await client.subscribe(SubType.TICKER, 'BNBUSDT')
 
@@ -277,7 +277,7 @@ await client.subscribe(SubType.ALL_MARKET_MINI_TICKERS, 3000)
 
 # Subcribe to multiple types
 await client.subscribe(
-    (SubType.KLINE, 'BTC_USDT', KlineInterval.DAY),
+    (SubType.KLINE, 'BTC_USDT', TimeFrame.D1),
     (SubType.TICKER, 'BNBUSDT'),
     (
         [
@@ -350,7 +350,7 @@ In this section, we will note the parameters for each `subtypes`
 
 - `SubType.KLINE`
 
-And `interval` should be one of the `KlineInterval` enumerables
+And `interval` should be one of the `TimeFrame` enumerables
 
 ### `SubType`s with a param `symbol`
 
