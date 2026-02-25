@@ -64,16 +64,20 @@ class UserProcessor(Processor):
 
     def is_message_type(self, msg):
         event = msg.get('event')
-        if event is not None and \
-                type(event) is dict and \
-                event.get(KEY_PAYLOAD_TYPE) in self.PAYLOAD_TYPES:
+        if (
+            event is not None
+            and type(event) is dict
+            and event.get(KEY_PAYLOAD_TYPE) in self.PAYLOAD_TYPES
+        ):
             return True, event
 
         payload = msg.get(KEY_PAYLOAD)
 
-        if payload is not None and \
-                type(payload) is dict and \
-                payload.get(KEY_PAYLOAD_TYPE) in self.PAYLOAD_TYPES:
+        if (
+            payload is not None
+            and type(payload) is dict
+            and payload.get(KEY_PAYLOAD_TYPE) in self.PAYLOAD_TYPES
+        ):
             return True, payload
 
         return False, None

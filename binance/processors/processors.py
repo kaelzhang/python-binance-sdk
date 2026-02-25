@@ -163,8 +163,10 @@ class BookTickerProcessor(Processor):
     def is_message_type(self, msg):
         stream_type = msg.get(KEY_STREAM_TYPE)
 
-        if stream_type is None or \
-                not stream_type.endswith(self.STREAM_SUFFIX):
+        if (
+            stream_type is None
+            or not stream_type.endswith(self.STREAM_SUFFIX)
+        ):
             return False, None
 
         return True, msg.get(KEY_PAYLOAD)
@@ -239,9 +241,11 @@ class WindowTickerProcessor(Processor):
     def is_message_type(self, msg):
         payload = msg.get(KEY_PAYLOAD)
 
-        if payload is not None and \
-                type(payload) is dict and \
-                payload.get(KEY_PAYLOAD_TYPE) in self.PAYLOAD_TYPES:
+        if (
+            payload is not None
+            and type(payload) is dict
+            and payload.get(KEY_PAYLOAD_TYPE) in self.PAYLOAD_TYPES
+        ):
             return True, payload
 
         return False, None
@@ -261,8 +265,10 @@ class AllMarketMiniTickersProcessor(Processor):
     def is_message_type(self, msg):
         stream_type = msg.get(KEY_STREAM_TYPE)
 
-        if stream_type is None or \
-                not stream_type.startswith(self.STREAM_TYPE_PREFIX):
+        if (
+            stream_type is None
+            or not stream_type.startswith(self.STREAM_TYPE_PREFIX)
+        ):
             return False, None
 
         return True, msg.get(KEY_PAYLOAD)

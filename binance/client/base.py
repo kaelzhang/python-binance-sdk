@@ -126,8 +126,11 @@ class ClientBase:
 
         sorted_data = sort_params(data)
 
-        param_key = 'params' \
-            if force_params or method == RequestMethod.GET else 'data'
+        param_key = (
+            'params'
+            if force_params or method == RequestMethod.GET
+            else 'data'
+        )
 
         kwargs[param_key] = sorted_data
 
