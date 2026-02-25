@@ -5,10 +5,14 @@ from binance.handlers.handlers import (
     KlineHandlerBase,
     TradeHandlerBase,
     AggTradeHandlerBase,
+    BookTickerHandlerBase,
+    PartialOrderBookHandlerBase,
+    AvgPriceHandlerBase,
+    WindowTickerHandlerBase,
     MiniTickerHandlerBase,
     TickerHandlerBase,
     AllMarketMiniTickersHandlerBase,
-    AllMarketTickersHandlerBase
+    AllMarketWindowTickersHandlerBase
 )
 
 from binance.handlers.orderbook_handler import OrderBookHandlerBase
@@ -17,12 +21,93 @@ from binance.common.constants import (
     SubType,
     KLINE_TYPE_PREFIX,
     KEY_STREAM_TYPE,
-    KEY_PAYLOAD
+    KEY_PAYLOAD,
+    KEY_PAYLOAD_TYPE
 )
 from binance.common.exceptions import InvalidSubTypeParamException
 from binance.common.utils import normalize_symbol
 
 from .base import Processor
+
+
+WINDOW_TICKERS = ('1h', '4h', '1d')
+WINDOW_PAYLOAD_TYPES = tuple(
+    f'{window}Ticker' for window in WINDOW_TICKERS
+)
+ORDER_BOOK_INTERVALS = (1000, 100)
+PARTIAL_ORDER_BOOK_LEVELS = (5, 10, 20)
+
+
+def _get_window(t, args, default='1h'):
+    if len(args) == 0:
+        return default
+
+    window = args[0]
+
+    if type(window) is not str:
+        raise InvalidSubTypeParamException(
+            t,
+            'window',
+            '`str` expected but got `%s`' % window
+        )
+
+    if window not in WINDOW_TICKERS:
+        raise InvalidSubTypeParamException(
+            t,
+            'window',
+            '`window` should be one of %s but got `%s`'
+            % (WINDOW_TICKERS, window)
+        )
+
+    return window
+
+
+def _get_order_book_interval(t, args, default=1000):
+    if len(args) == 0:
+        return default
+
+    interval = args[0]
+
+    if type(interval) is not int:
+        raise InvalidSubTypeParamException(
+            t,
+            'interval',
+            '`int` expected but got `%s`' % interval
+        )
+
+    if interval not in ORDER_BOOK_INTERVALS:
+        raise InvalidSubTypeParamException(
+            t,
+            'interval',
+            '`interval` should be one of %s but got `%s`'
+            % (ORDER_BOOK_INTERVALS, interval)
+        )
+
+    return interval
+
+
+def _get_partial_depth_level(t, args, default=20):
+    if len(args) == 0:
+        return default
+
+    level = args[0]
+
+    if type(level) is not int:
+        raise InvalidSubTypeParamException(
+            t,
+            'level',
+            '`int` expected but got `%s`' % level
+        )
+
+    if level not in PARTIAL_ORDER_BOOK_LEVELS:
+        raise InvalidSubTypeParamException(
+            t,
+            'level',
+            '`level` should be one of %s but got `%s`'
+            % (PARTIAL_ORDER_BOOK_LEVELS, level)
+        )
+
+    return level
 
 
 class ExceptionProcessor(Processor):
@@ -51,6 +136,14 @@ class KlineProcessor(Processor):
         return f'{normalize_symbol(symbol)}@{KLINE_TYPE_PREFIX}{interval}'
 
 
+class KlineUTC8Processor(KlineProcessor):
+    SUB_TYPE = SubType.KLINE_UTC8
+
+    def subscribe_param(self, _, t, *args) -> str:
+        stream = super().subscribe_param(_, t, *args)
+        return f'{stream}@+08:00'
+
+
 class TradeProcessor(Processor):
     HANDLER = TradeHandlerBase
     SUB_TYPE = SubType.TRADE
@@ -61,10 +154,69 @@ class AggTradeProcessor(Processor):
     SUB_TYPE = SubType.AGG_TRADE
 
 
+class BookTickerProcessor(Processor):
+    HANDLER = BookTickerHandlerBase
+    SUB_TYPE = SubType.BOOK_TICKER
+
+    STREAM_SUFFIX = f'@{SubType.BOOK_TICKER}'
+
+    def is_message_type(self, msg):
+        stream_type = msg.get(KEY_STREAM_TYPE)
+
+        if stream_type is None or \
+                not stream_type.endswith(self.STREAM_SUFFIX):
+            return False, None
+
+        return True, msg.get(KEY_PAYLOAD)
+
+
+class AvgPriceProcessor(Processor):
+    HANDLER = AvgPriceHandlerBase
+    SUB_TYPE = SubType.AVG_PRICE
+    PAYLOAD_TYPE = 'avgPrice'
+
+
 class OrderBookProcessor(Processor):
     HANDLER = OrderBookHandlerBase
     SUB_TYPE = SubType.ORDER_BOOK
     PAYLOAD_TYPE = 'depthUpdate'
+
+    def subscribe_param(self, _, t, *args) -> str:
+        symbol = self._get_param_symbol(t, args)
+        interval = _get_order_book_interval(t, args[1:])
+
+        stream = f'{normalize_symbol(symbol)}@{t}'
+
+        if interval == 100:
+            return f'{stream}@100ms'
+
+        return stream
+
+
+class PartialOrderBookProcessor(Processor):
+    HANDLER = PartialOrderBookHandlerBase
+    SUB_TYPE = SubType.PARTIAL_ORDER_BOOK
+
+    STREAM_PREFIX = '@depth'
+
+    def is_message_type(self, msg):
+        stream_type = msg.get(KEY_STREAM_TYPE)
+
+        if stream_type is None or self.STREAM_PREFIX not in stream_type:
+            return False, None
+
+        level = stream_type.split(self.STREAM_PREFIX, 1)[1]
+
+        if level not in ('5', '10', '20'):
+            return False, None
+
+        return True, msg.get(KEY_PAYLOAD)
+
+    def subscribe_param(self, _, t, *args) -> str:
+        symbol = self._get_param_symbol(t, args)
+        level = _get_partial_depth_level(t, args[1:])
+
+        return f'{normalize_symbol(symbol)}@depth{level}'
 
 
 class MiniTickerProcessor(Processor):
@@ -77,6 +229,28 @@ class TickerProcessor(Processor):
     HANDLER = TickerHandlerBase
     SUB_TYPE = SubType.TICKER
     PAYLOAD_TYPE = '24hrTicker'
+
+
+class WindowTickerProcessor(Processor):
+    HANDLER = WindowTickerHandlerBase
+    SUB_TYPE = SubType.WINDOW_TICKER
+    PAYLOAD_TYPES = WINDOW_PAYLOAD_TYPES
+
+    def is_message_type(self, msg):
+        payload = msg.get(KEY_PAYLOAD)
+
+        if payload is not None and \
+                type(payload) is dict and \
+                payload.get(KEY_PAYLOAD_TYPE) in self.PAYLOAD_TYPES:
+            return True, payload
+
+        return False, None
+
+    def subscribe_param(self, _, t, *args) -> str:
+        symbol = self._get_param_symbol(t, args)
+        window = _get_window(t, args[1:])
+
+        return f'{normalize_symbol(symbol)}@ticker_{window}'
 
 
 class AllMarketMiniTickersProcessor(Processor):
@@ -102,7 +276,11 @@ class AllMarketMiniTickersProcessor(Processor):
         return f'{self.STREAM_TYPE_PREFIX}@{interval}ms'
 
 
-class AllMarketTickersProcessor(AllMarketMiniTickersProcessor):
-    HANDLER = AllMarketTickersHandlerBase
-    SUB_TYPE = SubType.ALL_MARKET_TICKERS
-    STREAM_TYPE_PREFIX = '!ticker@arr'
+class AllMarketWindowTickersProcessor(AllMarketMiniTickersProcessor):
+    HANDLER = AllMarketWindowTickersHandlerBase
+    SUB_TYPE = SubType.ALL_MARKET_WINDOW_TICKERS
+    STREAM_TYPE_PREFIX = '!ticker_'
+
+    def subscribe_param(self, _, t, *args) -> str:
+        window = _get_window(t, args)
+        return f'{self.STREAM_TYPE_PREFIX}{window}@arr'

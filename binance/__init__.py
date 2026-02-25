@@ -38,11 +38,15 @@ from binance.handlers.handlers import (
     HandlerExceptionHandlerBase,
     TradeHandlerBase,
     AggTradeHandlerBase,
+    BookTickerHandlerBase,
+    PartialOrderBookHandlerBase,
+    AvgPriceHandlerBase,
+    WindowTickerHandlerBase,
     KlineHandlerBase,
     MiniTickerHandlerBase,
     TickerHandlerBase,
     AllMarketMiniTickersHandlerBase,
-    AllMarketTickersHandlerBase
+    AllMarketWindowTickersHandlerBase
 )
 
 from binance.handlers.orderbook_handler import OrderBookHandlerBase

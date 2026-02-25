@@ -101,9 +101,17 @@ class HandlerContext:
                     make_list(subtype_param[1])
                 )
 
-            # Only kline has three args for now
-            elif length == 3 and subtype_param[0] == SubType.KLINE:
-                prefix = SubType.KLINE
+            # subtypes with three args:
+            #   (subtype, symbol, interval/window/level)
+            elif length == 3 and subtype_param[0] in (
+                SubType.KLINE,
+                SubType.KLINE_UTC8,
+                SubType.ORDER_BOOK,
+                SubType.PARTIAL_ORDER_BOOK,
+                SubType.WINDOW_TICKER
+            ):
+                prefix = subtype_param[0]
+
                 args_iter = itertools.product(
                     make_list(subtype_param[1]),
                     make_list(subtype_param[2])

@@ -108,12 +108,16 @@ await client.subscribe(
 And since we subscribe to **THREE** new types of messages, we need to set the handlers each of which should `isinstance()` of one of
 - `TradeHandlerBase`
 - `AggTradeHandlerBase`
+- `BookTickerHandlerBase`
+- `PartialOrderBookHandlerBase`
+- `AvgPriceHandlerBase`
+- `WindowTickerHandlerBase`
 - `OrderBookHandlerBase`
 - `KlineHandlerBase`
 - `MiniTickerHandlerBase`
 - `TickerHandlerBase`
 - `AllMarketMiniTickersHandlerBase`
-- `AllMarketTickersHandlerBase`
+- `AllMarketWindowTickersHandlerBase`
 - `AccountInfoHandlerBase`
 - `AccountPositionHandlerBase`
 - `BalanceUpdateHandlerBase`
@@ -260,6 +264,10 @@ Subscribe to a stream or multiple streams. If no websocket connection is made up
 from binance import SubType, TimeFrame
 
 await client.subscribe(SubType.TICKER, 'BNBUSDT')
+await client.subscribe(SubType.BOOK_TICKER, 'BNBUSDT')
+await client.subscribe(SubType.AVG_PRICE, 'BNBUSDT')
+await client.subscribe(SubType.WINDOW_TICKER, 'BNBUSDT', '1h')
+await client.subscribe(SubType.PARTIAL_ORDER_BOOK, 'BNBUSDT', 20)
 
 # SubType.ALL_MARKET_MINI_TICKERS with default param
 await client.subscribe(SubType.ALL_MARKET_MINI_TICKERS)
@@ -267,9 +275,13 @@ await client.subscribe(SubType.ALL_MARKET_MINI_TICKERS)
 # SubType.ALL_MARKET_MINI_TICKERS with update interval 3000ms
 await client.subscribe(SubType.ALL_MARKET_MINI_TICKERS, 3000)
 
+# SubType.ALL_MARKET_WINDOW_TICKERS with window 4h
+await client.subscribe(SubType.ALL_MARKET_WINDOW_TICKERS, '4h')
+
 # Subcribe to multiple types
 await client.subscribe(
     (SubType.KLINE, 'BTC_USDT', TimeFrame.D1),
+    (SubType.KLINE_UTC8, 'BTC_USDT', TimeFrame.D1),
     (SubType.TICKER, 'BNBUSDT'),
     (
         [
@@ -337,6 +349,7 @@ In this section, we will note the parameters for each `subtypes`
 ### `SubType` with parameters `symbol` and `interval`
 
 - `SubType.KLINE`
+- `SubType.KLINE_UTC8`
 
 And `interval` should be one of the `TimeFrame` enumerables
 
@@ -344,14 +357,25 @@ And `interval` should be one of the `TimeFrame` enumerables
 
 - `SubType.TRADE`
 - `SubType.AGG_TRADE`
+- `SubType.BOOK_TICKER`
+- `SubType.AVG_PRICE`
 - `SubType.MINI_TICKER`
 - `SubType.TICKER`
 - `SubType.ORDER_BOOK`
 
+### `SubType`s with params `symbol` and `level`
+
+- `SubType.PARTIAL_ORDER_BOOK` (`level` should be one of `5`, `10`, `20`)
+
 ### `SubType`s with an optional param `updateInterval=1000` (ms)
 
 - `SubType.ALL_MARKET_MINI_TICKERS`
-- `SubType.ALL_MARKET_TICKERS`
+- `SubType.ORDER_BOOK` (`1000` or `100`)
+
+### `SubType`s with an optional param `window='1h'`
+
+- `SubType.WINDOW_TICKER` (with `symbol`)
+- `SubType.ALL_MARKET_WINDOW_TICKERS`
 
 ### `Subtype` with no param
 

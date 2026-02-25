@@ -6,13 +6,17 @@ from binance import (
     ReuseHandlerException,
 
     KlineHandlerBase,
+    BookTickerHandlerBase,
+    PartialOrderBookHandlerBase,
+    AvgPriceHandlerBase,
+    WindowTickerHandlerBase,
     AccountInfoHandlerBase,
     AccountPositionHandlerBase,
     BalanceUpdateHandlerBase,
     OrderUpdateHandlerBase,
     OrderListStatusHandlerBase,
     AllMarketMiniTickersHandlerBase,
-    AllMarketTickersHandlerBase
+    AllMarketWindowTickersHandlerBase
 )
 from binance.common.utils import create_future
 
@@ -164,6 +168,89 @@ def expect_ticker(payload):
     assert row['event_time'] == 123456789
 
 
+def expect_symbol(payload):
+    row = payload.iloc[0]
+    assert row['symbol'] == 'BNBBTC'
+
+
+def expect_book_ticker(payload):
+    row = payload.iloc[0]
+    assert row['symbol'] == 'BNBBTC'
+    assert row['best_bid_price'] == '25.35190000'
+
+
+def expect_partial_order_book(payload):
+    bids, asks = payload
+
+    bid_row = bids.iloc[0]
+    ask_row = asks.iloc[0]
+
+    assert bid_row['price'] == '0.0024'
+    assert bid_row['quantity'] == '10'
+    assert ask_row['price'] == '0.0026'
+    assert ask_row['quantity'] == '100'
+
+
+@pytest.mark.asyncio
+async def test_book_ticker_handler(client):
+    await run_handler(client, BookTickerHandlerBase, {
+        'u': 400900217,
+        's': 'BNBBTC',
+        'b': '25.35190000',
+        'B': '31.21000000',
+        'a': '25.36520000',
+        'A': '40.66000000'
+    }, expect_book_ticker, 'bnbbtc@bookTicker')
+
+
+@pytest.mark.asyncio
+async def test_avg_price_handler(client):
+    await run_handler(client, AvgPriceHandlerBase, {
+        'e': 'avgPrice',
+        'E': 1693907033000,
+        's': 'BNBBTC',
+        'i': '5m',
+        'w': '0.00150000',
+        'T': 1693907032213
+    }, expect_symbol)
+
+
+@pytest.mark.asyncio
+async def test_partial_order_book_handler(client):
+    await run_handler(client, PartialOrderBookHandlerBase, {
+        'lastUpdateId': 160,
+        'bids': [
+            ['0.0024', '10']
+        ],
+        'asks': [
+            ['0.0026', '100']
+        ]
+    }, expect_partial_order_book, 'bnbbtc@depth20')
+
+
+@pytest.mark.asyncio
+async def test_window_ticker_handler(client):
+    await run_handler(client, WindowTickerHandlerBase, {
+        'e': '1hTicker',
+        'E': 1672515782136,
+        's': 'BNBBTC',
+        'p': '0.0015',
+        'P': '250.00',
+        'o': '0.0010',
+        'h': '0.0025',
+        'l': '0.0010',
+        'c': '0.0025',
+        'w': '0.0018',
+        'v': '10000',
+        'q': '18',
+        'O': 0,
+        'C': 86400000,
+        'F': 0,
+        'L': 18150,
+        'n': 18151
+    }, expect_symbol)
+
+
 @pytest.mark.asyncio
 async def test_all_market_miniticker(client):
     ticker = {
@@ -184,21 +271,15 @@ async def test_all_market_miniticker(client):
 
 
 @pytest.mark.asyncio
-async def test_all_market_ticker(client):
+async def test_all_market_window_ticker(client):
     ticker = {
-        'e': '24hrTicker',
+        'e': '1hTicker',
         'E': 123456789,
         's': 'BNBBTC',
         'p': '0.0015',
         'P': '250.00',
         'w': '0.0018',
-        'x': '0.0009',
         'c': '0.0025',
-        'Q': '10',
-        'b': '0.0024',
-        'B': '10',
-        'a': '0.0026',
-        'A': '100',
         'o': '0.0010',
         'h': '0.0025',
         'l': '0.0010',
@@ -211,9 +292,9 @@ async def test_all_market_ticker(client):
         'n': 18151
     }
 
-    await run_handler(client, AllMarketTickersHandlerBase, [
+    await run_handler(client, AllMarketWindowTickersHandlerBase, [
         ticker
-    ], expect_ticker, '!ticker@arr')
+    ], expect_ticker, '!ticker_1h@arr')
 
 
 def test_handler_reuse():

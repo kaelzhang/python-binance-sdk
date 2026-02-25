@@ -15,15 +15,20 @@ class Enum(_Enum):
 
 class SubType(Enum):
     KLINE = 'kline'
+    KLINE_UTC8 = 'klineUTC8'
 
     TRADE = 'trade'
     AGG_TRADE = 'aggTrade'
+    BOOK_TICKER = 'bookTicker'
+    AVG_PRICE = 'avgPrice'
+    WINDOW_TICKER = 'windowTicker'
     MINI_TICKER = 'miniTicker'
     TICKER = 'ticker'
     ORDER_BOOK = 'depth'
+    PARTIAL_ORDER_BOOK = 'partialDepth'
 
     ALL_MARKET_MINI_TICKERS = 'allMarketMiniTickers'
-    ALL_MARKET_TICKERS = 'allMarketTickers'
+    ALL_MARKET_WINDOW_TICKERS = 'allMarketWindowTickers'
 
     USER = 'user'
 

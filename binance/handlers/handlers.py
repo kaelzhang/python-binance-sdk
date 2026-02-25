@@ -79,6 +79,47 @@ class AggTradeHandlerBase(Handler):
     COLUMNS = AGG_TRADE_COLUMNS
 
 
+BOOK_TICKER_COLUMNS_MAP = {
+    'u': 'update_id',
+    's': 'symbol',
+    'b': 'best_bid_price',
+    'B': 'best_bid_quantity',
+    'a': 'best_ask_price',
+    'A': 'best_ask_quantity'
+}
+
+BOOK_TICKER_COLUMNS = BOOK_TICKER_COLUMNS_MAP.keys()
+
+
+class BookTickerHandlerBase(Handler):
+    COLUMNS_MAP = BOOK_TICKER_COLUMNS_MAP
+    COLUMNS = BOOK_TICKER_COLUMNS
+
+
+PARTIAL_ORDER_BOOK_COLUMNS_MAP = {
+    'price': 'price',
+    'quantity': 'quantity'
+}
+
+PARTIAL_ORDER_BOOK_COLUMNS = PARTIAL_ORDER_BOOK_COLUMNS_MAP.keys()
+
+
+class PartialOrderBookHandlerBase(Handler):
+    COLUMNS_MAP = PARTIAL_ORDER_BOOK_COLUMNS_MAP
+    COLUMNS = PARTIAL_ORDER_BOOK_COLUMNS
+
+    def _receive(self, payload: DictPayload):
+        bids = super()._receive([
+            {'price': x[0], 'quantity': x[1]}
+            for x in payload['bids']
+        ], None)
+        asks = super()._receive([
+            {'price': x[0], 'quantity': x[1]}
+            for x in payload['asks']
+        ], None)
+        return bids, asks
+
+
 KLINE_COLUMNS_MAP = {
     **STREAM_TYPE_MAP,
     'E': 'event_time',
@@ -132,6 +173,23 @@ class MiniTickerHandlerBase(Handler):
     COLUMNS = MINI_TICKER_COLUMNS
 
 
+AVG_PRICE_COLUMNS_MAP = {
+    **STREAM_TYPE_MAP,
+    'E': 'event_time',
+    's': 'symbol',
+    'i': 'interval',
+    'w': 'average_price',
+    'T': 'last_trade_time'
+}
+
+AVG_PRICE_COLUMNS = AVG_PRICE_COLUMNS_MAP.keys()
+
+
+class AvgPriceHandlerBase(Handler):
+    COLUMNS_MAP = AVG_PRICE_COLUMNS_MAP
+    COLUMNS = AVG_PRICE_COLUMNS
+
+
 TICKER_COLUMNS_MAP = {
     **MINI_TICKER_COLUMNS_MAP,
     'p': 'price',
@@ -156,6 +214,26 @@ class TickerHandlerBase(Handler):
     COLUMNS = TICKER_COLUMNS
 
 
+WINDOW_TICKER_COLUMNS_MAP = {
+    **MINI_TICKER_COLUMNS_MAP,
+    'p': 'price_change',
+    'P': 'percent',
+    'w': 'weighted_average_price',
+    'O': 'stat_open_time',
+    'C': 'stat_close_time',
+    'F': 'first_trade_id',
+    'L': 'last_trade_id',
+    'n': 'total_trades'
+}
+
+WINDOW_TICKER_COLUMNS = WINDOW_TICKER_COLUMNS_MAP.keys()
+
+
+class WindowTickerHandlerBase(Handler):
+    COLUMNS_MAP = WINDOW_TICKER_COLUMNS_MAP
+    COLUMNS = WINDOW_TICKER_COLUMNS
+
+
 class AllMarketMiniTickersHandlerBase(Handler):
     COLUMNS_MAP = MINI_TICKER_COLUMNS_MAP
     COLUMNS = MINI_TICKER_COLUMNS
@@ -165,9 +243,9 @@ class AllMarketMiniTickersHandlerBase(Handler):
             payload, None)
 
 
-class AllMarketTickersHandlerBase(Handler):
-    COLUMNS_MAP = TICKER_COLUMNS_MAP
-    COLUMNS = TICKER_COLUMNS
+class AllMarketWindowTickersHandlerBase(Handler):
+    COLUMNS_MAP = WINDOW_TICKER_COLUMNS_MAP
+    COLUMNS = WINDOW_TICKER_COLUMNS
 
     def _receive(self, payload: ListPayload):
         return super()._receive(
