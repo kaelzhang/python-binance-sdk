@@ -266,7 +266,7 @@ from binance import SubType, TimeFrame
 await client.subscribe(SubType.TICKER, 'BNBUSDT')
 await client.subscribe(SubType.BOOK_TICKER, 'BNBUSDT')
 await client.subscribe(SubType.AVG_PRICE, 'BNBUSDT')
-await client.subscribe(SubType.WINDOW_TICKER, 'BNBUSDT', '1h')
+await client.subscribe(SubType.WINDOW_TICKER, 'BNBUSDT', TimeFrame.H1)
 await client.subscribe(SubType.PARTIAL_ORDER_BOOK, 'BNBUSDT', 20)
 
 # SubType.ALL_MARKET_MINI_TICKERS with default param
@@ -276,7 +276,7 @@ await client.subscribe(SubType.ALL_MARKET_MINI_TICKERS)
 await client.subscribe(SubType.ALL_MARKET_MINI_TICKERS, 3000)
 
 # SubType.ALL_MARKET_WINDOW_TICKERS with window 4h
-await client.subscribe(SubType.ALL_MARKET_WINDOW_TICKERS, '4h')
+await client.subscribe(SubType.ALL_MARKET_WINDOW_TICKERS, TimeFrame.H4)
 
 # Subcribe to multiple types
 await client.subscribe(
@@ -372,10 +372,10 @@ And `interval` should be one of the `TimeFrame` enumerables
 - `SubType.ALL_MARKET_MINI_TICKERS`
 - `SubType.ORDER_BOOK` (`1000` or `100`)
 
-### `SubType`s with an optional param `window='1h'`
+### `SubType`s with an optional param `window=TimeFrame.H1`
 
-- `SubType.WINDOW_TICKER` (with `symbol`)
-- `SubType.ALL_MARKET_WINDOW_TICKERS`
+- `SubType.WINDOW_TICKER` (with `symbol`; one of `TimeFrame.H1/H4/D1`)
+- `SubType.ALL_MARKET_WINDOW_TICKERS` (one of `TimeFrame.H1/H4/D1`)
 
 ### `Subtype` with no param
 

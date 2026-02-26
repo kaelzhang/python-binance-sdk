@@ -30,7 +30,7 @@ def test_all_market_window_ticker_processor():
     ) == '!ticker_1h@arr'
 
     assert processor.subscribe_param(
-        None, SubType.ALL_MARKET_WINDOW_TICKERS, '4h'
+        None, SubType.ALL_MARKET_WINDOW_TICKERS, TimeFrame.H4
     ) == '!ticker_4h@arr'
 
 
@@ -42,12 +42,12 @@ def test_window_ticker_processor():
     ) == 'btcusdt@ticker_1h'
 
     assert processor.subscribe_param(
-        None, SubType.WINDOW_TICKER, 'BTCUSDT', '1d'
+        None, SubType.WINDOW_TICKER, 'BTCUSDT', TimeFrame.D1
     ) == 'btcusdt@ticker_1d'
 
     with pytest.raises(InvalidSubTypeParamException, match='window'):
         processor.subscribe_param(
-            None, SubType.WINDOW_TICKER, 'BTCUSDT', '7d'
+            None, SubType.WINDOW_TICKER, 'BTCUSDT', TimeFrame.H2
         )
 
 

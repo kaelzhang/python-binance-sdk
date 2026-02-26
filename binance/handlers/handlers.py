@@ -10,7 +10,7 @@ from binance.common.constants import (
 
 from binance.common.types import (
     DictPayload,
-    ListPayload
+    # ListPayload
 )
 
 from .base import Handler
@@ -238,15 +238,15 @@ class AllMarketMiniTickersHandlerBase(Handler):
     COLUMNS_MAP = MINI_TICKER_COLUMNS_MAP
     COLUMNS = MINI_TICKER_COLUMNS
 
-    def _receive(self, payload: ListPayload):
-        return super()._receive(
-            payload, None)
+    # def _receive(self, payload: ListPayload):
+    #     return super()._receive(
+    #         payload, None)
 
 
 class AllMarketWindowTickersHandlerBase(Handler):
     COLUMNS_MAP = WINDOW_TICKER_COLUMNS_MAP
     COLUMNS = WINDOW_TICKER_COLUMNS
 
-    def _receive(self, payload: ListPayload):
-        return super()._receive(
-            payload, None)
+    # def _receive(self, payload: ListPayload):
+    #     return super()._receive(
+    #         payload, None)

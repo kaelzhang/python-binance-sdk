@@ -1,3 +1,7 @@
+"""
+Ref: https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams
+"""
+
 from stock_pandas import TimeFrame
 
 from binance.handlers.handlers import (
@@ -30,33 +34,37 @@ from binance.common.utils import normalize_symbol
 from .base import Processor
 
 
-WINDOW_TICKERS = ('1h', '4h', '1d')
+WINDOW_TIME_FRAMES = (
+    TimeFrame.H1,
+    TimeFrame.H4,
+    TimeFrame.D1
+)
 WINDOW_PAYLOAD_TYPES = tuple(
-    f'{window}Ticker' for window in WINDOW_TICKERS
+    f'{time_frame}Ticker' for time_frame in WINDOW_TIME_FRAMES
 )
 ORDER_BOOK_INTERVALS = (1000, 100)
 PARTIAL_ORDER_BOOK_LEVELS = (5, 10, 20)
 
 
-def _get_window(t, args, default='1h'):
+def _get_window(t, args, default=TimeFrame.H1):
     if len(args) == 0:
         return default
 
     window = args[0]
 
-    if type(window) is not str:
+    if not isinstance(window, TimeFrame):
         raise InvalidSubTypeParamException(
             t,
             'window',
-            '`str` expected but got `%s`' % window
+            '`TimeFrame` expected but got `%s`' % window
         )
 
-    if window not in WINDOW_TICKERS:
+    if window not in WINDOW_TIME_FRAMES:
         raise InvalidSubTypeParamException(
             t,
             'window',
             '`window` should be one of %s but got `%s`'
-            % (WINDOW_TICKERS, window)
+            % (tuple(map(str, WINDOW_TIME_FRAMES)), window)
         )
 
     return window
