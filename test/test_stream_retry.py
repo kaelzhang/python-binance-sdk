@@ -12,6 +12,7 @@ from logging import getLogger
 
 logger = getLogger(__name__)
 
+
 @pytest.mark.asyncio
 async def test_stream_timeout_disconnect_reconnect():
     class Handler:
@@ -31,14 +32,10 @@ async def test_stream_timeout_disconnect_reconnect():
     handler = Handler()
 
     async def on_message(msg):
-        print('receive msg', msg)
         handler.receive(msg)
 
-    should_raise = True
-
-    def error_on_connected():
-        if should_raise:
-            raise RuntimeError('this is a warning for testing, and it is by design, not a bug, just ignore it.')
+    def on_connected():
+        return None
 
     def retry_policy(info):
         return False, 0.05
@@ -46,15 +43,13 @@ async def test_stream_timeout_disconnect_reconnect():
     server = SocketServer()
 
     await server.run()
-    print('\nserver started')
 
     uri = f'ws://localhost:{PORT}/stream'
 
-    print('connecting', uri)
     stream = Stream(
         uri,
         on_message=on_message,
-        on_connected=error_on_connected,
+        on_connected=on_connected,
         retry_policy=retry_policy,
         timeout=0.1,
         logger=logger
@@ -63,7 +58,6 @@ async def test_stream_timeout_disconnect_reconnect():
     # During the 500ms, there might be a lot of disconnection
     await asyncio.sleep(0.5)
 
-    print('start server')
     server.start()
 
     await asyncio.sleep(0.5)
@@ -73,13 +67,10 @@ async def test_stream_timeout_disconnect_reconnect():
 
     assert msg['ok']
 
-    print('before server shutdown')
     await server.shutdown()
-    print('server shutdown')
 
     handler.reset()
 
-    print('restart server')
     await server.run()
     server.start()
 
@@ -87,8 +78,34 @@ async def test_stream_timeout_disconnect_reconnect():
 
     assert msg['ok']
 
-    print('before stream close')
     await stream.close()
-    print('stream closed')
     await server.shutdown()
-    print('server shutdown')
+
+
+@pytest.mark.asyncio
+async def test_stream_warning_should_be_captured():
+    async def on_message(_):
+        return None
+
+    def on_connected():
+        raise RuntimeError(
+            'this warning is expected and should be captured by pytest'
+        )
+
+    server = SocketServer()
+    await server.start().run()
+
+    uri = f'ws://localhost:{PORT}/stream'
+
+    with pytest.warns(RuntimeWarning, match='on_connected'):
+        stream = Stream(
+            uri,
+            on_message=on_message,
+            on_connected=on_connected,
+            timeout=0.1,
+            logger=logger
+        ).connect()
+        await asyncio.sleep(0.2)
+
+    await stream.close()
+    await server.shutdown()

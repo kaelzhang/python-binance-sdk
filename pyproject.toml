@@ -24,7 +24,7 @@ dependencies = [
   "aiohttp",
   "aioretry >= 6.0.0",
   "websockets >= 15.0.0",
-  "stock-pandas >= 2.1.2"
+  "stock-pandas >= 5.4.2"
 ]
 classifiers=[
     'Programming Language :: Python',
