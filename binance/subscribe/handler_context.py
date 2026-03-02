@@ -116,6 +116,17 @@ class HandlerContext:
                     make_list(subtype_param[1]),
                     make_list(subtype_param[2])
                 )
+            elif (
+                length == 4
+                and subtype_param[0] == SubType.PARTIAL_ORDER_BOOK
+            ):
+                prefix = subtype_param[0]
+
+                args_iter = itertools.product(
+                    make_list(subtype_param[1]),
+                    make_list(subtype_param[2]),
+                    make_list(subtype_param[3])
+                )
 
             else:
                 raise InvalidSubParamsException('please check the document')

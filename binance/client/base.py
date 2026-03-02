@@ -3,9 +3,11 @@ import hashlib
 import hmac
 import time
 from operator import itemgetter
+from urllib.parse import quote
 
 from typing import (
     List,
+    Tuple,
     Dict,
     Awaitable,
     Optional,
@@ -35,7 +37,7 @@ from binance.common.types import APIResponse
 # pylint: disable=no-member
 
 
-def sort_params(data: dict) -> List[str]:
+def sort_params(data: dict) -> List[Tuple[str, str]]:
     """
     Convert params to list with signature as last element
     """
@@ -55,6 +57,14 @@ def sort_params(data: dict) -> List[str]:
         params.append(('signature', data['signature']))
 
     return params
+
+
+def encode_params(data: dict) -> str:
+    """Build an URL-encoded query string sorted by parameter name."""
+    return '&'.join(
+        f'{quote(key, safe="")}={quote(value, safe="")}'
+        for key, value in sort_params(data)
+    )
 
 
 KEY_REQUEST_PARAMS = 'request_params'
@@ -140,12 +150,7 @@ class ClientBase:
         self,
         data: dict
     ) -> str:
-        ordered_data = sort_params(data)
-
-        query_string = '&'.join([
-            f'{key}={value}'
-            for key, value in ordered_data
-        ])
+        query_string = encode_params(data)
 
         m = hmac.new(
             self._api_secret.encode('utf-8'),

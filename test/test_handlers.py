@@ -15,6 +15,8 @@ from binance import (
     BalanceUpdateHandlerBase,
     OrderUpdateHandlerBase,
     OrderListStatusHandlerBase,
+    ExternalLockUpdateHandlerBase,
+    EventStreamTerminatedHandlerBase,
     AllMarketMiniTickersHandlerBase,
     AllMarketWindowTickersHandlerBase
 )
@@ -129,6 +131,25 @@ async def test_order_list_status(client):
         'c': 'OCO',
         'l': 'EXEC_STARTED',
         'L': 'EXECUTING'
+    })
+
+
+@pytest.mark.asyncio
+async def test_external_lock_update(client):
+    await run_handler(client, ExternalLockUpdateHandlerBase, {
+        'e': 'externalLockUpdate',
+        'E': 1700000000000,
+        'a': 'USDT',
+        'd': '1.23000000',
+        'T': 1700000000123
+    })
+
+
+@pytest.mark.asyncio
+async def test_event_stream_terminated(client):
+    await run_handler(client, EventStreamTerminatedHandlerBase, {
+        'e': 'eventStreamTerminated',
+        'E': 1700000000000
     })
 
 

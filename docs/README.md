@@ -123,6 +123,8 @@ And since we subscribe to **THREE** new types of messages, we need to set the ha
 - `BalanceUpdateHandlerBase`
 - `OrderUpdateHandlerBase`
 - `OrderListStatusHandlerBase`
+- `ExternalLockUpdateHandlerBase`
+- `EventStreamTerminatedHandlerBase`
 - `HandlerExceptionHandlerBase` a special handler to handle stream exceptions
 
 ```py
@@ -268,12 +270,10 @@ await client.subscribe(SubType.BOOK_TICKER, 'BNBUSDT')
 await client.subscribe(SubType.AVG_PRICE, 'BNBUSDT')
 await client.subscribe(SubType.WINDOW_TICKER, 'BNBUSDT', TimeFrame.H1)
 await client.subscribe(SubType.PARTIAL_ORDER_BOOK, 'BNBUSDT', 20)
+await client.subscribe(SubType.PARTIAL_ORDER_BOOK, 'BNBUSDT', 20, 100)
 
-# SubType.ALL_MARKET_MINI_TICKERS with default param
+# SubType.ALL_MARKET_MINI_TICKERS
 await client.subscribe(SubType.ALL_MARKET_MINI_TICKERS)
-
-# SubType.ALL_MARKET_MINI_TICKERS with update interval 3000ms
-await client.subscribe(SubType.ALL_MARKET_MINI_TICKERS, 3000)
 
 # SubType.ALL_MARKET_WINDOW_TICKERS with window 4h
 await client.subscribe(SubType.ALL_MARKET_WINDOW_TICKERS, TimeFrame.H4)
@@ -369,8 +369,8 @@ And `interval` should be one of the `TimeFrame` enumerables
 
 ### `SubType`s with an optional param `updateInterval=1000` (ms)
 
-- `SubType.ALL_MARKET_MINI_TICKERS`
 - `SubType.ORDER_BOOK` (`1000` or `100`)
+- `SubType.PARTIAL_ORDER_BOOK` (`symbol`, `level`, optional `interval`: `1000` or `100`)
 
 ### `SubType`s with an optional param `window=TimeFrame.H1`
 
@@ -379,6 +379,7 @@ And `interval` should be one of the `TimeFrame` enumerables
 
 ### `Subtype` with no param
 
+- `SubType.ALL_MARKET_MINI_TICKERS`
 - `SubType.USER`
 
 ## RetryPolicy

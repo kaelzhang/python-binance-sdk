@@ -136,7 +136,7 @@ APIS = [
     # Create a one-cancels-the-other order
     dict(
         name='create_oco',
-        path='order/oco',
+        path='orderList/oco',
         method=RequestMethod.POST,
         security_type=SecurityType.TRADE
     ),
@@ -145,7 +145,7 @@ APIS = [
         name='cancel_oco',
         path='orderList',
         method=RequestMethod.DELETE,
-        security_type=SecurityType.NONE
+        security_type=SecurityType.TRADE
     ),
 
     dict(

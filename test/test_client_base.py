@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import pytest
 from aioresponses import aioresponses
 
@@ -22,6 +24,28 @@ def redirect(m):
             'Location': URL2
         }
     )
+
+
+def test_generate_signature_url_encodes_params():
+    client = Client('api_key', 'api_secret')
+
+    params = {
+        'symbol': 'BTCUSDT',
+        'newClientOrderId': 'id=1&tag=foo bar'
+    }
+
+    payload = (
+        'newClientOrderId=id%3D1%26tag%3Dfoo%20bar'
+        '&symbol=BTCUSDT'
+    )
+
+    expected = hmac.new(
+        b'api_secret',
+        payload.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+
+    assert client._generate_signature(params) == expected
 
 
 @pytest.mark.asyncio

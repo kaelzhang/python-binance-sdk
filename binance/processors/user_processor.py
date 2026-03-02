@@ -11,7 +11,9 @@ from binance.handlers.user_handlers import (
     AccountPositionHandlerBase,
     BalanceUpdateHandlerBase,
     OrderUpdateHandlerBase,
-    OrderListStatusHandlerBase
+    OrderListStatusHandlerBase,
+    ExternalLockUpdateHandlerBase,
+    EventStreamTerminatedHandlerBase
 )
 
 from binance.handlers.base import Handler
@@ -27,7 +29,9 @@ class UserProcessor(Processor):
         'outboundAccountPosition',
         'balanceUpdate',
         'executionReport',
-        'listStatus'
+        'listStatus',
+        'externalLockUpdate',
+        'eventStreamTerminated'
     )
 
     HANDLERS = (
@@ -35,7 +39,9 @@ class UserProcessor(Processor):
         AccountPositionHandlerBase,
         BalanceUpdateHandlerBase,
         OrderUpdateHandlerBase,
-        OrderListStatusHandlerBase
+        OrderListStatusHandlerBase,
+        ExternalLockUpdateHandlerBase,
+        EventStreamTerminatedHandlerBase
     )
 
     def __init__(self, *args) -> None:

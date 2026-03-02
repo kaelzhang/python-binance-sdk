@@ -70,11 +70,11 @@ def _get_window(t, args, default=TimeFrame.H1):
     return window
 
 
-def _get_order_book_interval(t, args, default=1000):
+def _get_order_book_interval(t, args, default=1000) -> int:
     if len(args) == 0:
-        return default
-
-    interval = args[0]
+        interval = default
+    else:
+        interval = args[0]
 
     if type(interval) is not int:
         raise InvalidSubTypeParamException(
@@ -92,6 +92,13 @@ def _get_order_book_interval(t, args, default=1000):
         )
 
     return interval
+
+
+def _order_book_interval_suffix(interval: int) -> str:
+    if interval == 100:
+        return '@100ms'
+
+    return ''
 
 
 def _get_partial_depth_level(t, args, default=20):
@@ -194,13 +201,10 @@ class OrderBookProcessor(Processor):
     def subscribe_param(self, _, t, *args) -> str:
         symbol = self._get_param_symbol(t, args)
         interval = _get_order_book_interval(t, args[1:])
-
-        stream = f'{normalize_symbol(symbol)}@{t}'
-
-        if interval == 100:
-            return f'{stream}@100ms'
-
-        return stream
+        return (
+            f'{normalize_symbol(symbol)}@{t}'
+            f'{_order_book_interval_suffix(interval)}'
+        )
 
 
 class PartialOrderBookProcessor(Processor):
@@ -211,22 +215,30 @@ class PartialOrderBookProcessor(Processor):
 
     def is_message_type(self, msg):
         stream_type = msg.get(KEY_STREAM_TYPE)
+        payload = msg.get(KEY_PAYLOAD)
 
         if stream_type is None or self.STREAM_PREFIX not in stream_type:
             return False, None
 
-        level = stream_type.split(self.STREAM_PREFIX, 1)[1]
-
-        if level not in ('5', '10', '20'):
+        if (
+            payload is None
+            or type(payload) is not dict
+            or 'bids' not in payload
+            or 'asks' not in payload
+        ):
             return False, None
 
-        return True, msg.get(KEY_PAYLOAD)
+        return True, payload
 
     def subscribe_param(self, _, t, *args) -> str:
         symbol = self._get_param_symbol(t, args)
         level = _get_partial_depth_level(t, args[1:])
+        interval = _get_order_book_interval(t, args[2:])
 
-        return f'{normalize_symbol(symbol)}@depth{level}'
+        return (
+            f'{normalize_symbol(symbol)}@depth{level}'
+            f'{_order_book_interval_suffix(interval)}'
+        )
 
 
 class MiniTickerProcessor(Processor):
@@ -282,12 +294,14 @@ class AllMarketMiniTickersProcessor(Processor):
         return True, msg.get(KEY_PAYLOAD)
 
     def subscribe_param(self, _, t, *args) -> str:
-        if len(args) == 0:
-            interval = 1000
-        else:
-            interval = args[0]
+        if len(args) != 0:
+            raise InvalidSubTypeParamException(
+                t,
+                'interval',
+                '`SubType.ALL_MARKET_MINI_TICKERS` expects no parameters'
+            )
 
-        return f'{self.STREAM_TYPE_PREFIX}@{interval}ms'
+        return self.STREAM_TYPE_PREFIX
 
 
 class AllMarketWindowTickersProcessor(AllMarketMiniTickersProcessor):

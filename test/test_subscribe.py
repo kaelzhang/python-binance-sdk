@@ -11,6 +11,7 @@ from binance import (
     TickerHandlerBase,
     KlineHandlerBase,
     AccountInfoHandlerBase,
+    ExternalLockUpdateHandlerBase,
 
     InvalidHandlerException,
     OrderBookHandlerBase,
@@ -170,6 +171,32 @@ async def test_user_handler_ws_api_event(client):
     payload = await f
 
     assert payload['e'] == 'outboundAccountInfo'
+    assert payload['foo'] == 'bar'
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_user_handler_ws_api_external_lock_update_event(client):
+    f = create_future()
+
+    class ExternalLockUpdateHandler(ExternalLockUpdateHandlerBase):
+        def receive(self, payload):
+            f.set_result(payload)
+
+    client.handler(ExternalLockUpdateHandler())
+
+    await client._receive({
+        'subscriptionId': 0,
+        'event': {
+            'e': 'externalLockUpdate',
+            'foo': 'bar'
+        }
+    })
+
+    payload = await f
+
+    assert payload['e'] == 'externalLockUpdate'
     assert payload['foo'] == 'bar'
 
     await client.close()

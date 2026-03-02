@@ -26,3 +26,11 @@ class OrderUpdateHandlerBase(SimpleHandler):
 
 class OrderListStatusHandlerBase(SimpleHandler):
     pass
+
+
+class ExternalLockUpdateHandlerBase(SimpleHandler):
+    pass
+
+
+class EventStreamTerminatedHandlerBase(SimpleHandler):
+    pass

@@ -16,10 +16,14 @@ from stock_pandas import TimeFrame
 def test_mini_ticker_processor():
     processor = AllMarketMiniTickersProcessor(None)
 
-    assert processor.subscribe_param(None, None) == '!miniTicker@arr@1000ms'
     assert processor.subscribe_param(
-        None, None, 2000
-    ) == '!miniTicker@arr@2000ms'
+        None, SubType.ALL_MARKET_MINI_TICKERS
+    ) == '!miniTicker@arr'
+
+    with pytest.raises(InvalidSubTypeParamException, match='expects no'):
+        processor.subscribe_param(
+            None, SubType.ALL_MARKET_MINI_TICKERS, 2000
+        )
 
 
 def test_all_market_window_ticker_processor():
@@ -87,7 +91,49 @@ def test_partial_order_book_processor():
         None, SubType.PARTIAL_ORDER_BOOK, 'BTCUSDT', 5
     ) == 'btcusdt@depth5'
 
+    assert processor.subscribe_param(
+        None, SubType.PARTIAL_ORDER_BOOK, 'BTCUSDT', 5, 100
+    ) == 'btcusdt@depth5@100ms'
+
     with pytest.raises(InvalidSubTypeParamException, match='level'):
         processor.subscribe_param(
             None, SubType.PARTIAL_ORDER_BOOK, 'BTCUSDT', 6
         )
+
+    with pytest.raises(InvalidSubTypeParamException, match='interval'):
+        processor.subscribe_param(
+            None, SubType.PARTIAL_ORDER_BOOK, 'BTCUSDT', 5, 50
+        )
+
+
+def test_partial_order_book_processor_message_routing():
+    processor = PartialOrderBookProcessor(None)
+
+    is_partial, payload = processor.is_message_type({
+        'stream': 'btcusdt@depth5',
+        'data': {
+            'bids': [],
+            'asks': []
+        }
+    })
+    assert is_partial
+    assert payload == {'bids': [], 'asks': []}
+
+    is_partial, _ = processor.is_message_type({
+        'stream': 'btcusdt@depth20@100ms',
+        'data': {
+            'bids': [],
+            'asks': []
+        }
+    })
+    assert is_partial
+
+    is_partial, _ = processor.is_message_type({
+        'stream': 'btcusdt@depth',
+        'data': {
+            'e': 'depthUpdate',
+            'b': [],
+            'a': []
+        }
+    })
+    assert not is_partial

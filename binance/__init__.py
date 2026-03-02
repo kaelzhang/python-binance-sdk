@@ -56,7 +56,9 @@ from binance.handlers.user_handlers import (
     AccountPositionHandlerBase,
     BalanceUpdateHandlerBase,
     OrderUpdateHandlerBase,
-    OrderListStatusHandlerBase
+    OrderListStatusHandlerBase,
+    ExternalLockUpdateHandlerBase,
+    EventStreamTerminatedHandlerBase
 )
 
 from binance.handlers.orderbook import OrderBook
