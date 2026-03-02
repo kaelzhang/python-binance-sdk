@@ -1,3 +1,8 @@
+"""
+Ref:
+https://developers.binance.com/docs/binance-spot-api-docs/user-data-stream
+"""
+
 from binance.common.constants import (
     SubType,
     KEY_PAYLOAD,
@@ -125,7 +130,5 @@ class UserProcessor(Processor):
         payload_type = payload.get(KEY_PAYLOAD_TYPE)
         handlers = self._handlers.get(payload_type)
 
-        if handlers is None:
-            return
-
-        await self._dispatch(payload, handlers)
+        if handlers is not None:
+            await self._dispatch(payload, handlers)

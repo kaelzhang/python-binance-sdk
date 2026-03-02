@@ -12,6 +12,7 @@ from binance import (
     KlineHandlerBase,
     AccountInfoHandlerBase,
     ExternalLockUpdateHandlerBase,
+    EventStreamTerminatedHandlerBase,
 
     InvalidHandlerException,
     OrderBookHandlerBase,
@@ -198,6 +199,87 @@ async def test_user_handler_ws_api_external_lock_update_event(client):
 
     assert payload['e'] == 'externalLockUpdate'
     assert payload['foo'] == 'bar'
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_user_stream_auto_recover_on_event_stream_terminated(client):
+    calls = []
+
+    async def fake_subscribe_user_only(subscribe: bool, subscriptions):
+        calls.append((subscribe, tuple(subscriptions)))
+
+    class EventStreamTerminatedHandler(EventStreamTerminatedHandlerBase):
+        def receive(self, payload):
+            return payload
+
+    client.handler(EventStreamTerminatedHandler())
+    client._subscribe_user_only = fake_subscribe_user_only
+    client._want_user_stream = True
+    client._subscribed.add((SubType.USER,))
+
+    await client._receive({
+        'subscriptionId': 0,
+        'event': {
+            'e': 'eventStreamTerminated'
+        }
+    })
+
+    assert calls == [(True, ((SubType.USER,),))]
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_user_stream_terminated_no_recover_when_unsubscribe_inflight(client):
+    calls = []
+
+    async def fake_subscribe_user_only(subscribe: bool, subscriptions):
+        calls.append((subscribe, tuple(subscriptions)))
+
+    class EventStreamTerminatedHandler(EventStreamTerminatedHandlerBase):
+        def receive(self, payload):
+            return payload
+
+    client.handler(EventStreamTerminatedHandler())
+    client._subscribe_user_only = fake_subscribe_user_only
+    client._want_user_stream = True
+    client._user_unsubscribe_inflight = True
+    client._subscribed.add((SubType.USER,))
+
+    await client._receive({
+        'subscriptionId': 0,
+        'event': {
+            'e': 'eventStreamTerminated'
+        }
+    })
+
+    assert calls == []
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_user_stream_auto_recover_without_user_handler(client):
+    calls = []
+
+    async def fake_subscribe_user_only(subscribe: bool, subscriptions):
+        calls.append((subscribe, tuple(subscriptions)))
+
+    client._subscribe_user_only = fake_subscribe_user_only
+    client._want_user_stream = True
+    client._subscribed.add((SubType.USER,))
+    client._get_handler_ctx()
+
+    await client._receive({
+        'subscriptionId': 0,
+        'event': {
+            'e': 'eventStreamTerminated'
+        }
+    })
+
+    assert calls == [(True, ((SubType.USER,),))]
 
     await client.close()
 

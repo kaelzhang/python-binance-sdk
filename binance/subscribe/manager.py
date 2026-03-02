@@ -15,6 +15,10 @@ from binance.common.constants import (
 )
 from binance.common.exceptions import InvalidHandlerException
 from binance.common.types import Timeout
+from binance.common.utils import (
+    format_msg,
+    repr_exception
+)
 
 from .stream import Stream
 from .handler_context import HandlerContext
@@ -31,6 +35,9 @@ class SubscriptionManager:
     _stream_retry_policy: RetryPolicy
     _stream_timeout: Timeout
     _logger: Logger
+    _want_user_stream: bool
+    _user_unsubscribe_inflight: bool
+    _user_recovering: bool
 
     def start(self):
         """Starts receiving messages.
@@ -67,6 +74,9 @@ class SubscriptionManager:
         """
 
         self._receiving = False
+        self._want_user_stream = False
+        self._user_unsubscribe_inflight = False
+        self._user_recovering = False
 
         if self._data_stream:
             await self._data_stream.close(code)
@@ -79,8 +89,26 @@ class SubscriptionManager:
         self._handler_ctx = None
 
     async def _receive(self, msg) -> None:
-        if self._receiving:
-            await self._handler_ctx.receive(msg)
+        if not self._receiving:
+            return
+
+        event = msg.get('event') if type(msg) is dict else None
+
+        if (
+            type(event) is dict
+            and event.get('e') == 'eventStreamTerminated'
+        ):
+            try:
+                await self._recover_user_stream_if_needed()
+            except Exception as e:
+                self._logger.error(
+                    format_msg(
+                        'Failed to recover user stream after eventStreamTerminated: %s',
+                        repr_exception(e)
+                    )
+                )
+
+        await self._handler_ctx.receive(msg)
 
     def _get_handler_ctx(self) -> HandlerContext:
         if not self._handler_ctx:
@@ -187,7 +215,22 @@ class SubscriptionManager:
             await self._subscribe_only(subscribe, market_subscriptions)
 
         if len(user_subscriptions) > 0:
-            await self._subscribe_user_only(subscribe, user_subscriptions)
+            prev_want_user_stream = self._want_user_stream
+
+            if subscribe:
+                self._want_user_stream = True
+            else:
+                self._want_user_stream = False
+                self._user_unsubscribe_inflight = True
+
+            try:
+                await self._subscribe_user_only(subscribe, user_subscriptions)
+            except Exception:
+                self._want_user_stream = prev_want_user_stream
+                raise
+            finally:
+                if not subscribe:
+                    self._user_unsubscribe_inflight = False
 
         for param in subscriptions:
             if subscribe:
@@ -204,6 +247,26 @@ class SubscriptionManager:
         _, user_subscriptions = self._split_subscriptions(self._subscribed)
         if len(user_subscriptions) > 0:
             await self._subscribe_user_only(True, user_subscriptions)
+
+    async def _recover_user_stream_if_needed(self) -> bool:
+        if (
+            not self._want_user_stream
+            or self._user_unsubscribe_inflight
+            or self._user_recovering
+            or (SubType.USER,) not in self._subscribed
+        ):
+            return False
+
+        self._user_recovering = True
+
+        try:
+            await self._subscribe_user_only(True, ((SubType.USER,),))
+            self._logger.warning(
+                'Recovered user stream subscription after eventStreamTerminated.'
+            )
+            return True
+        finally:
+            self._user_recovering = False
 
     async def subscribe(self, *args):
         return await self._subscribe(True, args)
