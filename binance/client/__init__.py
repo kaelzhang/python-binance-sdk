@@ -50,6 +50,10 @@ class Client(
         self._api_key = None
         self._api_secret = None
 
+        self._used_weight = {}
+        self._order_count = {}
+        self._weight_limiter = None
+
         self.key(api_key)
         self.secret(api_secret)
 

@@ -48,3 +48,46 @@ async def test_weight_limiter_blocks_over_budget():
     await limiter.acquire(6)
     await limiter.acquire(6)  # 12 > 10 -> must wait
     assert time.monotonic() - start >= 0.25
+
+
+from aioresponses import aioresponses
+from binance import Client, RateLimitException, IPBannedException
+
+_URL = 'https://api.binance.com/api/v3/depth'
+
+
+@pytest.mark.asyncio
+async def test_429_raises_rate_limit_with_retry_after():
+    client = Client()
+    with aioresponses() as m:
+        m.get(_URL + '?symbol=BTCUSDT', status=429,
+              headers={'Retry-After': '42', 'X-MBX-USED-WEIGHT-1M': '6001'},
+              payload={'code': -1003, 'msg': 'Too many requests'})
+        with pytest.raises(RateLimitException) as info:
+            await client.get(_URL, symbol='BTCUSDT')
+    assert info.value.retry_after == 42
+    assert client.used_weight.get('1m') == 6001
+
+
+@pytest.mark.asyncio
+async def test_418_raises_ip_banned_with_retry_after():
+    client = Client()
+    with aioresponses() as m:
+        m.get(_URL + '?symbol=BTCUSDT', status=418,
+              headers={'Retry-After': '120'},
+              payload={'code': -1003, 'msg': 'banned'})
+        with pytest.raises(IPBannedException) as info:
+            await client.get(_URL, symbol='BTCUSDT')
+    assert info.value.retry_after == 120
+
+
+@pytest.mark.asyncio
+async def test_success_captures_used_weight_and_order_count():
+    client = Client()
+    with aioresponses() as m:
+        m.get(_URL + '?symbol=BTCUSDT', status=200,
+              headers={'X-MBX-USED-WEIGHT-1M': '12', 'X-MBX-ORDER-COUNT-10S': '3'},
+              payload={'lastUpdateId': 1, 'bids': [], 'asks': []})
+        await client.get(_URL, symbol='BTCUSDT')
+    assert client.used_weight.get('1m') == 12
+    assert client.order_count.get('10s') == 3

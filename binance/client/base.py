@@ -23,14 +23,22 @@ from binance.common.exceptions import (
     APIKeyNotDefinedException,
     APISecretNotDefinedException,
     StatusException,
-    InvalidResponseException
+    InvalidResponseException,
+    RateLimitException,
+    IPBannedException
 )
 
 from binance.common.constants import (
     HEADER_API_KEY,
     SecurityType,
-    RequestMethod
+    RequestMethod,
+    HEADER_USED_WEIGHT_PREFIX,
+    HEADER_ORDER_COUNT_PREFIX,
+    HTTP_TOO_MANY_REQUESTS,
+    HTTP_IP_BANNED
 )
+
+from binance.common.rate_limit import parse_retry_after
 
 from binance.common.types import APIResponse
 
@@ -89,6 +97,9 @@ class ClientBase:
     _api_key: Optional[str]
     _api_secret: Optional[str]
     _request_params: Optional[dict]
+    _used_weight: Dict[str, int]
+    _order_count: Dict[str, int]
+    _weight_limiter: Any
 
     def _init_api_session(
         self,
@@ -179,11 +190,46 @@ class ClientBase:
 
         return signed
 
+    def _capture_rate_limit_headers(self, response) -> None:
+        for key, value in response.headers.items():
+            lower = key.lower()
+            if lower.startswith(HEADER_USED_WEIGHT_PREFIX):
+                interval = lower[len(HEADER_USED_WEIGHT_PREFIX):]
+                try:
+                    self._used_weight[interval] = int(value)
+                except (TypeError, ValueError):
+                    pass
+            elif lower.startswith(HEADER_ORDER_COUNT_PREFIX):
+                interval = lower[len(HEADER_ORDER_COUNT_PREFIX):]
+                try:
+                    self._order_count[interval] = int(value)
+                except (TypeError, ValueError):
+                    pass
+
+    @property
+    def used_weight(self) -> Dict[str, int]:
+        """Latest X-MBX-USED-WEIGHT-* values keyed by interval, e.g. {'1m': 12}."""
+        return dict(self._used_weight)
+
+    @property
+    def order_count(self) -> Dict[str, int]:
+        """Latest X-MBX-ORDER-COUNT-* values keyed by interval, e.g. {'10s': 3}."""
+        return dict(self._order_count)
+
     async def _handle_response(
         self,
         response: ClientResponse
     ) -> APIResponse:
-        if not str(response.status).startswith('2'):
+        self._capture_rate_limit_headers(response)
+
+        status = response.status
+        if status == HTTP_TOO_MANY_REQUESTS:
+            raise RateLimitException(
+                response, await response.text(), parse_retry_after(response))
+        if status == HTTP_IP_BANNED:
+            raise IPBannedException(
+                response, await response.text(), parse_retry_after(response))
+        if not str(status).startswith('2'):
             raise StatusException(response, await response.text())
         try:
             return await response.json()
