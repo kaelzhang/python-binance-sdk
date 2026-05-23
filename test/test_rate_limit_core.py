@@ -96,6 +96,23 @@ async def test_acquire_connection_and_per_connection_message():
 
 
 @pytest.mark.asyncio
+async def test_acquire_message_throttles_at_per_connection_limit():
+    # The per-connection ws-messages bucket (5/1s, SLEEP) must actually block
+    # the message past its budget, not just account it.
+    rl = RateLimiter()
+    rl.register_connection('c1')
+    limit = _windows_by(rl.snapshot(), 'ws_messages')[0].limit
+    start = time.monotonic()
+    for _ in range(limit):
+        await rl.acquire_message('c1')
+    assert time.monotonic() - start < 0.3      # the first `limit` are immediate
+    # all accounted while still inside the window (before it rolls)
+    assert _windows_by(rl.snapshot(), 'ws_messages')[0].used == limit
+    await rl.acquire_message('c1')             # one past budget -> waits the window
+    assert time.monotonic() - start >= 0.5
+
+
+@pytest.mark.asyncio
 async def test_disabled_message_records_only():
     rl = RateLimiter(enabled=False)
     rl.register_connection('c1')
