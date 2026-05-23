@@ -21,6 +21,7 @@ from binance import (
     HandlerExceptionHandlerBase,
     UnsupportedSubTypeException
 )
+from binance.common.exceptions import TooManyStreamsException
 from binance.common.utils import create_future
 
 
@@ -341,3 +342,26 @@ async def test_orderbook_handler_init_orderbook_ahead(client):
 @pytest.mark.asyncio
 async def test_orderbook_handler_init_orderbook_after(client):
     await run_orderbook_handler(client, False)
+
+
+@pytest.mark.asyncio
+async def test_subscribe_rejects_more_than_1024_streams(monkeypatch):
+    from binance import Client
+    client = Client()
+
+    async def fake_send(_msg):
+        return None
+
+    # Pretend 1024 market streams are already active
+    client._stream_names = set(f's{i}@trade' for i in range(1024))
+
+    async def fake_params(subscribe, subscriptions):
+        return ['btcusdt@trade']
+
+    monkeypatch.setattr(
+        client._get_handler_ctx(), 'subscribe_params', fake_params)
+    monkeypatch.setattr(client, '_get_data_stream', lambda: type(
+        'S', (), {'send': staticmethod(fake_send)})())
+
+    with pytest.raises(TooManyStreamsException):
+        await client._subscribe_only(True, [('trade', 'BTCUSDT')])

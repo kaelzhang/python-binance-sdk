@@ -79,6 +79,7 @@ class Client(
         self._data_stream = None
         self._user_stream = None
         self._subscribed = set()
+        self._stream_names = set()
         self._want_user_stream = False
         self._user_unsubscribe_inflight = False
         self._user_recovering = False

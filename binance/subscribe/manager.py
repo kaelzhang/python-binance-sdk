@@ -11,9 +11,13 @@ from aioretry import RetryPolicy
 
 from binance.common.constants import (
     DEFAULT_STREAM_CLOSE_CODE,
+    WS_MAX_STREAMS_PER_CONNECTION,
     SubType
 )
-from binance.common.exceptions import InvalidHandlerException
+from binance.common.exceptions import (
+    InvalidHandlerException,
+    TooManyStreamsException
+)
 from binance.common.rate_limit import SlidingWindowRateLimiter
 from binance.common.types import Timeout
 from binance.common.utils import (
@@ -31,6 +35,7 @@ class SubscriptionManager:
     _data_stream: Optional[Stream]
     _user_stream: Optional[Stream]
     _subscribed: Set[tuple]
+    _stream_names: Set[str]
     _stream_host: str
     _ws_api_host: str
     _stream_retry_policy: RetryPolicy
@@ -174,12 +179,23 @@ class SubscriptionManager:
             subscriptions
         )
 
+        if subscribe:
+            projected = self._stream_names | set(params)
+            if len(projected) > WS_MAX_STREAMS_PER_CONNECTION:
+                raise TooManyStreamsException(
+                    len(projected), WS_MAX_STREAMS_PER_CONNECTION)
+
         stream = self._get_data_stream()
 
         await stream.send({
             'method': 'SUBSCRIBE' if subscribe else 'UNSUBSCRIBE',
             'params': params
         })
+
+        if subscribe:
+            self._stream_names.update(params)
+        else:
+            self._stream_names.difference_update(params)
 
     async def _subscribe_user_only(
         self,
