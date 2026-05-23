@@ -200,6 +200,50 @@ async def test_stream_receive_pings_on_recv_timeout():
 
 
 @pytest.mark.asyncio
+async def test_stream_receive_ping_timeout_disconnects():
+    from websockets.exceptions import ConnectionClosedError
+
+    stream = Stream.__new__(Stream)
+    stream._logger = logger
+    stream._timeout = 0.01
+    stream._connection_error = False
+    stream._rate_limiter = SlidingWindowRateLimiter(5, 1.0)
+
+    class FakeSocket:
+        async def recv(self):
+            await asyncio.sleep(10)  # force recv timeout -> ping path
+
+        async def ping(self):
+            raise asyncio.TimeoutError()  # pong never arrives
+
+    stream._socket = FakeSocket()
+    # ping times out -> connection treated as stale -> ConnectionClosedError
+    with pytest.raises(ConnectionClosedError):
+        await stream._receive()
+
+
+@pytest.mark.asyncio
+async def test_stream_receive_ping_failure_reraises():
+    stream = Stream.__new__(Stream)
+    stream._logger = logger
+    stream._timeout = 0.01
+    stream._connection_error = False
+    stream._rate_limiter = SlidingWindowRateLimiter(5, 1.0)
+
+    class FakeSocket:
+        async def recv(self):
+            await asyncio.sleep(10)  # force recv timeout -> ping path
+
+        async def ping(self):
+            raise RuntimeError('ping boom')  # non-timeout ping failure
+
+    stream._socket = FakeSocket()
+    # a non-timeout ping error is logged and re-raised
+    with pytest.raises(RuntimeError, match='ping boom'):
+        await stream._receive()
+
+
+@pytest.mark.asyncio
 async def test_reconnect_handles_connected_task_errors():
     # case 1: the connected task failed with a non-cancel exception
     stream = Stream.__new__(Stream)

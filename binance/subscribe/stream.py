@@ -225,8 +225,11 @@ class Stream:
                 self._logger.debug("WebSocket ping successful")
             except asyncio.TimeoutError:
                 self._logger.warning("WebSocket ping timeout - connection may be stale")
-                # Let the connection retry mechanism handle this
-                raise ConnectionClosedError(None, None, "ping timeout")
+                # Let the connection retry mechanism handle this. Pass no
+                # close frames: websockets' ConnectionClosedError asserts that
+                # the 3rd arg (rcvd_then_sent) is None unless BOTH rcvd and
+                # sent are set, so a reason string here would raise instead.
+                raise ConnectionClosedError(None, None)
             except Exception as e:
                 self._logger.error(
                     format_msg(
