@@ -91,3 +91,18 @@ async def test_success_captures_used_weight_and_order_count():
         await client.get(_URL, symbol='BTCUSDT')
     assert client.used_weight.get('1m') == 12
     assert client.order_count.get('10s') == 3
+
+
+def test_default_retry_policy_has_floor_and_ceiling():
+    from types import SimpleNamespace
+    from binance.common.constants import DEFAULT_RETRY_POLICY, RETRY_MAX_DELAY
+
+    delays = []
+    for fails in range(1, 12):
+        abandon, delay = DEFAULT_RETRY_POLICY(SimpleNamespace(fails=fails, exception=None))
+        assert abandon is False
+        assert delay >= 0.5            # floor: never a 0s busy-reconnect
+        assert delay <= RETRY_MAX_DELAY
+        delays.append(delay)
+    # backoff grows then caps
+    assert delays[-1] >= delays[0]

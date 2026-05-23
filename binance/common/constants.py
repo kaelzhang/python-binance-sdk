@@ -1,3 +1,4 @@
+import random
 from enum import Enum as _Enum
 
 from aioretry import (
@@ -38,19 +39,16 @@ MSG_PREFIX = '[BinanceSDK] '
 # RetryPolicy
 # ==================================================
 
-ATOM_RETRY_DELAY = 0.1
-MAX_RETRIES_BEFORE_RESET = 10
-
-# If the network connection fails,
-#   we increase the delay by 100ms per failure
-#   and reset the retry counter after 10 failures
+RETRY_BASE_DELAY = 1.0
+RETRY_MAX_DELAY = 30.0
 
 
 def DEFAULT_RETRY_POLICY(info: RetryInfo) -> RetryPolicyStrategy:
-    return (
-        False,
-        (info.fails - 1) % MAX_RETRIES_BEFORE_RESET * ATOM_RETRY_DELAY
-    )
+    # Bounded exponential backoff with full jitter and a floor, never abandoning.
+    # Combined with the per-IP connection limiter this cannot breach 300/5min.
+    ceiling = min(RETRY_MAX_DELAY, RETRY_BASE_DELAY * (2 ** min(info.fails - 1, 5)))
+    delay = ceiling / 2 + random.uniform(0, ceiling / 2)
+    return False, delay
 
 
 def NO_RETRY_POLICY(_) -> RetryPolicyStrategy:
