@@ -17,6 +17,10 @@ no_track
 no_track.py
 *_no_track.py
 
+# Local env files (test credentials)
+.env
+.env.*
+
 # Coverage
 /.nyc_output
 /coverage

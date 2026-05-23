@@ -1,6 +1,9 @@
 import asyncio
+import os
+from pathlib import Path
 
 from aiohttp import web
+from dotenv import load_dotenv
 
 from binance.common.utils import json_stringify
 
@@ -92,3 +95,36 @@ class SocketServer:
         await self._handle(ws)
 
         return ws
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def load_env_files():
+    """Load environment variables from the project-root env file(s).
+
+    Resolution order:
+      1. the project-root ``.env`` file, if present;
+      2. otherwise the first available ``.env.*`` file (sorted);
+      3. inject the parsed keys into ``os.environ`` via python-dotenv
+         (existing real environment values are preserved / not overridden).
+    """
+    env_path = _PROJECT_ROOT / '.env'
+
+    if not env_path.is_file():
+        candidates = sorted(_PROJECT_ROOT.glob('.env.*'))
+        env_path = candidates[0] if candidates else None
+
+    if env_path is not None and env_path.is_file():
+        load_dotenv(dotenv_path=env_path)
+
+
+def get_api_credentials():
+    """Return ``(api_key, api_secret)`` for tests.
+
+    Loads the project ``.env`` / ``.env.*`` files into ``os.environ`` first,
+    then reads ``API_KEY`` / ``API_SECRET``. Returns ``(None, None)`` when
+    they are not configured (so credential-dependent tests can self-skip).
+    """
+    load_env_files()
+    return os.environ.get('API_KEY'), os.environ.get('API_SECRET')

@@ -52,6 +52,8 @@ dev = [
   "pytest",
   "pytest-asyncio",
   "pytest-cov",
+  "aioresponses",
+  "python-dotenv",
   "twine",
   "setuptools",
   "mypy",

@@ -6,18 +6,11 @@ from binance import (
     UserStreamNotSubscribedException
 )
 
-from .common import print_json
+from .common import print_json, get_api_credentials
 
 
-try:
-    from .private_no_track import (
-        API_KEY,
-        API_SECRET
-    )
-
-    has_private_config = True
-except ModuleNotFoundError:
-    has_private_config = False
+API_KEY, API_SECRET = get_api_credentials()
+has_private_config = API_KEY is not None and API_SECRET is not None
 
 
 @pytest.mark.asyncio
