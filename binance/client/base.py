@@ -38,11 +38,7 @@ from binance.common.constants import (
     HTTP_IP_BANNED
 )
 
-from binance.common.rate_limit import (
-    parse_retry_after
-)
-
-from binance.rate_limit import RateLimiter
+from binance.rate_limit import RateLimiter, parse_retry_after
 
 from binance.common.types import APIResponse
 

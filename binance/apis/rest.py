@@ -7,7 +7,7 @@ from binance.common.constants import (
     SecurityType,
     RequestMethod
 )
-from binance.common.rate_limit import REST_ENDPOINT_WEIGHTS, depth_weight
+from binance.rate_limit import REST_ENDPOINT_WEIGHTS, depth_weight
 
 # Rest APIs ref:
 # https://github.com/binance-exchange/binance-official-api-docs/blob/master/rest-api.md

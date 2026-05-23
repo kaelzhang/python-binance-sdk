@@ -17,7 +17,11 @@ from binance.rate_limit.types import (
 
 
 def parse_retry_after(response) -> Optional[int]:
-    """Read the integer `Retry-After` (seconds) from a response, or None."""
+    """Read the integer `Retry-After` (seconds) from a response, or None.
+
+    Only the integer-seconds form is parsed; Binance does not send the
+    RFC 7231 HTTP-date form of `Retry-After`.
+    """
     value = response.headers.get(HEADER_RETRY_AFTER)
     if value is None:
         return None
@@ -28,6 +32,7 @@ def parse_retry_after(response) -> Optional[int]:
 
 
 def depth_weight(limit: int) -> int:
+    """Verified weight tiers for GET /api/v3/depth."""
     if limit <= 100:
         return 5
     if limit <= 500:

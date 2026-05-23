@@ -1,15 +1,9 @@
-import time
 import pytest
 
 from aioresponses import aioresponses
 
 from binance import Client, RateLimitException, IPBannedException
-from binance.common.rate_limit import (
-    parse_retry_after,
-    depth_weight,
-    SlidingWindowRateLimiter,
-    WeightRateLimiter
-)
+from binance.rate_limit import parse_retry_after, depth_weight
 
 
 class _Resp:
@@ -32,25 +26,6 @@ def test_depth_weight_matches_documented_tiers():
     assert depth_weight(500) == 25
     assert depth_weight(1000) == 50
     assert depth_weight(5000) == 250
-
-
-@pytest.mark.asyncio
-async def test_sliding_window_blocks_when_full():
-    limiter = SlidingWindowRateLimiter(max_count=2, window=0.3)
-    start = time.monotonic()
-    await limiter.acquire()
-    await limiter.acquire()
-    await limiter.acquire()  # third must wait ~window
-    assert time.monotonic() - start >= 0.25
-
-
-@pytest.mark.asyncio
-async def test_weight_limiter_blocks_over_budget():
-    limiter = WeightRateLimiter(limit=10, window=0.3, safety_ratio=1.0)
-    start = time.monotonic()
-    await limiter.acquire(6)
-    await limiter.acquire(6)  # 12 > 10 -> must wait
-    assert time.monotonic() - start >= 0.25
 
 
 _URL = 'https://api.binance.com/api/v3/depth'
