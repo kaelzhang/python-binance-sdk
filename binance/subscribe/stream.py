@@ -48,6 +48,8 @@ from binance.common.constants import (
     ERROR_KEY_CODE,
     ERROR_KEY_MESSAGE,
     ERROR_CODE_TOO_MANY_REQUESTS,
+    HTTP_IP_BANNED,
+    HTTP_TOO_MANY_REQUESTS,
     WS_CONNECTION_SAFETY,
     WS_CONNECTION_WINDOW,
     WS_MAX_MESSAGES_PER_SEC,
@@ -192,7 +194,10 @@ class Stream:
             message = error[ERROR_KEY_MESSAGE]
             status = msg.get('status')
 
-            if code == ERROR_CODE_TOO_MANY_REQUESTS or status in (418, 429):
+            if (
+                code == ERROR_CODE_TOO_MANY_REQUESTS
+                or status in (HTTP_IP_BANNED, HTTP_TOO_MANY_REQUESTS)
+            ):
                 data = error.get('data') or {}
                 future.set_exception(StreamRateLimitException(
                     code, message, data.get('retryAfter')))
