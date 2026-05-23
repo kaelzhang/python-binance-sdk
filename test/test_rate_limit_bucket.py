@@ -1,3 +1,4 @@
+import asyncio
 import time
 import pytest
 
@@ -75,3 +76,46 @@ def test_cap_reserve_and_release():
         b.reserve(1025)
     b.release(24)
     assert b.used == 1000
+
+
+@pytest.mark.asyncio
+async def test_acquire_cost_over_limit_fails_fast_not_hang():
+    b = RateLimitBucket(_rule(enforce=EnforceMode.SLEEP, interval=10, limit=10))
+    with pytest.raises(RateLimitReachedException):
+        await asyncio.wait_for(b.acquire(20), timeout=1.0)
+
+
+@pytest.mark.asyncio
+async def test_acquire_after_high_sync_does_not_hang():
+    b = RateLimitBucket(_rule(enforce=EnforceMode.SLEEP, interval=0.3, limit=100))
+    b.sync(200)                       # authoritative >= limit, empty window
+    # must not spin; admits once the authoritative reading goes stale
+    await asyncio.wait_for(b.acquire(1), timeout=2.0)
+
+
+@pytest.mark.asyncio
+async def test_authoritative_decays_after_window():
+    b = RateLimitBucket(_rule(interval=0.3, limit=1000,
+                              type_=RateLimitType.REQUEST_WEIGHT))
+    b.record(5)
+    b.sync(80)
+    assert b.used == 80
+    assert b.has_authoritative is True
+    await asyncio.sleep(0.4)
+    assert b.used == 0                # event pruned + authoritative gone stale
+    assert b.has_authoritative is False
+
+
+def test_bucket_exposes_rule_and_pending():
+    rule = _rule(limit=5)
+    b = RateLimitBucket(rule)
+    assert b.rule is rule
+    assert b.pending == 0
+
+
+def test_blocked_wait_floors_at_min_when_nothing_to_expire():
+    # No events and no authoritative reading: the loop must still yield a
+    # positive sleep (the busy-wait guard) rather than 0.
+    from binance.rate_limit.bucket import _MIN_WAIT
+    b = RateLimitBucket(_rule(enforce=EnforceMode.SLEEP, interval=10, limit=10))
+    assert b._blocked_wait(time.monotonic()) == _MIN_WAIT

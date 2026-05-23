@@ -9,6 +9,11 @@ from binance.common.exceptions import (
 from binance.rate_limit.types import RateLimitRule, RateLimitKind, EnforceMode
 
 
+# Smallest sleep used when blocked, so the loop always yields and re-checks
+# instead of spinning the event loop.
+_MIN_WAIT = 0.01
+
+
 class RateLimitBucket:
     """Runtime state for one rate-limit pool.
 
@@ -21,8 +26,10 @@ class RateLimitBucket:
         self._rule = rule
         self._limit = rule.limit
         self._events: List[Tuple[float, int]] = []
-        self._count = 0                              # CAP current count
-        self._authoritative: Optional[int] = None    # from sync()
+        self._count = 0                               # CAP current count
+        # authoritative header reading: (monotonic_ts, value). Valid only for
+        # one interval -- after that the server window has rolled, so it decays.
+        self._authoritative: Optional[Tuple[float, int]] = None
         self._pending = 0
         self._lock = asyncio.Lock()
 
@@ -38,9 +45,17 @@ class RateLimitBucket:
     def pending(self) -> int:
         return self._pending
 
+    def _authoritative_used(self, now: float) -> Optional[int]:
+        if self._authoritative is None:
+            return None
+        ts, value = self._authoritative
+        if now - ts >= self._rule.interval_seconds:
+            return None                               # stale: window rolled
+        return value
+
     @property
     def has_authoritative(self) -> bool:
-        return self._authoritative is not None
+        return self._authoritative_used(time.monotonic()) is not None
 
     def _prune(self, now: float) -> None:
         cutoff = now - self._rule.interval_seconds
@@ -49,8 +64,9 @@ class RateLimitBucket:
     def _windowed_used(self, now: float) -> int:
         self._prune(now)
         estimate = sum(c for _, c in self._events)
-        if self._authoritative is not None:
-            return max(estimate, self._authoritative)
+        auth = self._authoritative_used(now)
+        if auth is not None:
+            return max(estimate, auth)
         return estimate
 
     @property
@@ -63,21 +79,40 @@ class RateLimitBucket:
         self._events.append((time.monotonic(), max(1, int(cost))))
 
     def sync(self, authoritative_used: int) -> None:
-        self._authoritative = max(0, int(authoritative_used))
+        self._authoritative = (time.monotonic(), max(0, int(authoritative_used)))
 
     def set_limit(self, limit: int) -> None:
         self._limit = max(1, int(limit))
 
-    def _retry_after_exact(self, now: float) -> float:
-        if not self._events:
-            return 0.0
-        return self._events[0][0] + self._rule.interval_seconds - now
+    def _blocked_wait(self, now: float) -> float:
+        # Soonest moment some headroom frees: the oldest event expiring and/or
+        # the authoritative reading going stale. Floored at _MIN_WAIT so a
+        # blocked acquire never spins.
+        candidates = []
+        if self._events:
+            candidates.append(
+                self._events[0][0] + self._rule.interval_seconds - now)
+        if self._authoritative is not None:
+            ts, _ = self._authoritative
+            candidates.append(ts + self._rule.interval_seconds - now)
+        positive = [w for w in candidates if w > 0]
+        if positive:
+            return max(min(positive), _MIN_WAIT)
+        return _MIN_WAIT
 
     def _retry_after(self, now: float) -> int:
-        return max(0, int(self._retry_after_exact(now)) + 1)
+        return max(1, int(self._blocked_wait(now)) + 1)
 
     async def acquire(self, cost: int = 1) -> None:
         cost = max(1, int(cost))
+        # A single request larger than the whole budget can never be admitted;
+        # fail fast instead of blocking forever.
+        if cost > self.effective_limit:
+            raise RateLimitReachedException(
+                self._rule.scope.value,
+                self._rule.type.value,
+                self._rule.interval,
+                int(self._rule.interval_seconds))
         self._pending += 1
         try:
             async with self._lock:
@@ -95,17 +130,16 @@ class RateLimitBucket:
                             self._rule.type.value,
                             self._rule.interval,
                             self._retry_after(now))
-                    wait = self._retry_after_exact(now)
-                    if wait > 0:
-                        await asyncio.sleep(wait)
+                    await asyncio.sleep(self._blocked_wait(now))
         finally:
             self._pending -= 1
 
     # CAP-only -----------------------------------------------------------
     def reserve(self, projected_total: int) -> None:
+        projected_total = max(0, int(projected_total))
         if projected_total > self.effective_limit:
             raise TooManyStreamsException(projected_total, self.effective_limit)
         self._count = projected_total
 
     def release(self, count: int) -> None:
-        self._count = max(0, self._count - int(count))
+        self._count = max(0, self._count - max(0, int(count)))
