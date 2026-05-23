@@ -13,7 +13,7 @@ from logging import getLogger
 import pytest
 from aioresponses import aioresponses
 
-from binance import Client, Stream, SubType
+from binance import Client, Stream, SubType, UserStreamNotSubscribedException
 from binance.common.exceptions import (
     APIKeyNotDefinedException,
     InvalidSubTypeParamException
@@ -263,3 +263,49 @@ async def test_wapi_getter_builds_url_and_requests():
               payload={'ok': True})
         res = await client.get_deposit_history()
     assert res == {'ok': True}
+
+
+# --- user-stream flow (mocked; replaces the live test_user_stream) ---------
+
+def test_ws_api_signature_params_builds_signed_payload():
+    signed = Client('key', 'secret')._ws_api_signature_params(symbol='BTCUSDT')
+    assert signed['apiKey'] == 'key'
+    assert signed['symbol'] == 'BTCUSDT'
+    assert isinstance(signed['timestamp'], int)
+    assert isinstance(signed['signature'], str) and signed['signature']
+
+
+def test_user_stream_not_subscribed_exception_message():
+    assert 'not subscribed' in str(UserStreamNotSubscribedException())
+
+
+@pytest.mark.asyncio
+async def test_user_stream_subscribe_unsubscribe_close_mocked(monkeypatch):
+    client = Client('key', 'secret')
+    sent = []
+
+    class FakeUserStream:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def connect(self):
+            return self
+
+        async def send(self, req):
+            sent.append(req)
+            return None
+
+        async def close(self, code=4999):
+            sent.append({'method': 'close'})
+
+    # Patch the Stream class the manager builds so the real _get_user_stream
+    # body runs (no network) and send() returns instantly.
+    monkeypatch.setattr('binance.subscribe.manager.Stream', FakeUserStream)
+
+    await client.subscribe(SubType.USER)
+    await client.unsubscribe(SubType.USER)
+    await client.close()
+
+    methods = [req['method'] for req in sent]
+    assert 'userDataStream.subscribe.signature' in methods
+    assert 'userDataStream.unsubscribe' in methods

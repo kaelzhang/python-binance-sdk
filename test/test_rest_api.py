@@ -1,5 +1,6 @@
+import os
+
 import pytest
-# import os
 
 # pylint: disable=no-member
 
@@ -8,6 +9,10 @@ from binance import Client, TimeFrame
 from .common import print_json
 
 mock = False
+
+# Live test: hits Binance directly. Skipped by default (keeps `make test`
+# hermetic / non-hanging); opt in with BINANCE_LIVE_TEST=1.
+_RUN_LIVE = os.environ.get('BINANCE_LIVE_TEST') == '1'
 
 FREE_CASES = [
     dict(
@@ -93,6 +98,9 @@ FREE_CASES = [
 #     return real_callback
 
 
+@pytest.mark.skipif(
+    not _RUN_LIVE,
+    reason='live Binance test; set BINANCE_LIVE_TEST=1')
 @pytest.mark.asyncio
 async def test_free_apis():
     client = Client()
