@@ -14,6 +14,7 @@ from binance.common.constants import (
     SubType
 )
 from binance.common.exceptions import InvalidHandlerException
+from binance.common.rate_limit import SlidingWindowRateLimiter
 from binance.common.types import Timeout
 from binance.common.utils import (
     format_msg,
@@ -34,6 +35,7 @@ class SubscriptionManager:
     _ws_api_host: str
     _stream_retry_policy: RetryPolicy
     _stream_timeout: Timeout
+    _connection_limiter: SlidingWindowRateLimiter
     _logger: Logger
     _want_user_stream: bool
     _user_unsubscribe_inflight: bool
@@ -124,7 +126,8 @@ class SubscriptionManager:
                 on_connected=self._resubscribe,
                 retry_policy=self._stream_retry_policy,
                 timeout=self._stream_timeout,
-                logger=self._logger
+                logger=self._logger,
+                connection_limiter=self._connection_limiter
             ).connect()
 
         return self._data_stream
@@ -137,7 +140,8 @@ class SubscriptionManager:
                 on_connected=self._resubscribe_user,
                 retry_policy=self._stream_retry_policy,
                 timeout=self._stream_timeout,
-                logger=self._logger
+                logger=self._logger,
+                connection_limiter=self._connection_limiter
             ).connect()
 
         return self._user_stream

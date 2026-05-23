@@ -1,6 +1,5 @@
 import json
 import asyncio
-import time
 from asyncio import Future
 from typing import (
     Optional,
@@ -46,8 +45,14 @@ from binance.common.constants import (
     STREAM_KEY_RESULT,
     STREAM_KEY_ERROR,
     ERROR_KEY_CODE,
-    ERROR_KEY_MESSAGE
+    ERROR_KEY_MESSAGE,
+    WS_CONNECTION_SAFETY,
+    WS_CONNECTION_WINDOW,
+    WS_MAX_MESSAGES_PER_SEC,
+    WS_MESSAGE_WINDOW
 )
+
+from binance.common.rate_limit import SlidingWindowRateLimiter
 
 from binance.common.types import (
     EventCallback,
@@ -58,38 +63,6 @@ from binance.common.types import (
 ON_MESSAGE = 'on_message'
 ON_CONNECTED = 'on_connected'
 ON_RECONNECTED = 'on_reconnected'
-
-
-class RateLimiter:
-    """Rate limiter to enforce 5 messages per second limit for Binance WebSocket streams"""
-
-    def __init__(self, max_messages: int = 5, time_window: float = 1.0):
-        self.max_messages = max_messages
-        self.time_window = time_window
-        self.messages = []
-        self._lock = asyncio.Lock()
-
-    async def acquire(self) -> None:
-        """Acquire permission to send a message, waiting if necessary to respect rate limits"""
-        async with self._lock:
-            now = time.time()
-
-            # Remove messages older than the time window
-            self.messages = [
-                msg_time
-                for msg_time in self.messages
-                if now - msg_time < self.time_window
-            ]
-
-            # If we're at the limit, wait until the oldest message expires
-            if len(self.messages) >= self.max_messages:
-                oldest_message = min(self.messages)
-                wait_time = self.time_window - (now - oldest_message)
-                if wait_time > 0:
-                    await asyncio.sleep(wait_time)
-
-            # Record this message
-            self.messages.append(now)
 
 
 class Stream:
@@ -106,7 +79,8 @@ class Stream:
     _socket: Optional[ClientConnection]
     _message_futures: Dict[int, Future]
     _retry_policy: RetryPolicy
-    _rate_limiter: RateLimiter
+    _rate_limiter: SlidingWindowRateLimiter
+    _connection_limiter: SlidingWindowRateLimiter
 
     def __init__(
         self,
@@ -118,7 +92,8 @@ class Stream:
         # We redundant the default value here,
         #   because `binance.Stream` is also a public class
         retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
-        timeout: Timeout = DEFAULT_STREAM_TIMEOUT
+        timeout: Timeout = DEFAULT_STREAM_TIMEOUT,
+        connection_limiter: Optional[SlidingWindowRateLimiter] = None
     ) -> None:
         # Will be used by `self._emit`
         self._on_message = wrap_event_callback(on_message, ON_MESSAGE, True)
@@ -153,8 +128,14 @@ class Stream:
 
         self._uri = uri
 
-        # Initialize rate limiter for 2 messages per second
-        self._rate_limiter = RateLimiter(max_messages=2, time_window=1.0)
+        # message rate limiter: 5 incoming messages / second (verified)
+        self._rate_limiter = SlidingWindowRateLimiter(
+            WS_MAX_MESSAGES_PER_SEC, WS_MESSAGE_WINDOW)
+
+        # connection-rate guard: stay under 300 attempts / 5 min / IP
+        self._connection_limiter = connection_limiter or SlidingWindowRateLimiter(
+            WS_CONNECTION_SAFETY, WS_CONNECTION_WINDOW)
+
         self._logger = logger
 
     def _set_socket(self, socket) -> None:
@@ -275,6 +256,16 @@ class Stream:
         before_retry='_reconnect'
     )
     async def _connect(self) -> None:
+        try:
+            await self._connection_limiter.acquire()
+        except asyncio.CancelledError:
+            if self._closing:
+                # Cancelled by `await self.close()` while the connection
+                # limiter was throttling a (re)connect attempt
+                return
+
+            raise
+
         async with connect(self._uri) as socket:
             self._set_socket(socket)
 
@@ -397,8 +388,6 @@ class Stream:
     # For WebSocket streams, users are limited to five incoming messages per second, including Ping frames, Pong frames, and JSON-controlled messages such as subscribe/unsubscribe commands. Connections exceeding this limit are disconnected, and repeated violations may result in an IP ban.
 
     # A single connection can handle a maximum of 1,024 streams, making it suitable for large-scale data monitoring setups in high-frequency trading or analytics platforms.
-
-    # > actually 2 messages per second according to testing
 
     async def send(
         self,
