@@ -470,6 +470,71 @@ async def test_orderbook_handler_init_orderbook_after(client, monkeypatch):
     await run_orderbook_handler(client, monkeypatch, False)
 
 
+def _ws_streams_used(client):
+    for w in client.rate_limit_snapshot().windows:
+        if w.type == 'ws_streams':
+            return w.used
+    return 0
+
+
+@pytest.mark.asyncio
+async def test_subscribe_tracks_stream_count_in_core(monkeypatch):
+    from binance import Client
+    client = Client()
+
+    async def fake_send(_msg):
+        return None
+
+    fake_stream = type('S', (), {'send': staticmethod(fake_send)})()
+
+    async def fake_params_two(subscribe, subscriptions):
+        return ['a@trade', 'b@trade']
+
+    monkeypatch.setattr(
+        client._get_handler_ctx(), 'subscribe_params', fake_params_two)
+    monkeypatch.setattr(client, '_get_data_stream', lambda: fake_stream)
+
+    await client._subscribe_only(True, [('trade', 'A'), ('trade', 'B')])
+
+    assert _ws_streams_used(client) == 2
+    assert len(client._stream_names) == 2
+
+    async def fake_params_one(subscribe, subscriptions):
+        return ['a@trade']
+
+    monkeypatch.setattr(
+        client._get_handler_ctx(), 'subscribe_params', fake_params_one)
+
+    await client._subscribe_only(False, [('trade', 'A')])
+
+    assert _ws_streams_used(client) == 1
+    assert client._stream_names == {'b@trade'}
+
+
+@pytest.mark.asyncio
+async def test_subscribe_rolls_back_reservation_on_send_failure(monkeypatch):
+    from binance import Client
+    client = Client()
+
+    async def failing_send(_msg):
+        raise RuntimeError('send failed')
+
+    fake_stream = type('S', (), {'send': staticmethod(failing_send)})()
+
+    async def fake_params(subscribe, subscriptions):
+        return ['x@trade']
+
+    monkeypatch.setattr(
+        client._get_handler_ctx(), 'subscribe_params', fake_params)
+    monkeypatch.setattr(client, '_get_data_stream', lambda: fake_stream)
+
+    with pytest.raises(RuntimeError):
+        await client._subscribe_only(True, [('trade', 'X')])
+
+    assert _ws_streams_used(client) == 0
+    assert client._stream_names == set()
+
+
 @pytest.mark.asyncio
 async def test_subscribe_rejects_more_than_1024_streams(monkeypatch):
     from binance import Client

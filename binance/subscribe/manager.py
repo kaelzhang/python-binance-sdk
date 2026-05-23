@@ -11,13 +11,11 @@ from aioretry import RetryPolicy
 
 from binance.common.constants import (
     DEFAULT_STREAM_CLOSE_CODE,
-    WS_MAX_STREAMS_PER_CONNECTION,
     EVENT_SERVER_SHUTDOWN,
     SubType
 )
 from binance.common.exceptions import (
     InvalidHandlerException,
-    TooManyStreamsException
 )
 from binance.common.types import Timeout
 from binance.common.utils import (
@@ -195,21 +193,28 @@ class SubscriptionManager:
 
         if subscribe:
             projected = self._stream_names | set(params)
-            if len(projected) > WS_MAX_STREAMS_PER_CONNECTION:
-                raise TooManyStreamsException(
-                    len(projected), WS_MAX_STREAMS_PER_CONNECTION)
+            self._rate_limiter.reserve_streams('data', len(projected))
 
         stream = self._get_data_stream()
 
-        await stream.send({
-            'method': 'SUBSCRIBE' if subscribe else 'UNSUBSCRIBE',
-            'params': params
-        })
+        try:
+            await stream.send({
+                'method': 'SUBSCRIBE' if subscribe else 'UNSUBSCRIBE',
+                'params': params
+            })
+        except Exception:
+            if subscribe:
+                # roll back the optimistic stream reservation; len(self._stream_names)
+                # is the committed count and is always <= cap, so this never raises
+                self._rate_limiter.reserve_streams('data', len(self._stream_names))
+            raise
 
         if subscribe:
             self._stream_names.update(params)
         else:
+            removed = self._stream_names & set(params)
             self._stream_names.difference_update(params)
+            self._rate_limiter.release_streams('data', len(removed))
 
     async def _subscribe_user_only(
         self,
