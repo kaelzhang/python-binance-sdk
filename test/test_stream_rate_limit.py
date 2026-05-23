@@ -88,3 +88,21 @@ def test_extract_event_type_handles_documented_shapes():
         {'event': {'e': 'eventStreamTerminated'}}) == 'eventStreamTerminated'
     assert _extract_event_type({'data': {'e': 'depthUpdate'}}) == 'depthUpdate'
     assert _extract_event_type('not-a-dict') is None
+
+
+@pytest.mark.asyncio
+async def test_recycle_closes_socket_without_setting_closing_flag():
+    # recycle() must close the socket but leave _closing False so the
+    # _connect loop reconnects (unlike close(), which is terminal).
+    stream = Stream.__new__(Stream)   # bypass __init__/connect
+    stream._closing = False
+    closed = []
+
+    class FakeSock:
+        async def close(self, code):
+            closed.append(code)
+
+    stream._socket = FakeSock()
+    await stream.recycle()
+    assert closed == [4999]
+    assert stream._closing is False
