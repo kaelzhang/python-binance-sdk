@@ -237,9 +237,14 @@ class ClientBase:
         if not str(status).startswith('2'):
             raise StatusException(response, await response.text())
         try:
-            return await response.json()
+            data = await response.json()
         except ValueError:
             raise InvalidResponseException(response, await response.text())
+
+        if isinstance(data, dict) and 'rateLimits' in data:
+            self._rate_limiter.configure_from_exchange_info(data['rateLimits'])
+
+        return data
 
     # self._request('get', uri, symbol='BTCUSDT')
     async def _request(

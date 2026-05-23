@@ -146,3 +146,23 @@ async def test_non_order_endpoint_does_not_consume_orders_pool():
     orders = [w for w in snap.windows if w.type == 'orders']
     # A plain market-data GET must never touch the ORDERS pool.
     assert orders and all(w.used == 0 for w in orders)
+
+
+@pytest.mark.asyncio
+async def test_exchange_info_autoconfigures_pool_limits():
+    import re
+    from binance import Client
+    client = Client()
+    with aioresponses() as m:
+        m.get(re.compile(r'.*/api/v3/exchangeInfo.*'), status=200, payload={
+            'rateLimits': [
+                {'rateLimitType': 'REQUEST_WEIGHT', 'interval': 'MINUTE',
+                 'intervalNum': 1, 'limit': 12000},
+            ],
+            'symbols': []
+        })
+        await client.get_exchange_info()
+    snap = client.rate_limit_snapshot()
+    weight = [w for w in snap.windows if w.type == 'request_weight'][0]
+    # configured cap 12000 * 0.9 safety ratio = 10800 effective
+    assert weight.limit == 10800
