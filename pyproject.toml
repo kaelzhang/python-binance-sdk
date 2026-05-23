@@ -69,6 +69,7 @@ packages = [
   'binance.common',
   'binance.handlers',
   'binance.processors',
+  'binance.rate_limit',
   'binance.subscribe'
 ]
 

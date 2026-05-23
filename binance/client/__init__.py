@@ -14,7 +14,7 @@ from binance.common.constants import (
     WS_API_HOST,
     DEFAULT_RETRY_POLICY, DEFAULT_STREAM_TIMEOUT
 )
-from binance.rate_limit import RateLimiter
+from binance.rate_limit import RateLimiter, RateLimitSnapshot
 from binance.common.types import Timeout
 
 from .base import ClientBase
@@ -83,7 +83,7 @@ class Client(
     def logger(self) -> Logger:
         return self._logger
 
-    def rate_limit_snapshot(self):
+    def rate_limit_snapshot(self) -> RateLimitSnapshot:
         """Return a point-in-time RateLimitSnapshot of all rate-limit pools.
 
         Read-only and local (no network); safe to poll from a monitoring loop.

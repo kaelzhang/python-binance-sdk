@@ -1,4 +1,4 @@
-__version__ = '3.2.0'
+__version__ = '3.3.0'
 
 from aioretry import (
     RetryPolicy,
@@ -37,6 +37,12 @@ from binance.common.exceptions import (
     InvalidHandlerException,
     ReuseHandlerException,
     OrderBookFetchAbandonedException
+)
+
+from binance.rate_limit import (
+    RateLimiter,
+    RateLimitSnapshot,
+    RateLimitWindow
 )
 
 from binance.handlers.handlers import (

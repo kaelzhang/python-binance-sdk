@@ -192,8 +192,7 @@ All arguments of the constructor Client are keyworded arguments and all optional
 - **request_params?** `dict=None` global request params for aiohttp
 - **stream_retry_policy?** `Callable[[int, Exception], Tuple[bool, int, bool]]` retry policy for websocket stream. For details, see [RetryPolicy](#retrypolicy)
 - **stream_timeout?** `int=5` seconds util the stream reach an timeout error
-- **stream_message_rate?** `int=5` max outgoing WebSocket messages per second. Binance's documented limit is 5/s (including ping/pong and subscribe/unsubscribe). Lower it for extra safety margin. See [Rate Limits](#rate-limits).
-- **rate_limit_guard?** `bool=False` when `True`, the client proactively throttles REST requests with a client-side weight budget (6000/min, used at 90% for safety) to stay under Binance's per-IP weight cap. Off by default. See [Rate Limits](#rate-limits).
+- **rate_limit_guard?** `bool=True` when `True`, the client proactively throttles REST requests with a client-side weight/raw/order budget to stay under Binance's per-IP and per-account caps. When `False`, usage is still tracked (so monitoring works) but requests are never delayed. On by default. See [Rate Limits](#rate-limits).
 - **api_host?** `str='https://api.binance.com'` to specify another API host for rest API requests. 这个参数的存在意义，使用方法，不累述，你懂的。
 - **stream_host?** `str='wss://stream.binance.com'` to specify another stream host for websocket connections.
 - **ws_api_host?** `str='wss://ws-api.binance.com/ws-api/v3'` to specify WebSocket API host for user stream subscription.
@@ -406,7 +405,22 @@ Since `3.2.0` the default policy is a bounded, jittered exponential backoff (≈
 
 ## Rate Limits
 
-`binance-sdk` is built to respect [Binance's documented rate limits](https://developers.binance.com/docs/binance-spot-api-docs/rest-api/limits) and to avoid the `429` → `418` IP-ban escalation (which can take a live trading system offline for up to 3 days).
+`binance-sdk` is built to respect [Binance's documented rate limits](https://developers.binance.com/docs/binance-spot-api-docs/rest-api/limits) and to avoid the `429` → `418` IP-ban escalation (which can take a live trading system offline for up to 3 days). Since `3.3.0` every limit — REST and WebSocket — is tracked by a single unified rate-limit core, and you can read its live state through `client.rate_limit_snapshot()`.
+
+### The pools
+
+Binance enforces several independent pools; the core models each one:
+
+| Pool | Scope | Default budget | On exceed (guard on) |
+| --- | --- | --- | --- |
+| Request weight | IP | 6000 / 1m (used at 90% → 5400) | sleep until headroom |
+| Raw requests | IP | 300000 / 5m | sleep until headroom |
+| Orders | account | 100 / 10s **and** 200000 / 1d | **raise** `RateLimitReachedException` |
+| WS connections | IP | 290 / 5m | sleep until headroom |
+| WS messages | per connection | 5 / 1s | sleep until headroom |
+| WS streams | per connection | 1024 (cap) | **raise** `TooManyStreamsException` |
+
+Orders never sleep — delaying an order can be worse than not sending it, so an over-budget order fails fast with `RateLimitReachedException` (carrying `retry_after`) and lets your strategy decide. Usage is **always** accounted (even with the guard off), so monitoring stays accurate.
 
 ### REST: typed errors and used-weight visibility
 
@@ -436,24 +450,53 @@ except RateLimitException as e:
 
 Both subclass `StatusException`, so existing `except StatusException` handlers keep working. The client **never auto-retries** (a blind retry of an order could double-fill) — it surfaces `retry_after` and lets you decide.
 
-### REST: optional proactive throttle
+### REST: proactive throttle
 
-Pass `rate_limit_guard=True` to make the client sleep *before* sending a request that would exceed a client-side weight budget (6000 weight/min, used at 90% for safety), keyed off per-endpoint weights. Recommended for live trading:
+By default (`rate_limit_guard=True`) the client throttles *before* sending a request that would breach the IP request-weight, IP raw-request, or account-order pools. Recommended for live trading:
 
 ```py
 client = Client(api_key, api_secret, rate_limit_guard=True)
 ```
 
-The static weight table is a conservative pre-throttle; the authoritative truth is always the `X-MBX-USED-WEIGHT` headers above.
+The per-endpoint weight table is a conservative pre-throttle; the authoritative truth is always the `X-MBX-USED-WEIGHT-*` / `X-MBX-ORDER-COUNT-*` response headers, which the core reconciles after every call (`used = max(client_estimate, header)`). With `rate_limit_guard=False`, usage is still tracked (so monitoring works) but requests are never delayed.
+
+Whenever a response carries Binance's `rateLimits` array (e.g. from `get_exchange_info()`), the core auto-configures its pool *limits* from it — so on a higher VIP tier the budgets track your account's real caps instead of the conservative defaults.
+
+### Monitoring: `client.rate_limit_snapshot()`
+
+`rate_limit_snapshot()` returns a read-only, local (no network) `RateLimitSnapshot` you can poll from a monitoring loop or risk gate:
+
+```py
+snap = client.rate_limit_snapshot()
+
+snap.max_utilization   # 0.0–1.0+, the busiest pool right now
+snap.throttled         # True if anything is queued/sleeping or a retry-after is active
+snap.retry_after       # seconds remaining on a 429/418 ban, or None
+snap.pending           # total calls currently waiting on a pool
+
+for w in snap.windows:
+    print(w.scope, w.type, w.interval, f'{w.used}/{w.limit}', w.utilization, w.source)
+    # e.g. ip request_weight 1m 5400/5400 1.0 header
+```
+
+A `RateLimitWindow` describes one pool: `scope` (`ip`/`account`/`connection`), `type` (`request_weight`/`raw_requests`/`orders`/`ws_connections`/`ws_messages`/`ws_streams`), `interval` (`1m`, `10s`, …), `used`, `limit` (the effective, safety-adjusted cap), `remaining`, `utilization` (`used/limit`), `pending`, and `source` — `header` when reconciled from an authoritative Binance header, otherwise `client` (a local estimate). `RateLimitSnapshot` exposes `windows`, `pending`, `retry_after`, `throttled`, `at` (epoch seconds), and the `max_utilization` property. Both types are importable from `binance`.
 
 ### WebSocket: connection, message, and stream limits
 
 - **Connections** are gated to stay under Binance's 300 attempts / 5 min / IP limit (a shared limiter, default cap 290/5min), independent of your `stream_retry_policy`.
-- **Outgoing messages** are limited to 5/second by default (Binance's documented limit, including ping/pong and subscribe/unsubscribe). Configure with `stream_message_rate`.
+- **Outgoing messages** are limited to 5/second (Binance's documented limit, including ping/pong and subscribe/unsubscribe).
 - **Streams per connection** are capped at Binance's 1024 limit; exceeding it raises `TooManyStreamsException` (carrying `requested`/`limit`) instead of failing opaquely.
 - **`serverShutdown`** events (sent ~10 min before Binance's 24h forced disconnect) trigger a proactive reconnect.
 
 WebSocket-API (user stream) rate-limit errors (code `-1003`, status `418`/`429`) raise `StreamRateLimitException` (a subclass of `StreamSubscribeException`) carrying `retry_after`.
+
+### Behavioral changes in 3.3.0
+
+- All rate limiting — REST weight/raw/orders and WS connections/messages/streams — now flows through one unified core (`binance.rate_limit`), the single source of truth.
+- New `client.rate_limit_snapshot()` returns a `RateLimitSnapshot` for live monitoring; `RateLimiter`, `RateLimitSnapshot`, and `RateLimitWindow` are now exported from `binance`.
+- The account **orders** pool is now enforced (100/10s and 200000/1d), failing fast with `RateLimitReachedException` rather than sleeping.
+- Responses carrying a `rateLimits` array auto-configure the pool limits.
+- The previously documented `stream_message_rate` constructor argument has been removed; the 5/s outgoing-message limit is now managed by the core per connection.
 
 ### Behavioral changes in 3.2.0
 
