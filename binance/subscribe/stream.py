@@ -34,7 +34,8 @@ from binance.common.utils import (
 
 from binance.common.exceptions import (
     StreamDisconnectedException,
-    StreamSubscribeException
+    StreamSubscribeException,
+    StreamRateLimitException
 )
 
 from binance.common.constants import (
@@ -46,6 +47,7 @@ from binance.common.constants import (
     STREAM_KEY_ERROR,
     ERROR_KEY_CODE,
     ERROR_KEY_MESSAGE,
+    ERROR_CODE_TOO_MANY_REQUESTS,
     WS_CONNECTION_SAFETY,
     WS_CONNECTION_WINDOW,
     WS_MAX_MESSAGES_PER_SEC,
@@ -186,13 +188,16 @@ class Stream:
 
         elif STREAM_KEY_ERROR in msg:
             error = msg[STREAM_KEY_ERROR]
+            code = error[ERROR_KEY_CODE]
+            message = error[ERROR_KEY_MESSAGE]
+            status = msg.get('status')
 
-            future.set_exception(
-                StreamSubscribeException(
-                    error[ERROR_KEY_CODE],
-                    error[ERROR_KEY_MESSAGE]
-                )
-            )
+            if code == ERROR_CODE_TOO_MANY_REQUESTS or status in (418, 429):
+                data = error.get('data') or {}
+                future.set_exception(StreamRateLimitException(
+                    code, message, data.get('retryAfter')))
+            else:
+                future.set_exception(StreamSubscribeException(code, message))
 
         del self._message_futures[message_id]
 

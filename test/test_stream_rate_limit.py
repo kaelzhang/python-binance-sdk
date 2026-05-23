@@ -106,3 +106,27 @@ async def test_recycle_closes_socket_without_setting_closing_flag():
     await stream.recycle()
     assert closed == [4999]
     assert stream._closing is False
+
+
+@pytest.mark.asyncio
+async def test_ws_api_error_minus_1003_raises_stream_rate_limit():
+    from binance.common.exceptions import StreamRateLimitException
+    from binance.common.utils import create_future
+
+    async def on_message(_):
+        return None
+
+    stream = Stream('ws://localhost:9098/ws', on_message=on_message,
+                    timeout=0.1, logger=logger)
+    fut = create_future()
+    stream._message_futures[7] = fut
+    await stream._handle_message({
+        'id': 7,
+        'status': 418,
+        'error': {'code': -1003, 'msg': 'Too much request weight used',
+                  'data': {'retryAfter': 88}}
+    })
+    with pytest.raises(StreamRateLimitException) as info:
+        await fut
+    assert info.value.retry_after == 88
+    assert info.value.code == -1003
