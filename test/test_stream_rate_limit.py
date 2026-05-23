@@ -77,3 +77,14 @@ async def test_client_stream_message_rate_is_configurable():
     from binance import Client
     client = Client(stream_message_rate=3)
     assert client._stream_message_rate == 3
+
+
+def test_extract_event_type_handles_documented_shapes():
+    from binance.subscribe.manager import _extract_event_type
+    assert _extract_event_type({'e': 'serverShutdown'}) == 'serverShutdown'
+    assert _extract_event_type(
+        {'stream': 'x', 'data': {'e': 'serverShutdown'}}) == 'serverShutdown'
+    assert _extract_event_type(
+        {'event': {'e': 'eventStreamTerminated'}}) == 'eventStreamTerminated'
+    assert _extract_event_type({'data': {'e': 'depthUpdate'}}) == 'depthUpdate'
+    assert _extract_event_type('not-a-dict') is None

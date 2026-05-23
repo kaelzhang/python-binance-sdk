@@ -12,6 +12,7 @@ from aioretry import RetryPolicy
 from binance.common.constants import (
     DEFAULT_STREAM_CLOSE_CODE,
     WS_MAX_STREAMS_PER_CONNECTION,
+    EVENT_SERVER_SHUTDOWN,
     SubType
 )
 from binance.common.exceptions import (
@@ -29,6 +30,17 @@ from .stream import Stream
 from .handler_context import HandlerContext
 
 # pylint: disable=no-member
+
+
+def _extract_event_type(msg):
+    """Return the Binance event type ('e') from any documented message shape."""
+    if not isinstance(msg, dict):
+        return None
+    for container_key in ('data', 'event'):
+        container = msg.get(container_key)
+        if isinstance(container, dict) and 'e' in container:
+            return container['e']
+    return msg.get('e')
 
 
 class SubscriptionManager:
@@ -100,21 +112,22 @@ class SubscriptionManager:
         if not self._receiving:
             return
 
-        event = msg.get('event') if type(msg) is dict else None
+        event_type = _extract_event_type(msg)
 
-        if (
-            type(event) is dict
-            and event.get('e') == 'eventStreamTerminated'
-        ):
+        if event_type == EVENT_SERVER_SHUTDOWN:
+            self._logger.warning(
+                'serverShutdown received; recycling data stream proactively')
+            if self._data_stream is not None:
+                await self._data_stream.recycle()
+            return
+
+        if event_type == 'eventStreamTerminated':
             try:
                 await self._recover_user_stream_if_needed()
             except Exception as e:
-                self._logger.error(
-                    format_msg(
-                        'Failed to recover user stream after eventStreamTerminated: %s',
-                        repr_exception(e)
-                    )
-                )
+                self._logger.error(format_msg(
+                    'Failed to recover user stream after eventStreamTerminated: %s',
+                    repr_exception(e)))
 
         await self._handler_ctx.receive(msg)
 

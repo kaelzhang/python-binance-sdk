@@ -382,6 +382,17 @@ class Stream:
         self._socket = None
         self._closing = False
 
+    async def recycle(self) -> None:
+        """Proactively drop the current socket so aioretry reconnects.
+
+        Used on `serverShutdown` to reconnect before the 24h forced cut.
+        Unlike `close()`, this does NOT set `_closing`, so the reconnect
+        machinery (and the connection limiter) take over.
+        """
+        socket = self._socket
+        if socket is not None:
+            await socket.close(DEFAULT_STREAM_CLOSE_CODE)
+
     # Ref: https://academy.binance.com/en/articles/what-are-binance-websocket-limits
 
     # Connection Limits
