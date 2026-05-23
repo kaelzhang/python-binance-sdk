@@ -1,6 +1,9 @@
 import time
 import pytest
 
+from aioresponses import aioresponses
+
+from binance import Client, RateLimitException, IPBannedException
 from binance.common.rate_limit import (
     parse_retry_after,
     depth_weight,
@@ -49,9 +52,6 @@ async def test_weight_limiter_blocks_over_budget():
     await limiter.acquire(6)  # 12 > 10 -> must wait
     assert time.monotonic() - start >= 0.25
 
-
-from aioresponses import aioresponses
-from binance import Client, RateLimitException, IPBannedException
 
 _URL = 'https://api.binance.com/api/v3/depth'
 
