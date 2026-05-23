@@ -98,3 +98,24 @@ def test_rate_limit_exception_carries_retry_after():
     banned = IPBannedException(_Resp(), '{"code":-1003,"msg":"banned"}', retry_after=3000)
     assert banned.retry_after == 3000
     assert '418' in str(banned) or 'banned' in str(banned).lower()
+
+
+def test_too_many_streams_and_stream_rate_limit_exceptions():
+    from binance.common.exceptions import (
+        TooManyStreamsException,
+        StreamRateLimitException,
+        StreamSubscribeException
+    )
+
+    too_many = TooManyStreamsException(2000, 1024)
+    assert too_many.requested == 2000
+    assert too_many.limit == 1024
+    assert '1024' in str(too_many)
+
+    rate_limited = StreamRateLimitException(
+        -1003, 'Too much request weight used', retry_after=88)
+    # backward-compat: must be catchable as StreamSubscribeException
+    assert isinstance(rate_limited, StreamSubscribeException)
+    assert rate_limited.code == -1003
+    assert rate_limited.retry_after == 88
+    assert '-1003' in str(rate_limited)

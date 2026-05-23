@@ -1,7 +1,7 @@
 # coding=utf-8
 
 import json
-from typing import Any
+from typing import Any, Optional
 
 from aiohttp import ClientResponse
 
@@ -108,7 +108,12 @@ class RateLimitException(StatusException):
     retrying, taken from the `Retry-After` response header.
     """
 
-    def __init__(self, response, text, retry_after=None) -> None:
+    def __init__(
+        self,
+        response: ClientResponse,
+        text: str,
+        retry_after: Optional[int] = None
+    ) -> None:
         super().__init__(response, text)
         self.retry_after = retry_after
 
@@ -126,7 +131,12 @@ class IPBannedException(StatusException):
     `retry_after` is the number of seconds until the ban is lifted.
     """
 
-    def __init__(self, response, text, retry_after=None) -> None:
+    def __init__(
+        self,
+        response: ClientResponse,
+        text: str,
+        retry_after: Optional[int] = None
+    ) -> None:
         super().__init__(response, text)
         self.retry_after = retry_after
 
@@ -156,7 +166,12 @@ class TooManyStreamsException(Exception):
 class StreamRateLimitException(StreamSubscribeException):
     """WebSocket-API rate-limit error (e.g. code -1003) with a retry hint."""
 
-    def __init__(self, code: int, message: str, retry_after=None) -> None:
+    def __init__(
+        self,
+        code: int,
+        message: str,
+        retry_after: Optional[int] = None
+    ) -> None:
         super().__init__(code, message)
         self.retry_after = retry_after
 
