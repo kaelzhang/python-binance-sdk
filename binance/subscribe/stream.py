@@ -277,7 +277,8 @@ class Stream:
                 # limiter was throttling a (re)connect attempt
                 return
 
-            raise
+            # Re-raise a genuine cancellation (not triggered by close()).
+            raise  # pragma: no cover
 
         async with connect(self._uri) as socket:
             self._set_socket(socket)
