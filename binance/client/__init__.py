@@ -12,13 +12,7 @@ from binance.common.constants import (
     REST_API_HOST,
     STREAM_HOST,
     WS_API_HOST,
-    DEFAULT_RETRY_POLICY, DEFAULT_STREAM_TIMEOUT,
-    WS_CONNECTION_SAFETY,
-    WS_CONNECTION_WINDOW,
-    WS_MAX_MESSAGES_PER_SEC
-)
-from binance.common.rate_limit import (
-    SlidingWindowRateLimiter
+    DEFAULT_RETRY_POLICY, DEFAULT_STREAM_TIMEOUT
 )
 from binance.rate_limit import RateLimiter
 from binance.common.types import Timeout
@@ -44,7 +38,6 @@ class Client(
         ws_api_host: str = WS_API_HOST,
         stream_retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
         stream_timeout: Timeout = DEFAULT_STREAM_TIMEOUT,
-        stream_message_rate: int = WS_MAX_MESSAGES_PER_SEC,
         rate_limit_guard: bool = True,
         logger: Logger = getLogger(__name__)
     ):
@@ -54,7 +47,6 @@ class Client(
             api_key (str): API Key
             api_secret (str): API Secret
             requests_params (:obj:`dict`, optional): Dictionary of requests params to use for all calls
-            stream_message_rate (:obj:`int`, optional): max outgoing WebSocket messages per second. Defaults to 5 (Binance's documented limit).
             rate_limit_guard (:obj:`bool`, optional): when True, proactively throttle REST requests with a client-side weight/raw/order budget to stay under the per-IP and per-account caps. When False, usage is still tracked (so monitoring works) but requests are never delayed. Defaults to True.
         """
 
@@ -75,10 +67,6 @@ class Client(
         self._ws_api_host = ws_api_host
         self._stream_retry_policy = stream_retry_policy
         self._stream_timeout = stream_timeout
-        self._stream_message_rate = stream_message_rate
-
-        self._connection_limiter = SlidingWindowRateLimiter(
-            WS_CONNECTION_SAFETY, WS_CONNECTION_WINDOW)
 
         self._receiving = True
         self._handler_ctx = None

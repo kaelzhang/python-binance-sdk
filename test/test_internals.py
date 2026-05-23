@@ -18,7 +18,7 @@ from binance.common.exceptions import (
     APIKeyNotDefinedException,
     InvalidSubTypeParamException
 )
-from binance.common.rate_limit import SlidingWindowRateLimiter
+from binance.rate_limit import RateLimiter
 from binance.handlers.orderbook import OrderBook
 from binance.processors.processors import (
     _get_window,
@@ -183,7 +183,8 @@ async def test_stream_receive_pings_on_recv_timeout():
     stream._logger = logger
     stream._timeout = 0.05
     stream._connection_error = False
-    stream._rate_limiter = SlidingWindowRateLimiter(5, 1.0)
+    stream._rate_limiter = RateLimiter()
+    stream._connection_id = 'default'
 
     class FakeSocket:
         async def recv(self):
@@ -207,7 +208,8 @@ async def test_stream_receive_ping_timeout_disconnects():
     stream._logger = logger
     stream._timeout = 0.01
     stream._connection_error = False
-    stream._rate_limiter = SlidingWindowRateLimiter(5, 1.0)
+    stream._rate_limiter = RateLimiter()
+    stream._connection_id = 'default'
 
     class FakeSocket:
         async def recv(self):
@@ -228,7 +230,8 @@ async def test_stream_receive_ping_failure_reraises():
     stream._logger = logger
     stream._timeout = 0.01
     stream._connection_error = False
-    stream._rate_limiter = SlidingWindowRateLimiter(5, 1.0)
+    stream._rate_limiter = RateLimiter()
+    stream._connection_id = 'default'
 
     class FakeSocket:
         async def recv(self):

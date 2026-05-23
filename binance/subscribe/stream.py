@@ -49,14 +49,10 @@ from binance.common.constants import (
     ERROR_KEY_MESSAGE,
     ERROR_CODE_TOO_MANY_REQUESTS,
     HTTP_IP_BANNED,
-    HTTP_TOO_MANY_REQUESTS,
-    WS_CONNECTION_SAFETY,
-    WS_CONNECTION_WINDOW,
-    WS_MAX_MESSAGES_PER_SEC,
-    WS_MESSAGE_WINDOW
+    HTTP_TOO_MANY_REQUESTS
 )
 
-from binance.common.rate_limit import SlidingWindowRateLimiter
+from binance.rate_limit import RateLimiter
 
 from binance.common.types import (
     EventCallback,
@@ -78,14 +74,15 @@ class Stream:
         on_connected (:obj:`Callable`, optional): invoked when the socket is connected
         retry_policy (RetryPolicy): see document
         timeout (float): timeout in seconds to receive the next websocket message
-        connection_limiter (SlidingWindowRateLimiter, optional): shared connection-rate guard. Pass ONE shared instance when running multiple Streams against the same IP so the 300/5min limit is enforced across them; defaults to a per-Stream limiter.
+        rate_limiter (RateLimiter, optional): shared rate-limit core enforcing both the per-IP connection-attempt budget (300/5min) and the per-connection outgoing-message budget (5/s). Pass ONE shared instance when running multiple Streams against the same IP so the limits are enforced across them; defaults to a fresh private core.
+        connection_id (str, optional): identifies this stream's per-connection message pool within the shared `rate_limiter`. Defaults to 'default'.
     """
 
     _socket: Optional[ClientConnection]
     _message_futures: Dict[int, Future]
     _retry_policy: RetryPolicy
-    _rate_limiter: SlidingWindowRateLimiter
-    _connection_limiter: SlidingWindowRateLimiter
+    _rate_limiter: RateLimiter
+    _connection_id: str
 
     def __init__(
         self,
@@ -98,8 +95,8 @@ class Stream:
         #   because `binance.Stream` is also a public class
         retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
         timeout: Timeout = DEFAULT_STREAM_TIMEOUT,
-        connection_limiter: Optional[SlidingWindowRateLimiter] = None,
-        message_rate: int = WS_MAX_MESSAGES_PER_SEC
+        rate_limiter: Optional[RateLimiter] = None,
+        connection_id: str = 'default'
     ) -> None:
         # Will be used by `self._emit`
         self._on_message = wrap_event_callback(on_message, ON_MESSAGE, True)
@@ -134,14 +131,13 @@ class Stream:
 
         self._uri = uri
 
-        # message rate limiter: defaults to 5 incoming messages / second
-        #   (Binance's documented limit), configurable via `message_rate`
-        self._rate_limiter = SlidingWindowRateLimiter(
-            message_rate, WS_MESSAGE_WINDOW)
-
-        # connection-rate guard: stay under 300 attempts / 5 min / IP
-        self._connection_limiter = connection_limiter or SlidingWindowRateLimiter(
-            WS_CONNECTION_SAFETY, WS_CONNECTION_WINDOW)
+        # Unified rate-limit core: enforces the per-IP connection-attempt
+        #   budget (300/5min) and the per-connection outgoing-message budget
+        #   (5/s). A fresh private core is used when none is shared in.
+        self._rate_limiter = rate_limiter if rate_limiter is not None \
+            else RateLimiter()
+        self._connection_id = connection_id
+        self._rate_limiter.register_connection(connection_id)
 
         self._logger = logger
 
@@ -217,7 +213,7 @@ class Stream:
         except asyncio.TimeoutError:
             try:
                 # Apply rate limiting before sending ping
-                await self._rate_limiter.acquire()
+                await self._rate_limiter.acquire_message(self._connection_id)
 
                 # Send ping and wait for pong with a shorter timeout
                 pong_waiter = await self._socket.ping()
@@ -273,7 +269,7 @@ class Stream:
     )
     async def _connect(self) -> None:
         try:
-            await self._connection_limiter.acquire()
+            await self._rate_limiter.acquire_connection()
         except asyncio.CancelledError:
             if self._closing:
                 # Cancelled by `await self.close()` while the connection
@@ -446,7 +442,7 @@ class Stream:
         """
 
         # Apply rate limiting before sending
-        await self._rate_limiter.acquire()
+        await self._rate_limiter.acquire_message(self._connection_id)
 
         socket = self._socket
 

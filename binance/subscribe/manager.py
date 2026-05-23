@@ -19,12 +19,12 @@ from binance.common.exceptions import (
     InvalidHandlerException,
     TooManyStreamsException
 )
-from binance.common.rate_limit import SlidingWindowRateLimiter
 from binance.common.types import Timeout
 from binance.common.utils import (
     format_msg,
     repr_exception
 )
+from binance.rate_limit import RateLimiter
 
 from .stream import Stream
 from .handler_context import HandlerContext
@@ -52,8 +52,7 @@ class SubscriptionManager:
     _ws_api_host: str
     _stream_retry_policy: RetryPolicy
     _stream_timeout: Timeout
-    _stream_message_rate: int
-    _connection_limiter: SlidingWindowRateLimiter
+    _rate_limiter: RateLimiter
     _logger: Logger
     _want_user_stream: bool
     _user_unsubscribe_inflight: bool
@@ -101,10 +100,12 @@ class SubscriptionManager:
         if self._data_stream:
             await self._data_stream.close(code)
             self._data_stream = None
+            self._rate_limiter.unregister_connection('data')
 
         if self._user_stream:
             await self._user_stream.close(code)
             self._user_stream = None
+            self._rate_limiter.unregister_connection('user')
 
         self._handler_ctx = None
 
@@ -146,8 +147,8 @@ class SubscriptionManager:
                 retry_policy=self._stream_retry_policy,
                 timeout=self._stream_timeout,
                 logger=self._logger,
-                connection_limiter=self._connection_limiter,
-                message_rate=self._stream_message_rate
+                rate_limiter=self._rate_limiter,
+                connection_id='data'
             ).connect()
 
         return self._data_stream
@@ -161,8 +162,8 @@ class SubscriptionManager:
                 retry_policy=self._stream_retry_policy,
                 timeout=self._stream_timeout,
                 logger=self._logger,
-                connection_limiter=self._connection_limiter,
-                message_rate=self._stream_message_rate
+                rate_limiter=self._rate_limiter,
+                connection_id='user'
             ).connect()
 
         return self._user_stream

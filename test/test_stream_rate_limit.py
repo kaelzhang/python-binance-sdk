@@ -4,21 +4,44 @@ import pytest
 
 from binance import Stream
 from binance.common.rate_limit import SlidingWindowRateLimiter
+from binance.rate_limit import (
+    RateLimiter,
+    RateLimitRule,
+    RateLimitScope,
+    RateLimitType,
+    RateLimitKind,
+    EnforceMode,
+)
 from logging import getLogger
 
 logger = getLogger(__name__)
 
 
+def _ws_connections_used(rate_limiter):
+    """Read the ws_connections window's `used` count from a core snapshot."""
+    for window in rate_limiter.snapshot().windows:
+        if window.type == RateLimitType.WS_CONNECTIONS.value:
+            return window.used
+    raise AssertionError('no ws_connections window in snapshot')
+
+
+# A tiny ws_connections rule: 2 attempts per 0.4s window, SLEEP-enforced so the
+# core throttles a connect storm instead of raising.
+_TINY_WS_CONNECTIONS_RULE = RateLimitRule(
+    RateLimitScope.IP, RateLimitType.WS_CONNECTIONS, 0.4, 2,
+    RateLimitKind.COUNT, EnforceMode.SLEEP)
+
+
 @pytest.mark.asyncio
 async def test_stream_connect_is_gated_by_connection_limiter():
-    # 2 connections allowed per 0.4s window
-    limiter = SlidingWindowRateLimiter(max_count=2, window=0.4)
+    # Core configured with a TINY ws_connections rule: 2 attempts / 0.4s.
+    rate_limiter = RateLimiter(rules=(_TINY_WS_CONNECTIONS_RULE,))
 
     async def on_message(_):
         return None
 
     def policy(info):
-        return False, 0.0  # retry immediately; the limiter must throttle
+        return False, 0.0  # retry immediately; the core must throttle
 
     # Point at a port nobody is listening on so connect() fails fast and retries
     stream = Stream(
@@ -27,21 +50,25 @@ async def test_stream_connect_is_gated_by_connection_limiter():
         retry_policy=policy,
         timeout=0.1,
         logger=logger,
-        connection_limiter=limiter
+        rate_limiter=rate_limiter
     )
     stream.connect()
     await asyncio.sleep(0.5)
     await stream.close()
     # With 2/0.4s, far fewer than the unbounded storm would produce
-    assert len(limiter._events) <= 4
+    assert _ws_connections_used(rate_limiter) <= 4
 
 
 @pytest.mark.asyncio
 async def test_close_while_parked_in_connection_throttle_is_clean():
-    # Pre-fill a 1-slot, long-window limiter so the stream's _connect blocks
-    # inside acquire()'s sleep (not in connect()).
-    limiter = SlidingWindowRateLimiter(max_count=1, window=30.0)
-    await limiter.acquire()  # consume the only slot
+    # Pre-fill a 1-slot, long-window ws_connections bucket so the stream's
+    # _connect blocks inside acquire_connection()'s sleep (not in connect()).
+    rate_limiter = RateLimiter(rules=(
+        RateLimitRule(
+            RateLimitScope.IP, RateLimitType.WS_CONNECTIONS, 30.0, 1,
+            RateLimitKind.COUNT, EnforceMode.SLEEP),
+    ))
+    await rate_limiter.acquire_connection()  # consume the only slot
 
     async def on_message(_):
         return None
@@ -51,10 +78,10 @@ async def test_close_while_parked_in_connection_throttle_is_clean():
         on_message=on_message,
         timeout=0.1,
         logger=logger,
-        connection_limiter=limiter
+        rate_limiter=rate_limiter
     )
     stream.connect()
-    # Give the connect task time to reach acquire() and park in its sleep
+    # Give the connect task time to reach acquire_connection() and park
     await asyncio.sleep(0.1)
     # close() cancels the parked task; the CancelledError guard must absorb it
     await stream.close()  # must NOT raise CancelledError
@@ -70,13 +97,6 @@ async def test_message_limiter_enforces_five_per_second():
     assert time.monotonic() - start < 0.2     # first 5 are immediate
     await limiter.acquire()                     # 6th must wait into next window
     assert time.monotonic() - start >= 0.9
-
-
-@pytest.mark.asyncio
-async def test_client_stream_message_rate_is_configurable():
-    from binance import Client
-    client = Client(stream_message_rate=3)
-    assert client._stream_message_rate == 3
 
 
 def test_extract_event_type_handles_documented_shapes():
