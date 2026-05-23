@@ -106,3 +106,22 @@ def test_default_retry_policy_has_floor_and_ceiling():
         delays.append(delay)
     # backoff grows then caps
     assert delays[-1] >= delays[0]
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_guard_throttles_before_sending():
+    from binance.common.rate_limit import WeightRateLimiter
+    client = Client(rate_limit_guard=True)
+    # Tiny budget so the 2nd weight-20 call must wait
+    client._weight_limiter = WeightRateLimiter(limit=20, window=0.4, safety_ratio=1.0)
+
+    with aioresponses() as m:
+        for _ in range(2):
+            m.get('https://api.binance.com/api/v3/exchangeInfo',
+                  status=200, payload={'ok': True},
+                  headers={'X-MBX-USED-WEIGHT-1M': '20'})
+        start = time.monotonic()
+        await client.get_exchange_info()   # weight 20 -> fits
+        await client.get_exchange_info()   # weight 20 -> over budget -> waits ~window
+        elapsed = time.monotonic() - start
+    assert elapsed >= 0.3

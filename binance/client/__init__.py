@@ -15,9 +15,15 @@ from binance.common.constants import (
     DEFAULT_RETRY_POLICY, DEFAULT_STREAM_TIMEOUT,
     WS_CONNECTION_SAFETY,
     WS_CONNECTION_WINDOW,
-    WS_MAX_MESSAGES_PER_SEC
+    WS_MAX_MESSAGES_PER_SEC,
+    DEFAULT_REQUEST_WEIGHT_LIMIT,
+    DEFAULT_REQUEST_WEIGHT_INTERVAL,
+    DEFAULT_WEIGHT_SAFETY_RATIO
 )
-from binance.common.rate_limit import SlidingWindowRateLimiter
+from binance.common.rate_limit import (
+    SlidingWindowRateLimiter,
+    WeightRateLimiter
+)
 from binance.common.types import Timeout
 
 from .base import ClientBase
@@ -42,6 +48,7 @@ class Client(
         stream_retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
         stream_timeout: Timeout = DEFAULT_STREAM_TIMEOUT,
         stream_message_rate: int = WS_MAX_MESSAGES_PER_SEC,
+        rate_limit_guard: bool = False,
         logger: Logger = getLogger(__name__)
     ):
         """Binance API Client constructor
@@ -57,7 +64,11 @@ class Client(
 
         self._used_weight = {}
         self._order_count = {}
-        self._weight_limiter = None
+        self._weight_limiter = WeightRateLimiter(
+            DEFAULT_REQUEST_WEIGHT_LIMIT,
+            DEFAULT_REQUEST_WEIGHT_INTERVAL,
+            DEFAULT_WEIGHT_SAFETY_RATIO
+        ) if rate_limit_guard else None
 
         self.key(api_key)
         self.secret(api_secret)

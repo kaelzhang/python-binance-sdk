@@ -38,7 +38,10 @@ from binance.common.constants import (
     HTTP_IP_BANNED
 )
 
-from binance.common.rate_limit import parse_retry_after
+from binance.common.rate_limit import (
+    parse_retry_after,
+    WeightRateLimiter
+)
 
 from binance.common.types import APIResponse
 
@@ -99,7 +102,7 @@ class ClientBase:
     _request_params: Optional[dict]
     _used_weight: Dict[str, int]
     _order_count: Dict[str, int]
-    _weight_limiter: Any
+    _weight_limiter: Optional[WeightRateLimiter]
 
     def _init_api_session(
         self,
@@ -242,6 +245,7 @@ class ClientBase:
         method: RequestMethod,
         uri: str,
         security_type: SecurityType = SecurityType.NONE,
+        weight: int = 1,
         **kwargs
     ) -> APIResponse:
         need_api_key, need_signed = security_type.value
@@ -256,6 +260,9 @@ class ClientBase:
 
         if need_signed and self._api_secret is None:
             raise APISecretNotDefinedException(uri)
+
+        if self._weight_limiter is not None:
+            await self._weight_limiter.acquire(weight)
 
         req_kwargs = self._get_request_kwargs(
             method, need_signed, **kwargs)

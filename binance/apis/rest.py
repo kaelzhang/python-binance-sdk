@@ -7,6 +7,7 @@ from binance.common.constants import (
     SecurityType,
     RequestMethod
 )
+from binance.common.rate_limit import REST_ENDPOINT_WEIGHTS, depth_weight
 
 # Rest APIs ref:
 # https://github.com/binance-exchange/binance-official-api-docs/blob/master/rest-api.md
@@ -189,14 +190,21 @@ def define_getter(
     method=RequestMethod.GET,
     security_type=SecurityType.NONE
 ):
+    base_weight = REST_ENDPOINT_WEIGHTS.get(path, 1)
+
     def getter(self, **kwargs):
         uri = self._rest_uri(path, version)
         ka = kwargs if params else {}
+        if path == 'depth':
+            weight = depth_weight(int(kwargs.get('limit', 100)))
+        else:
+            weight = base_weight
 
         return self._request(
             method,
             uri,
             security_type,
+            weight=weight,
             **ka
         )
 
