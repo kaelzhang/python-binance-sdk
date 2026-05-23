@@ -146,3 +146,30 @@ STREAM_KEY_RESULT = 'result'
 STREAM_KEY_ERROR = 'error'
 ERROR_KEY_CODE = 'code'
 ERROR_KEY_MESSAGE = 'msg'
+
+# Rate limits — verified 2026-05-23 against Binance Spot API docs
+# ==================================================
+
+# REST (rest-api.md LIMITS, faqs/rate_limits.md)
+HEADER_USED_WEIGHT_PREFIX = 'x-mbx-used-weight-'   # e.g. x-mbx-used-weight-1m
+HEADER_ORDER_COUNT_PREFIX = 'x-mbx-order-count-'   # e.g. x-mbx-order-count-1m
+HEADER_RETRY_AFTER = 'Retry-After'
+
+HTTP_TOO_MANY_REQUESTS = 429
+HTTP_IP_BANNED = 418
+
+DEFAULT_REQUEST_WEIGHT_LIMIT = 6000      # weight / interval / IP (since 2023-08-25)
+DEFAULT_REQUEST_WEIGHT_INTERVAL = 60.0   # seconds
+DEFAULT_WEIGHT_SAFETY_RATIO = 0.9        # only use 90% of the budget client-side
+
+# WebSocket streams (web-socket-streams.md)
+WS_MAX_CONNECTIONS = 300
+WS_CONNECTION_WINDOW = 300.0             # seconds (5 minutes)
+WS_CONNECTION_SAFETY = 290               # stay below the 300 hard cap
+WS_MAX_MESSAGES_PER_SEC = 5
+WS_MESSAGE_WINDOW = 1.0
+WS_MAX_STREAMS_PER_CONNECTION = 1024
+
+# WS-API / stream rate-limit signalling (web-socket-api.md)
+ERROR_CODE_TOO_MANY_REQUESTS = -1003
+EVENT_SERVER_SHUTDOWN = 'serverShutdown'
