@@ -14,7 +14,8 @@ from binance.common.constants import (
     WS_API_HOST,
     DEFAULT_RETRY_POLICY, DEFAULT_STREAM_TIMEOUT,
     WS_CONNECTION_SAFETY,
-    WS_CONNECTION_WINDOW
+    WS_CONNECTION_WINDOW,
+    WS_MAX_MESSAGES_PER_SEC
 )
 from binance.common.rate_limit import SlidingWindowRateLimiter
 from binance.common.types import Timeout
@@ -40,6 +41,7 @@ class Client(
         ws_api_host: str = WS_API_HOST,
         stream_retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
         stream_timeout: Timeout = DEFAULT_STREAM_TIMEOUT,
+        stream_message_rate: int = WS_MAX_MESSAGES_PER_SEC,
         logger: Logger = getLogger(__name__)
     ):
         """Binance API Client constructor
@@ -67,6 +69,7 @@ class Client(
         self._ws_api_host = ws_api_host
         self._stream_retry_policy = stream_retry_policy
         self._stream_timeout = stream_timeout
+        self._stream_message_rate = stream_message_rate
 
         self._connection_limiter = SlidingWindowRateLimiter(
             WS_CONNECTION_SAFETY, WS_CONNECTION_WINDOW)

@@ -94,7 +94,8 @@ class Stream:
         #   because `binance.Stream` is also a public class
         retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
         timeout: Timeout = DEFAULT_STREAM_TIMEOUT,
-        connection_limiter: Optional[SlidingWindowRateLimiter] = None
+        connection_limiter: Optional[SlidingWindowRateLimiter] = None,
+        message_rate: int = WS_MAX_MESSAGES_PER_SEC
     ) -> None:
         # Will be used by `self._emit`
         self._on_message = wrap_event_callback(on_message, ON_MESSAGE, True)
@@ -131,7 +132,7 @@ class Stream:
 
         # message rate limiter: 5 incoming messages / second (verified)
         self._rate_limiter = SlidingWindowRateLimiter(
-            WS_MAX_MESSAGES_PER_SEC, WS_MESSAGE_WINDOW)
+            message_rate, WS_MESSAGE_WINDOW)
 
         # connection-rate guard: stay under 300 attempts / 5 min / IP
         self._connection_limiter = connection_limiter or SlidingWindowRateLimiter(

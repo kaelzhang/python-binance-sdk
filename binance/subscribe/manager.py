@@ -35,6 +35,7 @@ class SubscriptionManager:
     _ws_api_host: str
     _stream_retry_policy: RetryPolicy
     _stream_timeout: Timeout
+    _stream_message_rate: int
     _connection_limiter: SlidingWindowRateLimiter
     _logger: Logger
     _want_user_stream: bool
@@ -127,7 +128,8 @@ class SubscriptionManager:
                 retry_policy=self._stream_retry_policy,
                 timeout=self._stream_timeout,
                 logger=self._logger,
-                connection_limiter=self._connection_limiter
+                connection_limiter=self._connection_limiter,
+                message_rate=self._stream_message_rate
             ).connect()
 
         return self._data_stream
@@ -141,7 +143,8 @@ class SubscriptionManager:
                 retry_policy=self._stream_retry_policy,
                 timeout=self._stream_timeout,
                 logger=self._logger,
-                connection_limiter=self._connection_limiter
+                connection_limiter=self._connection_limiter,
+                message_rate=self._stream_message_rate
             ).connect()
 
         return self._user_stream

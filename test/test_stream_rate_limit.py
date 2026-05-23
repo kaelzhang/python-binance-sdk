@@ -1,4 +1,5 @@
 import asyncio
+import time
 import pytest
 
 from binance import Stream
@@ -58,3 +59,21 @@ async def test_close_while_parked_in_connection_throttle_is_clean():
     # close() cancels the parked task; the CancelledError guard must absorb it
     await stream.close()  # must NOT raise CancelledError
     assert stream._socket is None
+
+
+@pytest.mark.asyncio
+async def test_message_limiter_enforces_five_per_second():
+    limiter = SlidingWindowRateLimiter(max_count=5, window=1.0)
+    start = time.monotonic()
+    for _ in range(5):
+        await limiter.acquire()
+    assert time.monotonic() - start < 0.2     # first 5 are immediate
+    await limiter.acquire()                     # 6th must wait into next window
+    assert time.monotonic() - start >= 0.9
+
+
+@pytest.mark.asyncio
+async def test_client_stream_message_rate_is_configurable():
+    from binance import Client
+    client = Client(stream_message_rate=3)
+    assert client._stream_message_rate == 3
