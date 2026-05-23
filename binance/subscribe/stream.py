@@ -74,6 +74,7 @@ class Stream:
         on_connected (:obj:`Callable`, optional): invoked when the socket is connected
         retry_policy (RetryPolicy): see document
         timeout (float): timeout in seconds to receive the next websocket message
+        connection_limiter (SlidingWindowRateLimiter, optional): shared connection-rate guard. Pass ONE shared instance when running multiple Streams against the same IP so the 300/5min limit is enforced across them; defaults to a per-Stream limiter.
     """
 
     _socket: Optional[ClientConnection]
