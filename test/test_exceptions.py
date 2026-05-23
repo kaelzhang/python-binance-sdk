@@ -119,3 +119,13 @@ def test_too_many_streams_and_stream_rate_limit_exceptions():
     assert rate_limited.code == -1003
     assert rate_limited.retry_after == 88
     assert '-1003' in str(rate_limited)
+
+
+def test_rate_limit_reached_exception_message():
+    from binance.common.exceptions import RateLimitReachedException
+    exc = RateLimitReachedException('account', 'orders', '10s', 7)
+    assert exc.scope == 'account'
+    assert exc.limit_type == 'orders'
+    assert exc.interval == '10s'
+    assert exc.retry_after == 7
+    assert '10s' in str(exc) and 'orders' in str(exc)

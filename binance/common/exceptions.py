@@ -125,6 +125,34 @@ class RateLimitException(StatusException):
         )
 
 
+class RateLimitReachedException(Exception):
+    """Raised proactively (client-side, before sending) when a request would
+    exceed a RAISE-mode rate-limit rule -- fail fast instead of firing a
+    request that Binance will reject with 429.
+    """
+
+    def __init__(
+        self,
+        scope: str,
+        limit_type: str,
+        interval: str,
+        retry_after: int
+    ) -> None:
+        self.scope = scope
+        self.limit_type = limit_type
+        self.interval = interval
+        self.retry_after = retry_after
+
+    def __str__(self) -> str:
+        return format_msg(
+            'rate limit reached for %s %s (%s); retry after ~%s second(s)',
+            self.scope,
+            self.limit_type,
+            self.interval,
+            self.retry_after
+        )
+
+
 class IPBannedException(StatusException):
     """HTTP 418 - IP auto-banned for sending requests after a 429.
 

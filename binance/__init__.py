@@ -26,6 +26,7 @@ from binance.common.exceptions import (
     APISecretNotDefinedException,
     StatusException,
     RateLimitException,
+    RateLimitReachedException,
     IPBannedException,
     TooManyStreamsException,
     StreamRateLimitException,
