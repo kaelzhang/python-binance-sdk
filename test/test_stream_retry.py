@@ -13,6 +13,11 @@ from logging import getLogger
 logger = getLogger(__name__)
 
 
+# This integration test exercises the SDK's recv-timeout -> ping -> reconnect
+# path against a local mock server; the SDK's pong wait is 10s, so the test is
+# legitimately slow (~10-25s). Give it more headroom than the global 30s
+# timeout (which exists to catch genuine hangs in the fast tests).
+@pytest.mark.timeout(60)
 @pytest.mark.asyncio
 async def test_stream_timeout_disconnect_reconnect():
     class Handler:

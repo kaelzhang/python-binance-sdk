@@ -79,14 +79,33 @@ class SocketServer:
             await ws.close(code=1006)
             return
 
-        while self._started:
-            if self._delay:
-                await asyncio.sleep(self._delay)
+        # Drain incoming frames concurrently so aiohttp auto-responds to the
+        # client's PING frames with PONGs. Without reading the socket, the
+        # client's ping wait stalls for its full timeout and the connection is
+        # wrongly treated as stale -- causing multi-second hangs per cycle.
+        async def _drain():
+            try:
+                async for _ in ws:
+                    pass
+            except Exception:
+                pass
 
-            if self._valid_json:
-                await ws.send_str('{"ok":true}')
-            else:
-                await ws.send_str('{"ok":true')
+        drain_task = asyncio.create_task(_drain())
+
+        try:
+            while self._started:
+                if self._delay:
+                    await asyncio.sleep(self._delay)
+
+                if self._valid_json:
+                    await ws.send_str('{"ok":true}')
+                else:
+                    await ws.send_str('{"ok":true')
+        except Exception:
+            # The client went away mid-send; stop quietly.
+            pass
+        finally:
+            drain_task.cancel()
 
     async def _handler(self, request):
         ws = web.WebSocketResponse()
