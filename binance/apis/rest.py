@@ -99,7 +99,10 @@ APIS = [
         name='create_order',
         path='order',
         method=RequestMethod.POST,
-        security_type=SecurityType.TRADE
+        security_type=SecurityType.TRADE,
+
+        # Placing a new order counts against the ORDERS rate limit pool
+        is_order=True
     ),
 
     dict(
@@ -139,7 +142,10 @@ APIS = [
         name='create_oco',
         path='orderList/oco',
         method=RequestMethod.POST,
-        security_type=SecurityType.TRADE
+        security_type=SecurityType.TRADE,
+
+        # Placing a new OCO order list counts against the ORDERS rate limit pool
+        is_order=True
     ),
 
     dict(
@@ -188,7 +194,8 @@ def define_getter(
     params=True,
     version=REST_API_VERSION,
     method=RequestMethod.GET,
-    security_type=SecurityType.NONE
+    security_type=SecurityType.NONE,
+    is_order=False
 ):
     base_weight = REST_ENDPOINT_WEIGHTS.get(path, 1)
 
@@ -205,6 +212,7 @@ def define_getter(
             uri,
             security_type,
             weight=weight,
+            is_order=is_order,
             **ka
         )
 

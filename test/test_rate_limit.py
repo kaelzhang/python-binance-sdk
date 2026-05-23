@@ -136,3 +136,37 @@ async def test_429_sets_snapshot_retry_after():
     snap = client.rate_limit_snapshot()
     assert snap.retry_after is not None and snap.retry_after <= 30
     assert snap.throttled is True
+
+
+@pytest.mark.asyncio
+async def test_order_endpoint_consumes_orders_pool():
+    import re
+    from binance import Client
+    # create_order is a TRADE (signed) endpoint; supply credentials so the
+    # request reaches the rate-limiter core instead of raising on missing keys.
+    client = Client(api_key='k', api_secret='s')
+    with aioresponses() as m:
+        # The order body (incl. signature) is POSTed as form data, so the URL
+        # is just `.../api/v3/order`; match it with a regex.
+        m.post(re.compile(r'.*/api/v3/order(\?.*)?$'),
+               payload={'orderId': 1, 'status': 'NEW'}, status=200,
+               headers={'X-MBX-ORDER-COUNT-10S': '1'})
+        await client.create_order(symbol='BTCUSDT', side='BUY', type='MARKET',
+                                  quantity=1)
+    snap = client.rate_limit_snapshot()
+    orders = [w for w in snap.windows if w.type == 'orders']
+    assert orders and all(w.used >= 1 for w in orders)   # order pool consumed
+
+
+@pytest.mark.asyncio
+async def test_non_order_endpoint_does_not_consume_orders_pool():
+    from binance import Client
+    client = Client()
+    with aioresponses() as m:
+        m.get(_URL + '?symbol=BTCUSDT&limit=100', status=200,
+              payload={'lastUpdateId': 1, 'bids': [], 'asks': []})
+        await client.get_orderbook(symbol='BTCUSDT', limit=100)
+    snap = client.rate_limit_snapshot()
+    orders = [w for w in snap.windows if w.type == 'orders']
+    # A plain market-data GET must never touch the ORDERS pool.
+    assert orders and all(w.used == 0 for w in orders)
