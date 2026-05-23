@@ -134,7 +134,8 @@ class Stream:
 
         self._uri = uri
 
-        # message rate limiter: 5 incoming messages / second (verified)
+        # message rate limiter: defaults to 5 incoming messages / second
+        #   (Binance's documented limit), configurable via `message_rate`
         self._rate_limiter = SlidingWindowRateLimiter(
             message_rate, WS_MESSAGE_WINDOW)
 

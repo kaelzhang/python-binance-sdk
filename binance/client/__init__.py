@@ -57,6 +57,8 @@ class Client(
             api_key (str): API Key
             api_secret (str): API Secret
             requests_params (:obj:`dict`, optional): Dictionary of requests params to use for all calls
+            stream_message_rate (:obj:`int`, optional): max outgoing WebSocket messages per second. Defaults to 5 (Binance's documented limit).
+            rate_limit_guard (:obj:`bool`, optional): when True, proactively throttle REST requests with a client-side weight budget to stay under the per-IP cap. Defaults to False.
         """
 
         self._api_key = None

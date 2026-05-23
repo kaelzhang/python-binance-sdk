@@ -192,6 +192,8 @@ All arguments of the constructor Client are keyworded arguments and all optional
 - **request_params?** `dict=None` global request params for aiohttp
 - **stream_retry_policy?** `Callable[[int, Exception], Tuple[bool, int, bool]]` retry policy for websocket stream. For details, see [RetryPolicy](#retrypolicy)
 - **stream_timeout?** `int=5` seconds util the stream reach an timeout error
+- **stream_message_rate?** `int=5` max outgoing WebSocket messages per second. Binance's documented limit is 5/s (including ping/pong and subscribe/unsubscribe). Lower it for extra safety margin. See [Rate Limits](#rate-limits).
+- **rate_limit_guard?** `bool=False` when `True`, the client proactively throttles REST requests with a client-side weight budget (6000/min, used at 90% for safety) to stay under Binance's per-IP weight cap. Off by default. See [Rate Limits](#rate-limits).
 - **api_host?** `str='https://api.binance.com'` to specify another API host for rest API requests. 这个参数的存在意义，使用方法，不累述，你懂的。
 - **stream_host?** `str='wss://stream.binance.com'` to specify another stream host for websocket connections.
 - **ws_api_host?** `str='wss://ws-api.binance.com/ws-api/v3'` to specify WebSocket API host for user stream subscription.
@@ -399,6 +401,65 @@ abandon, delay = stream_retry_policy(info)
 # Otherwise:
 # - The client will asyncio.sleep `delay` seconds before reconnecting.
 ```
+
+Since `3.2.0` the default policy is a bounded, jittered exponential backoff (≈0.5s → 30s, never abandoning). See [Rate Limits](#rate-limits) for why.
+
+## Rate Limits
+
+`binance-sdk` is built to respect [Binance's documented rate limits](https://developers.binance.com/docs/binance-spot-api-docs/rest-api/limits) and to avoid the `429` → `418` IP-ban escalation (which can take a live trading system offline for up to 3 days).
+
+### REST: typed errors and used-weight visibility
+
+The rate-limit headers on every REST response are captured. After any call you can read the latest values:
+
+```py
+await client.get_exchange_info()
+
+client.used_weight   # e.g. {'1m': 20}   (from X-MBX-USED-WEIGHT-*)
+client.order_count   # e.g. {'10s': 3}   (from X-MBX-ORDER-COUNT-*)
+```
+
+When Binance throttles you, the client raises a typed exception carrying `retry_after` (seconds) so your strategy can back off precisely:
+
+```py
+from binance import RateLimitException, IPBannedException
+
+try:
+    await client.create_order(...)
+except IPBannedException as e:
+    # HTTP 418 — your IP is banned; wait it out
+    await asyncio.sleep(e.retry_after)
+except RateLimitException as e:
+    # HTTP 429 — too many requests; back off
+    await asyncio.sleep(e.retry_after)
+```
+
+Both subclass `StatusException`, so existing `except StatusException` handlers keep working. The client **never auto-retries** (a blind retry of an order could double-fill) — it surfaces `retry_after` and lets you decide.
+
+### REST: optional proactive throttle
+
+Pass `rate_limit_guard=True` to make the client sleep *before* sending a request that would exceed a client-side weight budget (6000 weight/min, used at 90% for safety), keyed off per-endpoint weights. Recommended for live trading:
+
+```py
+client = Client(api_key, api_secret, rate_limit_guard=True)
+```
+
+The static weight table is a conservative pre-throttle; the authoritative truth is always the `X-MBX-USED-WEIGHT` headers above.
+
+### WebSocket: connection, message, and stream limits
+
+- **Connections** are gated to stay under Binance's 300 attempts / 5 min / IP limit (a shared limiter, default cap 290/5min), independent of your `stream_retry_policy`.
+- **Outgoing messages** are limited to 5/second by default (Binance's documented limit, including ping/pong and subscribe/unsubscribe). Configure with `stream_message_rate`.
+- **Streams per connection** are capped at Binance's 1024 limit; exceeding it raises `TooManyStreamsException` (carrying `requested`/`limit`) instead of failing opaquely.
+- **`serverShutdown`** events (sent ~10 min before Binance's 24h forced disconnect) trigger a proactive reconnect.
+
+WebSocket-API (user stream) rate-limit errors (code `-1003`, status `418`/`429`) raise `StreamRateLimitException` (a subclass of `StreamSubscribeException`) carrying `retry_after`.
+
+### Behavioral changes in 3.2.0
+
+- **Reconnect backoff is now bounded and jittered** (≈0.5s → 30s, never abandoning) instead of the previous near-zero-delay loop. Reconnection is intentionally slower but cannot trigger an IP ban; override with your own `stream_retry_policy` if you need different behavior.
+- `429`/`418` now raise `RateLimitException`/`IPBannedException` (subclasses of `StatusException`).
+- The WebSocket outgoing-message rate now defaults to the documented 5/s.
 
 ## OrderBookHandlerBase(**kwargs)
 
