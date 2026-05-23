@@ -82,3 +82,19 @@ async def test_user_stream_no_secret():
 
     with pytest.raises(APISecretNotDefinedException, match='api_secret'):
         await client.subscribe(SubType.USER)
+
+
+def test_rate_limit_exception_carries_retry_after():
+    from binance.common.exceptions import RateLimitException, IPBannedException
+
+    class _Resp:
+        url = 'https://api.binance.com/api/v3/order'
+        status = 429
+    exc = RateLimitException(_Resp(), '{"code":-1003,"msg":"Too many requests"}', retry_after=120)
+    assert exc.retry_after == 120
+    assert exc.status == 429
+    assert '429' in str(exc)
+
+    banned = IPBannedException(_Resp(), '{"code":-1003,"msg":"banned"}', retry_after=3000)
+    assert banned.retry_after == 3000
+    assert '418' in str(banned) or 'banned' in str(banned).lower()

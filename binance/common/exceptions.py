@@ -101,6 +101,74 @@ class StatusException(Exception):
         )
 
 
+class RateLimitException(StatusException):
+    """HTTP 429 - request weight or order-count rate limit exceeded.
+
+    `retry_after` is the number of seconds the caller MUST wait before
+    retrying, taken from the `Retry-After` response header.
+    """
+
+    def __init__(self, response, text, retry_after=None) -> None:
+        super().__init__(response, text)
+        self.retry_after = retry_after
+
+    def __str__(self) -> str:
+        return format_msg(
+            'rate limit exceeded (HTTP 429) for "%s", retry after %s second(s)',
+            self.response.url,
+            self.retry_after
+        )
+
+
+class IPBannedException(StatusException):
+    """HTTP 418 - IP auto-banned for sending requests after a 429.
+
+    `retry_after` is the number of seconds until the ban is lifted.
+    """
+
+    def __init__(self, response, text, retry_after=None) -> None:
+        super().__init__(response, text)
+        self.retry_after = retry_after
+
+    def __str__(self) -> str:
+        return format_msg(
+            'IP banned (HTTP 418) for "%s", banned for %s more second(s)',
+            self.response.url,
+            self.retry_after
+        )
+
+
+class TooManyStreamsException(Exception):
+    """Raised when a single connection would exceed Binance's 1024-stream limit."""
+
+    def __init__(self, requested: int, limit: int) -> None:
+        self.requested = requested
+        self.limit = limit
+
+    def __str__(self) -> str:
+        return format_msg(
+            'requested %s streams on one connection exceeds the Binance limit of %s',
+            self.requested,
+            self.limit
+        )
+
+
+class StreamRateLimitException(StreamSubscribeException):
+    """WebSocket-API rate-limit error (e.g. code -1003) with a retry hint."""
+
+    def __init__(self, code: int, message: str, retry_after=None) -> None:
+        super().__init__(code, message)
+        self.retry_after = retry_after
+
+    def __str__(self) -> str:
+        return format_msg(
+            'stream rate limit (code %s): %s, retry after %s second(s)',
+            self.code,
+            self.message,
+            self.retry_after
+        )
+
+
 class InvalidResponseException(Exception):
     def __init__(
         self,
