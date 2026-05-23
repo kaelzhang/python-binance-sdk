@@ -148,14 +148,15 @@ async def test_order_endpoint_consumes_orders_pool():
     with aioresponses() as m:
         # The order body (incl. signature) is POSTed as form data, so the URL
         # is just `.../api/v3/order`; match it with a regex.
+        # No X-MBX-ORDER-COUNT header: usage can only come from the proactive
+        # is_order=True consumption, so this isolates the tagging path.
         m.post(re.compile(r'.*/api/v3/order(\?.*)?$'),
-               payload={'orderId': 1, 'status': 'NEW'}, status=200,
-               headers={'X-MBX-ORDER-COUNT-10S': '1'})
+               payload={'orderId': 1, 'status': 'NEW'}, status=200)
         await client.create_order(symbol='BTCUSDT', side='BUY', type='MARKET',
                                   quantity=1)
     snap = client.rate_limit_snapshot()
     orders = [w for w in snap.windows if w.type == 'orders']
-    assert orders and all(w.used >= 1 for w in orders)   # order pool consumed
+    assert orders and all(w.used == 1 for w in orders)   # proactively consumed
 
 
 @pytest.mark.asyncio
