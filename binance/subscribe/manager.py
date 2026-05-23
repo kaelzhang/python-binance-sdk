@@ -14,9 +14,7 @@ from binance.common.constants import (
     EVENT_SERVER_SHUTDOWN,
     SubType
 )
-from binance.common.exceptions import (
-    InvalidHandlerException,
-)
+from binance.common.exceptions import InvalidHandlerException
 from binance.common.types import Timeout
 from binance.common.utils import (
     format_msg,
