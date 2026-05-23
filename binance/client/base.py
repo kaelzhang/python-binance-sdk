@@ -39,9 +39,10 @@ from binance.common.constants import (
 )
 
 from binance.common.rate_limit import (
-    parse_retry_after,
-    WeightRateLimiter
+    parse_retry_after
 )
+
+from binance.rate_limit import RateLimiter
 
 from binance.common.types import APIResponse
 
@@ -102,7 +103,7 @@ class ClientBase:
     _request_params: Optional[dict]
     _used_weight: Dict[str, int]
     _order_count: Dict[str, int]
-    _weight_limiter: Optional[WeightRateLimiter]
+    _rate_limiter: RateLimiter
 
     def _init_api_session(
         self,
@@ -224,12 +225,17 @@ class ClientBase:
         response: ClientResponse
     ) -> APIResponse:
         self._capture_rate_limit_headers(response)
+        self._rate_limiter.sync_from_headers(self._used_weight, self._order_count)
 
         status = response.status
         if status == HTTP_TOO_MANY_REQUESTS:
+            self._rate_limiter.note_retry_after(
+                parse_retry_after(response), response.status)
             raise RateLimitException(
                 response, await response.text(), parse_retry_after(response))
         if status == HTTP_IP_BANNED:
+            self._rate_limiter.note_retry_after(
+                parse_retry_after(response), response.status)
             raise IPBannedException(
                 response, await response.text(), parse_retry_after(response))
         if not str(status).startswith('2'):
@@ -246,6 +252,7 @@ class ClientBase:
         uri: str,
         security_type: SecurityType = SecurityType.NONE,
         weight: int = 1,
+        is_order: bool = False,
         **kwargs
     ) -> APIResponse:
         need_api_key, need_signed = security_type.value
@@ -261,8 +268,7 @@ class ClientBase:
         if need_signed and self._api_secret is None:
             raise APISecretNotDefinedException(uri)
 
-        if self._weight_limiter is not None:
-            await self._weight_limiter.acquire(weight)
+        await self._rate_limiter.acquire_rest(weight=weight, is_order=is_order)
 
         req_kwargs = self._get_request_kwargs(
             method, need_signed, **kwargs)

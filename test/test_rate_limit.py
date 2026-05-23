@@ -109,19 +109,30 @@ def test_default_retry_policy_has_floor_and_ceiling():
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_guard_throttles_before_sending():
-    from binance.common.rate_limit import WeightRateLimiter
-    client = Client(rate_limit_guard=True)
-    # Tiny budget so the 2nd weight-20 call must wait
-    client._weight_limiter = WeightRateLimiter(limit=20, window=0.4, safety_ratio=1.0)
-
+async def test_rate_limit_snapshot_reflects_used_weight():
+    from binance import Client
+    client = Client()
     with aioresponses() as m:
-        for _ in range(2):
-            m.get('https://api.binance.com/api/v3/exchangeInfo',
-                  status=200, payload={'ok': True},
-                  headers={'X-MBX-USED-WEIGHT-1M': '20'})
-        start = time.monotonic()
-        await client.get_exchange_info()   # weight 20 -> fits
-        await client.get_exchange_info()   # weight 20 -> over budget -> waits ~window
-        elapsed = time.monotonic() - start
-    assert elapsed >= 0.3
+        m.get(_URL + '?symbol=BTCUSDT', status=200,
+              headers={'X-MBX-USED-WEIGHT-1M': '4321'},
+              payload={'lastUpdateId': 1, 'bids': [], 'asks': []})
+        await client.get(_URL, symbol='BTCUSDT')
+    snap = client.rate_limit_snapshot()
+    weight = [w for w in snap.windows if w.type == 'request_weight'][0]
+    assert weight.used == 4321
+    assert weight.source == 'header'
+
+
+@pytest.mark.asyncio
+async def test_429_sets_snapshot_retry_after():
+    from binance import Client, RateLimitException
+    client = Client()
+    with aioresponses() as m:
+        m.get(_URL + '?symbol=BTCUSDT', status=429,
+              headers={'Retry-After': '30'},
+              payload={'code': -1003, 'msg': 'too many'})
+        with pytest.raises(RateLimitException):
+            await client.get(_URL, symbol='BTCUSDT')
+    snap = client.rate_limit_snapshot()
+    assert snap.retry_after is not None and snap.retry_after <= 30
+    assert snap.throttled is True

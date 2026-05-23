@@ -15,15 +15,12 @@ from binance.common.constants import (
     DEFAULT_RETRY_POLICY, DEFAULT_STREAM_TIMEOUT,
     WS_CONNECTION_SAFETY,
     WS_CONNECTION_WINDOW,
-    WS_MAX_MESSAGES_PER_SEC,
-    DEFAULT_REQUEST_WEIGHT_LIMIT,
-    DEFAULT_REQUEST_WEIGHT_INTERVAL,
-    DEFAULT_WEIGHT_SAFETY_RATIO
+    WS_MAX_MESSAGES_PER_SEC
 )
 from binance.common.rate_limit import (
-    SlidingWindowRateLimiter,
-    WeightRateLimiter
+    SlidingWindowRateLimiter
 )
+from binance.rate_limit import RateLimiter
 from binance.common.types import Timeout
 
 from .base import ClientBase
@@ -48,7 +45,7 @@ class Client(
         stream_retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
         stream_timeout: Timeout = DEFAULT_STREAM_TIMEOUT,
         stream_message_rate: int = WS_MAX_MESSAGES_PER_SEC,
-        rate_limit_guard: bool = False,
+        rate_limit_guard: bool = True,
         logger: Logger = getLogger(__name__)
     ):
         """Binance API Client constructor
@@ -58,7 +55,7 @@ class Client(
             api_secret (str): API Secret
             requests_params (:obj:`dict`, optional): Dictionary of requests params to use for all calls
             stream_message_rate (:obj:`int`, optional): max outgoing WebSocket messages per second. Defaults to 5 (Binance's documented limit).
-            rate_limit_guard (:obj:`bool`, optional): when True, proactively throttle REST requests with a client-side weight budget to stay under the per-IP cap. Defaults to False.
+            rate_limit_guard (:obj:`bool`, optional): when True, proactively throttle REST requests with a client-side weight/raw/order budget to stay under the per-IP and per-account caps. When False, usage is still tracked (so monitoring works) but requests are never delayed. Defaults to True.
         """
 
         self._api_key = None
@@ -66,11 +63,7 @@ class Client(
 
         self._used_weight = {}
         self._order_count = {}
-        self._weight_limiter = WeightRateLimiter(
-            DEFAULT_REQUEST_WEIGHT_LIMIT,
-            DEFAULT_REQUEST_WEIGHT_INTERVAL,
-            DEFAULT_WEIGHT_SAFETY_RATIO
-        ) if rate_limit_guard else None
+        self._rate_limiter = RateLimiter(enabled=bool(rate_limit_guard))
 
         self.key(api_key)
         self.secret(api_secret)
@@ -101,6 +94,13 @@ class Client(
     @property
     def logger(self) -> Logger:
         return self._logger
+
+    def rate_limit_snapshot(self):
+        """Return a point-in-time RateLimitSnapshot of all rate-limit pools.
+
+        Read-only and local (no network); safe to poll from a monitoring loop.
+        """
+        return self._rate_limiter.snapshot()
 
     def key(self, key):
         """Defines or changes api key. This method is unnecessary if we only request APIs of `SecurityType.NONE`
