@@ -288,6 +288,13 @@ class SubscriptionManager:
             return
 
         params = self._ws_api_signature_params()
+        # session.logon costs 2 request weight, but we deliberately do NOT
+        # proactively acquire it here: this runs inside the on_connected
+        # callback, where a RAISE/SLEEP from the limiter could stall or break
+        # reconnection. The logon RESPONSE carries an authoritative `rateLimits`
+        # array that the on_response hook (_reconcile_ws_api_rate_limits) folds
+        # into the shared core, so the +2 is reconciled immediately after logon
+        # (once per connection).
         await self._user_stream.send({
             'method': WS_API_METHOD_SESSION_LOGON,
             'params': params
