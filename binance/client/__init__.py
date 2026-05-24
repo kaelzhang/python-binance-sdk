@@ -26,6 +26,36 @@ class Client(
     WapiAPIGetters,
     SubscriptionManager
 ):
+    """Async Binance REST + WebSocket client — the primary public entry point.
+
+    Combines four building blocks via multiple inheritance:
+
+    - ``ClientBase``: holds API credentials, signs and sends aiohttp requests,
+      captures rate-limit response headers, and drives the ``RateLimiter``.
+    - ``RestAPIGetters``: generated async methods for every ``/api/`` REST
+      endpoint (e.g. ``ping``, ``get_orderbook``, ``create_order``).
+    - ``WapiAPIGetters``: generated async methods for the deprecated
+      ``/wapi/`` and ``/sapi/`` endpoints (withdrawals, sub-accounts, etc.).
+    - ``SubscriptionManager``: manages WebSocket market-data and user-data
+      stream connections via ``subscribe()`` / ``unsubscribe()``.
+
+    Typical usage::
+
+        client = Client(api_key='KEY', api_secret='SECRET')
+
+        # REST call — awaitable coroutine
+        info = await client.get_exchange_info()
+
+        # Subscribe to a trade stream and attach a handler
+        client.handler(on_trade)
+        await client.subscribe('btcusdt@trade')
+
+        # Inspect rate-limit usage without a network round-trip
+        snap = client.rate_limit_snapshot()
+
+    See ``__init__`` for the full list of constructor keyword arguments and
+    ``rate_limit_snapshot`` for monitoring rate-limit budgets.
+    """
     def __init__(
         self,
         api_key=None,
@@ -81,6 +111,12 @@ class Client(
 
     @property
     def logger(self) -> Logger:
+        """The ``logging.Logger`` instance used by this client.
+
+        Defaults to the logger named after the ``binance.client`` module.
+        Pass a custom ``Logger`` to the constructor to route log output
+        through a different handler or level.
+        """
         return self._logger
 
     def rate_limit_snapshot(self) -> RateLimitSnapshot:

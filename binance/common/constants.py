@@ -10,11 +10,63 @@ KLINE_TYPE_PREFIX = 'kline_'
 
 
 class Enum(_Enum):
+    """Base enum class that casts to its string value when converted to `str`.
+
+    All project enums extend this class so that an enum member can be used
+    directly in string contexts (e.g. query parameters, JSON bodies) without
+    explicit `.value` access.  The string representation of any member is
+    its raw value, e.g. `str(OrderSide.BUY) == 'BUY'`.
+    """
+
     def __str__(self) -> str:
         return str(self.value)
 
 
 class SubType(Enum):
+    """WebSocket stream subscription types supported by the Binance SDK.
+
+    Each member is a `str` enum so it equals its string value, e.g.
+    `SubType.TRADE == 'trade'`.  Members are passed as the first argument to
+    `client.subscribe(subtype, ...)`.  Required and optional per-type
+    parameters are documented in the README's SubType section and summarised
+    below.
+
+    Member families:
+
+    Candlestick / kline streams (require `symbol` and `interval`):
+        KLINE: Candlestick updates in UTC.
+        KLINE_UTC8: Candlestick updates anchored to UTC+8 (Asia/Shanghai).
+
+    Per-symbol streams (require `symbol`):
+        TRADE: Individual trade events as they occur.
+        AGG_TRADE: Aggregated trade events (multiple trades at the same price
+            and direction collapsed into one event).
+        BOOK_TICKER: Best bid/ask price and quantity for a symbol.
+        AVG_PRICE: Current average price over a rolling window.
+        MINI_TICKER: Compact 24-hour rolling-window statistics.
+        TICKER: Full 24-hour rolling-window statistics.
+        ORDER_BOOK: Managed local order book depth stream (requires `symbol`;
+            accepts an optional `updateInterval` of `100` or `1000` ms,
+            defaulting to `1000`).
+        PARTIAL_ORDER_BOOK: Partial depth snapshot stream (requires `symbol`
+            and `level` in {5, 10, 20}; optional `updateInterval` of
+            `100` or `1000` ms).
+
+    Per-symbol window ticker (require `symbol` and optional `window`):
+        WINDOW_TICKER: Rolling-window statistics for a configurable window
+            (`TimeFrame.H1`, `TimeFrame.H4`, or `TimeFrame.D1`;
+            default `TimeFrame.H1`).
+
+    All-market streams (no `symbol` argument):
+        ALL_MARKET_MINI_TICKERS: Mini-ticker events for every symbol.
+        ALL_MARKET_WINDOW_TICKERS: Window-ticker events for every symbol
+            (optional `window` argument as above).
+
+    User data stream:
+        USER: Account and order update events for the authenticated user.
+            Requires a valid API key to have been configured on the client.
+    """
+
     KLINE = 'kline'
     KLINE_UTC8 = 'klineUTC8'
 
@@ -44,6 +96,27 @@ RETRY_MAX_DELAY = 30.0
 
 
 def DEFAULT_RETRY_POLICY(info: RetryInfo) -> RetryPolicyStrategy:
+    """Bounded exponential backoff with full jitter — the recommended stream retry policy.
+
+    Implements a "full jitter" exponential backoff capped at `RETRY_MAX_DELAY`
+    (30 s).  The delay for the n-th failure is drawn uniformly from the interval
+    [ceiling/2, ceiling], where `ceiling = min(30, 2^(n-1))` seconds.  The policy
+    never abandons, so streams will keep reconnecting indefinitely.
+
+    Combined with the per-IP connection limiter, this strategy stays safely
+    below the Binance limit of 300 connections per 5 minutes.
+
+    This function conforms to the `aioretry` `RetryPolicyStrategy` protocol and
+    is used as the default value of `Client(stream_retry_policy=...)`.
+
+    Args:
+        info: An `aioretry.RetryInfo` instance.  `info.fails` is the count of
+            consecutive failures seen so far (1-based on the first retry).
+
+    Returns:
+        A tuple `(abandon, delay)` where `abandon` is always `False` and
+        `delay` is the number of seconds to wait before the next attempt.
+    """
     # Bounded exponential backoff with full jitter and a floor, never abandoning.
     # Combined with the per-IP connection limiter this cannot breach 300/5min.
     ceiling = min(RETRY_MAX_DELAY, RETRY_BASE_DELAY * (2 ** min(info.fails - 1, 5)))
@@ -52,6 +125,19 @@ def DEFAULT_RETRY_POLICY(info: RetryInfo) -> RetryPolicyStrategy:
 
 
 def NO_RETRY_POLICY(_) -> RetryPolicyStrategy:
+    """Retry policy that immediately abandons on the first failure.
+
+    Returns `(True, 0)` unconditionally, causing `aioretry` to abandon the
+    operation without waiting.  Use this as `Client(stream_retry_policy=NO_RETRY_POLICY)`
+    when the application wants to handle stream disconnections itself rather
+    than having the SDK silently reconnect.
+
+    Args:
+        _: Ignored `aioretry.RetryInfo` argument (required by the protocol).
+
+    Returns:
+        A tuple `(abandon=True, delay=0)`, signalling immediate abandonment.
+    """
     return True, 0
 
 
@@ -92,6 +178,31 @@ ATOM = {}
 
 
 class SecurityType(Enum):
+    """REST endpoint authentication requirements.
+
+    Each member is a `(need_api_key, need_signed)` tuple that the request
+    builder inspects to decide which credentials to attach.  Because this
+    class inherits from `Enum` (which returns `str(self.value)`), the string
+    representation is the tuple's repr, not typically used in wire messages
+    directly.
+
+    Members:
+        NONE: No credentials required — public market data endpoints.
+            Value: (False, False).
+        TRADE: Requires an API key and an HMAC-SHA256 signature.  Used for
+            order placement and management endpoints.
+            Value: (True, True).
+        USER_DATA: Requires an API key and a signature.  Used for account
+            information and trade history endpoints.
+            Value: (True, True).
+        USER_STREAM: Requires only an API key (no signature).  Used for
+            managing user-data stream listen keys.
+            Value: (True, False).
+        MARKET_DATA: Requires only an API key (no signature).  Used for
+            some historical market-data endpoints.
+            Value: (True, False).
+    """
+
     # {TYPE} = (NEED_API_KEY, NEED_SIGNATURE)
     NONE = (False, False)
     TRADE = (True, True)
@@ -101,6 +212,18 @@ class SecurityType(Enum):
 
 
 class RequestMethod(Enum):
+    """HTTP verbs used when defining REST API endpoints.
+
+    Each member is a `str` enum whose value is the lowercase method name as
+    expected by `aiohttp.ClientSession` (e.g. `RequestMethod.GET == 'get'`).
+
+    Members:
+        GET: HTTP GET — used for read-only data retrieval.
+        POST: HTTP POST — used for creating resources (e.g. placing orders).
+        PUT: HTTP PUT — used for updating resources (e.g. renewing listen keys).
+        DELETE: HTTP DELETE — used for removing resources (e.g. cancelling orders).
+    """
+
     GET = 'get'
     POST = 'post'
     PUT = 'put'
@@ -108,11 +231,44 @@ class RequestMethod(Enum):
 
 
 class OrderSide(Enum):
+    """Direction of a Binance order.
+
+    Each member is a `str` enum that equals its wire value, e.g.
+    `OrderSide.BUY == 'BUY'`.
+
+    Members:
+        BUY: Purchase the base asset (open a long position).
+        SELL: Sell the base asset (close a long or open a short position).
+    """
+
     BUY = 'BUY'
     SELL = 'SELL'
 
 
 class OrderType(Enum):
+    """Binance order execution type.
+
+    Each member is a `str` enum that equals its wire value, e.g.
+    `OrderType.LIMIT == 'LIMIT'`.  Different order types require different
+    combinations of parameters (price, quantity, stopPrice, etc.) as
+    documented in the Binance REST API reference.
+
+    Members:
+        LIMIT: Limit order — executes at `price` or better; requires `price`
+            and `timeInForce`.
+        MARKET: Market order — executes immediately at the best available
+            price; requires `quantity` or `quoteOrderQty`.
+        STOP_LOSS: Stop-market order — becomes a market order once
+            `stopPrice` is triggered.
+        STOP_LOSS_LIMIT: Stop-limit order — becomes a limit order once
+            `stopPrice` is triggered; requires `price` and `timeInForce`.
+        TAKE_PROFIT: Take-profit market order — triggered by `stopPrice`.
+        TAKE_PROFIT_LIMIT: Take-profit limit order — triggered by
+            `stopPrice`; requires `price` and `timeInForce`.
+        LIMIT_MAKER: Post-only limit order — rejected (not queued) if it
+            would execute immediately as a taker; used for maker-only strategies.
+    """
+
     LIMIT = 'LIMIT'
     MARKET = 'MARKET'
     STOP_LOSS = 'STOP_LOSS'
@@ -123,12 +279,42 @@ class OrderType(Enum):
 
 
 class OrderRespType(Enum):
+    """Controls how much detail the Binance REST API returns after placing an order.
+
+    Each member is a `str` enum that equals its wire value, e.g.
+    `OrderRespType.ACK == 'ACK'`.  Passed as the `newOrderRespType` parameter
+    to order-creation endpoints.
+
+    Members:
+        ACK: Minimal response — returns only `orderId`, `clientOrderId`, and
+            status confirmation.  Fastest acknowledgement with no fill details.
+        RESULT: Returns order status and cumulative fill quantities, but not
+            individual fill records.
+        FULL: Returns the complete order response including all individual
+            fill records (`fills` list).  Default for MARKET and LIMIT orders.
+    """
+
     ACK = 'ACK'
     RESULT = 'RESULT'
     FULL = 'FULL'
 
 
 class TimeInForce(Enum):
+    """Specifies how long a Binance limit order remains active before it is cancelled.
+
+    Each member is a `str` enum that equals its wire value, e.g.
+    `TimeInForce.GTC == 'GTC'`.  Required for `LIMIT`, `STOP_LOSS_LIMIT`, and
+    `TAKE_PROFIT_LIMIT` order types.
+
+    Members:
+        GTC: Good Till Cancelled — the order stays open until it is fully
+            filled or explicitly cancelled by the user.
+        IOC: Immediate Or Cancel — the order executes immediately for
+            whatever quantity is available, and the remainder is cancelled.
+        FOK: Fill Or Kill — the order must be filled in its entirety
+            immediately or it is entirely cancelled (no partial fills).
+    """
+
     GTC = 'GTC'
     IOC = 'IOC'
     FOK = 'FOK'

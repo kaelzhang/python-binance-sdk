@@ -1,3 +1,12 @@
+"""Per-pool runtime state and enforcement.
+
+:class:`RateLimitBucket` is the live counter for a single
+:class:`~binance.rate_limit.types.RateLimitRule`: a sliding window for
+``WEIGHT``/``COUNT`` pools or a current-count ceiling for ``CAP`` pools. The
+:class:`~binance.rate_limit.core.RateLimiter` owns one bucket per pool and drives
+them; application code normally goes through the limiter, not buckets directly.
+"""
+
 import asyncio
 import time
 from typing import List, Optional, Tuple
@@ -35,14 +44,22 @@ class RateLimitBucket:
 
     @property
     def rule(self) -> RateLimitRule:
+        """The immutable :class:`RateLimitRule` this bucket was built from."""
         return self._rule
 
     @property
     def effective_limit(self) -> int:
+        """The cap actually enforced: the (possibly exchangeInfo-updated) limit
+        times the rule's ``safety_ratio``, floored at ``1``. This is what
+        ``acquire``/``reserve`` check against, and what a snapshot reports as
+        ``limit`` -- it can be lower than Binance's documented number."""
         return max(1, int(self._limit * self._rule.safety_ratio))
 
     @property
     def pending(self) -> int:
+        """How many callers are currently inside ``acquire`` waiting on this
+        bucket (incremented for the whole acquire attempt, including any
+        ``SLEEP`` wait). ``0`` when nothing is contending."""
         return self._pending
 
     def _authoritative_used(self, now: float) -> Optional[int]:
@@ -55,6 +72,11 @@ class RateLimitBucket:
 
     @property
     def has_authoritative(self) -> bool:
+        """Whether a still-fresh authoritative reading (from :meth:`sync`)
+        currently backs this bucket. A synced value is trusted only for one
+        ``interval_seconds``; after that the server window has rolled and it is
+        ignored. A snapshot reports ``source='header'`` when this is ``True``,
+        else ``'client'``."""
         return self._authoritative_used(time.monotonic()) is not None
 
     def _prune(self, now: float) -> None:
@@ -71,17 +93,44 @@ class RateLimitBucket:
 
     @property
     def used(self) -> int:
+        """Current usage. For ``CAP`` buckets this is the live reserved count;
+        for windowed (``WEIGHT``/``COUNT``) buckets it is the pruned in-window
+        total, taken as ``max(local estimate, fresh authoritative reading)`` so
+        a server header can only ever raise the figure, never hide real usage.
+        """
         if self._rule.kind == RateLimitKind.CAP:
             return self._count
         return self._windowed_used(time.monotonic())
 
     def record(self, cost: int = 1) -> None:
+        """Account ``cost`` against the window without any limit check.
+
+        Used in track-only / disabled-guard mode so monitoring still climbs.
+        ``cost`` is clamped to at least ``1``. No-op semantics for ``CAP``
+        buckets is not intended -- use :meth:`reserve`/:meth:`release` there.
+        """
         self._events.append((time.monotonic(), max(1, int(cost))))
 
     def sync(self, authoritative_used: int) -> None:
+        """Reconcile against an authoritative usage figure from Binance.
+
+        Stamps the reading with the current time; it then overrides the local
+        estimate (via ``max``) only for one ``interval_seconds``, after which it
+        is treated as stale because the server's window has rolled. Negative
+        inputs are clamped to ``0``.
+
+        Args:
+            authoritative_used: The used weight/count reported by a response
+                header (e.g. ``X-MBX-USED-WEIGHT-1m``) for this pool's interval.
+        """
         self._authoritative = (time.monotonic(), max(0, int(authoritative_used)))
 
     def set_limit(self, limit: int) -> None:
+        """Override the documented limit (e.g. from ``exchangeInfo``).
+
+        The new value still has ``safety_ratio`` applied via
+        :attr:`effective_limit`. Clamped to at least ``1``.
+        """
         self._limit = max(1, int(limit))
 
     def _blocked_wait(self, now: float) -> float:
@@ -104,6 +153,29 @@ class RateLimitBucket:
         return max(1, int(self._blocked_wait(now)) + 1)
 
     async def acquire(self, cost: int = 1) -> None:
+        """Account ``cost`` against the window, enforcing the rule on overflow.
+
+        If there is headroom the cost is recorded and this returns immediately.
+        Otherwise the behaviour follows the rule's :class:`EnforceMode`:
+        ``TRACK`` records anyway and returns; ``RAISE`` raises
+        :class:`~binance.common.exceptions.RateLimitReachedException`; ``SLEEP``
+        ``await``\\s until the oldest in-window event expires, then retries (it
+        never busy-spins -- waits are floored at a small minimum).
+
+        ``cost`` is clamped to at least ``1``. A single ``cost`` larger than the
+        whole effective limit can never fit, so it fails fast with
+        ``RateLimitReachedException`` instead of blocking forever, regardless of
+        mode. Intended for ``WEIGHT``/``COUNT`` buckets; use
+        :meth:`reserve`/:meth:`release` for ``CAP`` buckets.
+
+        Args:
+            cost: Units to consume -- request weight for ``WEIGHT`` pools, or
+                ``1`` per event for ``COUNT`` pools.
+
+        Raises:
+            RateLimitReachedException: In ``RAISE`` mode when over budget, or in
+                any mode when ``cost`` exceeds the whole effective limit.
+        """
         cost = max(1, int(cost))
         # A single request larger than the whole budget can never be admitted;
         # fail fast instead of blocking forever.
@@ -136,10 +208,27 @@ class RateLimitBucket:
 
     # CAP-only -----------------------------------------------------------
     def reserve(self, projected_total: int) -> None:
+        """Set a ``CAP`` bucket's current count to ``projected_total`` (absolute).
+
+        This is a set, not an increment: callers compute the intended new total
+        and reserve it, which makes the operation idempotent under resubscribe.
+
+        Args:
+            projected_total: The new current count (clamped to >= 0).
+
+        Raises:
+            TooManyStreamsException: If ``projected_total`` exceeds the effective
+                cap (carrying the requested total and the limit).
+        """
         projected_total = max(0, int(projected_total))
         if projected_total > self.effective_limit:
             raise TooManyStreamsException(projected_total, self.effective_limit)
         self._count = projected_total
 
     def release(self, count: int) -> None:
+        """Decrement a ``CAP`` bucket's current count by ``count``.
+
+        Floored at ``0``; ``count`` is clamped to >= 0. The inverse of the
+        reserve step taken when streams are removed from a connection.
+        """
         self._count = max(0, self._count - max(0, int(count)))

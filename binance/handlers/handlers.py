@@ -17,6 +17,18 @@ from .base import Handler
 
 
 class HandlerExceptionHandlerBase(Handler):
+    """Base handler for exceptions raised by other stream handlers.
+
+    When a handler's ``receive`` method raises an exception, the SDK routes
+    that exception to every registered instance of this class instead of
+    propagating it.  Subclass this and override ``receive`` to implement
+    custom error-reporting or recovery logic.
+
+    The default implementation (provided here) prints the current timestamp
+    together with the full traceback to *stderr* and returns the exception
+    object unchanged.
+    """
+
     def receive(
         _,
         e: Exception,
@@ -60,6 +72,19 @@ TRADE_COLUMNS = TRADE_COLUMNS_MAP.keys()
 
 
 class TradeHandlerBase(Handler):
+    """Base handler for the ``SubType.TRADE`` (individual trade) stream.
+
+    Receives one message per trade that executes on Binance.  Each payload
+    describes a single matched trade, including the trade ID, buyer/seller
+    order IDs, price, quantity, trade time, and whether the buyer is the
+    market maker.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    human-readable column names (e.g. ``trade_id``, ``price``, ``quantity``,
+    ``is_maker``).
+    """
+
     COLUMNS_MAP = TRADE_COLUMNS_MAP
     COLUMNS = TRADE_COLUMNS
 
@@ -75,6 +100,20 @@ AGG_TRADE_COLUMNS = AGG_TRADE_COLUMNS_MAP
 
 
 class AggTradeHandlerBase(Handler):
+    """Base handler for the ``SubType.AGG_TRADE`` (aggregate trade) stream.
+
+    Receives one message per aggregate trade event on Binance.  An aggregate
+    trade bundles all trades that fill at the same price in the same direction
+    at the same moment into a single event, providing the aggregate trade ID,
+    first and last constituent trade IDs, price, quantity, and whether the
+    buyer was the market maker.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    human-readable column names (e.g. ``agg_trade_id``, ``price``,
+    ``quantity``, ``is_maker``).
+    """
+
     COLUMNS_MAP = AGG_TRADE_COLUMNS_MAP
     COLUMNS = AGG_TRADE_COLUMNS
 
@@ -92,6 +131,17 @@ BOOK_TICKER_COLUMNS = BOOK_TICKER_COLUMNS_MAP.keys()
 
 
 class BookTickerHandlerBase(Handler):
+    """Base handler for the ``SubType.BOOK_TICKER`` (best bid/ask) stream.
+
+    Receives one message every time the best bid or ask price/quantity changes
+    for the subscribed symbol.  Each payload contains the update ID, symbol,
+    best bid price and quantity, and best ask price and quantity.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    human-readable column names (e.g. ``best_bid_price``, ``best_ask_price``).
+    """
+
     COLUMNS_MAP = BOOK_TICKER_COLUMNS_MAP
     COLUMNS = BOOK_TICKER_COLUMNS
 
@@ -105,6 +155,20 @@ PARTIAL_ORDER_BOOK_COLUMNS = PARTIAL_ORDER_BOOK_COLUMNS_MAP.keys()
 
 
 class PartialOrderBookHandlerBase(Handler):
+    """Base handler for the ``SubType.PARTIAL_ORDER_BOOK`` (partial depth) stream.
+
+    Receives a snapshot of the top-N levels of the order book for the
+    subscribed symbol (5, 10, or 20 levels depending on the subscription
+    parameter).  Each payload contains separate lists of bids and asks, each
+    entry being a (price, quantity) pair.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+    The internal ``_receive`` splits the raw payload into two ``StockDataFrame``
+    objects — one for bids and one for asks — each with ``price`` and
+    ``quantity`` columns; these are forwarded to ``receive`` as a tuple
+    ``(bids_df, asks_df)``.
+    """
+
     COLUMNS_MAP = PARTIAL_ORDER_BOOK_COLUMNS_MAP
     COLUMNS = PARTIAL_ORDER_BOOK_COLUMNS
 
@@ -142,6 +206,20 @@ KLINE_COLUMNS = KLINE_COLUMNS_MAP.keys()
 
 
 class KlineHandlerBase(Handler):
+    """Base handler for the ``SubType.KLINE`` (candlestick) stream.
+
+    Receives one message per candlestick update for the subscribed symbol and
+    interval.  Each payload includes OHLCV data (open, high, low, close,
+    volume), quote volume, taker volumes, total trades, open/close times, and
+    a flag indicating whether the candle is closed.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+    The internal ``_receive`` flattens the nested kline payload before
+    converting it; the base ``receive`` then returns a ``StockDataFrame`` with
+    human-readable column names (e.g. ``open``, ``high``, ``low``, ``close``,
+    ``volume``, ``is_closed``).
+    """
+
     COLUMNS_MAP = KLINE_COLUMNS_MAP
     COLUMNS = KLINE_COLUMNS
 
@@ -169,6 +247,18 @@ MINI_TICKER_COLUMNS = MINI_TICKER_COLUMNS_MAP.keys()
 
 
 class MiniTickerHandlerBase(Handler):
+    """Base handler for the ``SubType.MINI_TICKER`` (mini 24-hour ticker) stream.
+
+    Receives a condensed 24-hour rolling-window statistics event for the
+    subscribed symbol.  Each payload includes the event time, symbol, OHLC
+    prices (open, high, low, close), total volume, and quote volume — a lighter
+    alternative to the full ``TickerHandlerBase``.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    human-readable column names (e.g. ``open``, ``high``, ``volume``).
+    """
+
     COLUMNS_MAP = MINI_TICKER_COLUMNS_MAP
     COLUMNS = MINI_TICKER_COLUMNS
 
@@ -186,6 +276,19 @@ AVG_PRICE_COLUMNS = AVG_PRICE_COLUMNS_MAP.keys()
 
 
 class AvgPriceHandlerBase(Handler):
+    """Base handler for the ``SubType.AVG_PRICE`` (average price) stream.
+
+    Receives a rolling average-price event for the subscribed symbol.  Each
+    payload contains the event time, symbol, averaging interval, weighted
+    average price, and the time of the last trade that contributed to the
+    average.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    human-readable column names (e.g. ``average_price``, ``interval``,
+    ``last_trade_time``).
+    """
+
     COLUMNS_MAP = AVG_PRICE_COLUMNS_MAP
     COLUMNS = AVG_PRICE_COLUMNS
 
@@ -210,6 +313,20 @@ TICKER_COLUMNS = TICKER_COLUMNS_MAP.keys()
 
 
 class TickerHandlerBase(Handler):
+    """Base handler for the ``SubType.TICKER`` (full 24-hour ticker) stream.
+
+    Receives a full 24-hour rolling-window statistics event for the subscribed
+    symbol.  The payload extends the mini-ticker with price change and percent
+    change, weighted average price, first trade price, last quantity, best
+    bid/ask prices and quantities, stat open/close times, and first/last trade
+    IDs and total trade count.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    human-readable column names (e.g. ``price``, ``percent``,
+    ``weighted_average_price``, ``best_bid_price``).
+    """
+
     COLUMNS_MAP = TICKER_COLUMNS_MAP
     COLUMNS = TICKER_COLUMNS
 
@@ -230,11 +347,38 @@ WINDOW_TICKER_COLUMNS = WINDOW_TICKER_COLUMNS_MAP.keys()
 
 
 class WindowTickerHandlerBase(Handler):
+    """Base handler for the ``SubType.WINDOW_TICKER`` (rolling-window ticker) stream.
+
+    Receives a rolling-window statistics event for the subscribed symbol over
+    a configurable window (e.g. 1h, 4h, 1d).  The payload includes OHLC
+    prices, volume, quote volume, price change and percent change, weighted
+    average price, stat open/close times, and first/last trade IDs and total
+    trade count.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    human-readable column names (e.g. ``price_change``, ``percent``,
+    ``weighted_average_price``).
+    """
+
     COLUMNS_MAP = WINDOW_TICKER_COLUMNS_MAP
     COLUMNS = WINDOW_TICKER_COLUMNS
 
 
 class AllMarketMiniTickersHandlerBase(Handler):
+    """Base handler for the ``SubType.ALL_MARKET_MINI_TICKERS`` stream.
+
+    Receives an array of condensed 24-hour rolling-window mini-ticker events
+    for all actively traded symbols on the exchange.  Each element of the
+    payload shares the same fields as ``MiniTickerHandlerBase``: event time,
+    symbol, OHLC prices, total volume, and quote volume.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+    The base ``receive`` converts each element into a row of a
+    ``StockDataFrame`` with the same human-readable columns as
+    ``MiniTickerHandlerBase``.
+    """
+
     COLUMNS_MAP = MINI_TICKER_COLUMNS_MAP
     COLUMNS = MINI_TICKER_COLUMNS
 
@@ -244,6 +388,20 @@ class AllMarketMiniTickersHandlerBase(Handler):
 
 
 class AllMarketWindowTickersHandlerBase(Handler):
+    """Base handler for the ``SubType.ALL_MARKET_WINDOW_TICKERS`` stream.
+
+    Receives an array of rolling-window ticker events for all actively traded
+    symbols on the exchange.  Each element of the payload shares the same
+    fields as ``WindowTickerHandlerBase``: OHLC prices, volume, quote volume,
+    price change, weighted average price, stat open/close times, and trade
+    count.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+    The base ``receive`` converts each element into a row of a
+    ``StockDataFrame`` with the same human-readable columns as
+    ``WindowTickerHandlerBase``.
+    """
+
     COLUMNS_MAP = WINDOW_TICKER_COLUMNS_MAP
     COLUMNS = WINDOW_TICKER_COLUMNS
 

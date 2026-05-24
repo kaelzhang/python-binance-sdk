@@ -149,6 +149,21 @@ class Stream:
         self._socket = socket
 
     def connect(self):
+        """Kick off the background connect/reconnect task and return self.
+
+        Creates an asyncio Task that runs the internal ``_connect`` coroutine,
+        which opens the WebSocket to ``_uri``, emits ``on_connected``, and
+        drives the receive loop. If the connection drops, ``aioretry`` invokes
+        ``_reconnect`` between attempts according to ``_retry_policy``.
+
+        Must be called from within a running event loop (i.e. inside an
+        ``async`` context or after ``asyncio.run`` / ``loop.run_until_complete``
+        has started). The connection is established asynchronously; await
+        ``send()`` or listen for ``on_connected`` to detect readiness.
+
+        Returns:
+            Stream: self, to allow chaining (e.g. ``Stream(...).connect()``).
+        """
         self._before_connect()
 
         self._conn_task = asyncio.create_task(self._connect())

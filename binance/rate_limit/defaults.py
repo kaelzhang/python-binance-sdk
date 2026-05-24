@@ -1,3 +1,15 @@
+"""Built-in defaults for the rate-limit core.
+
+Holds the response-header / weight helpers (:func:`parse_retry_after`,
+:func:`depth_weight`, :data:`REST_ENDPOINT_WEIGHTS`) and the default
+:class:`~binance.rate_limit.types.RateLimitRule` set for every documented
+Binance pool: :data:`DEFAULT_RULES` (the shared IP/account pools, used by a new
+:class:`~binance.rate_limit.core.RateLimiter`) plus :data:`WS_MESSAGE_RULE` and
+:data:`WS_STREAMS_RULE` (instantiated per WebSocket connection). The numeric
+limits live in :mod:`binance.common.constants` and are reconciled at runtime
+against response headers and ``exchangeInfo``.
+"""
+
 from typing import Optional
 
 from binance.common.constants import (

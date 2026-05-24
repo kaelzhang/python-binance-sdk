@@ -117,6 +117,37 @@ def define_getter(
     method=RequestMethod.GET,
     security_type=SecurityType.USER_DATA
 ) -> None:
+    """Factory that attaches a concrete async WAPI/SAPI getter method to ``Target``.
+
+    Analogous to ``binance.apis.rest.define_getter``, but for the deprecated
+    ``/wapi/`` endpoints and the newer ``/sapi/`` endpoints.  The generated
+    closure builds the URL via ``self._wapi_uri(path, version, prefix)``,
+    which appends a ``.html`` suffix required by the WAPI spec, then
+    delegates to ``self._request``.
+
+    Unlike the REST variant, no per-endpoint depth-weight logic is applied;
+    weight defaults to 1 for all WAPI calls, and ``is_order`` is never set.
+
+    The docstring of the placeholder method already present on ``Target``
+    under ``name`` is migrated to the generated closure before installation
+    via ``setattr``.
+
+    Args:
+        Target: The class (``WapiAPIGetters``) on which to install the method.
+        name: Python attribute name for the method (e.g. ``'withdraw'``).
+        path: WAPI path segment (e.g. ``'withdraw'``), appended after the
+            version string.
+        prefix: URL prefix selecting the API family: ``'/wapi/'`` (default)
+            or ``'/sapi/'`` for newer account-management endpoints.
+        params: When ``False``, all caller kwargs are ignored. Defaults to
+            ``True``.
+        version: API version string inserted into the URL. Defaults to
+            ``REST_API_VERSION``.
+        method: HTTP verb as a ``RequestMethod`` enum. Defaults to
+            ``RequestMethod.GET``.
+        security_type: Authentication requirement. Defaults to
+            ``SecurityType.USER_DATA`` (API key + signature required).
+    """
     def getter(self, **kwargs) -> Awaitable:
         uri = self._wapi_uri(path, version, prefix)
         ka = kwargs if params else {}
@@ -139,6 +170,20 @@ def define_getter(
 
 
 class WapiAPIGetters:
+    """Internal mixin that provides generated async methods for Binance ``/wapi/`` and ``/sapi/`` endpoints.
+
+    These endpoints cover account-management operations (withdrawals,
+    deposit history, sub-accounts, dust conversion, etc.) that are not part
+    of the main ``/api/`` surface.  The ``/wapi/`` prefix is considered
+    deprecated by Binance; some newer endpoints use ``/sapi/`` instead.
+
+    All public methods are stubs whose docstrings are the public API
+    documentation.  At module load time ``define_getter`` replaces each stub
+    with a working closure that calls ``self._request``.
+
+    Intended to be mixed into ``Client`` alongside ``ClientBase``.
+    """
+
     _api_host: str
 
     def _wapi_uri(self, path, version, prefix=PREFIX_WAPI) -> str:

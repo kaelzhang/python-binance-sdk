@@ -40,6 +40,26 @@ def _extract_event_type(msg):
 
 
 class SubscriptionManager:
+    """Mixin mixed into ``Client`` that owns the data and user WebSocket streams.
+
+    ``SubscriptionManager`` is responsible for the full subscription lifecycle:
+    creating and lazily starting the data stream (``/stream``) and the
+    user-data WebSocket API stream, routing incoming messages to the active
+    ``HandlerContext``, and resubscribing all previously registered streams
+    after a reconnect.
+
+    It exposes the public user-facing API: ``subscribe``, ``unsubscribe``,
+    ``list_subscriptions``, ``handler``, ``start``, ``stop``, and ``close``.
+    The underlying ``Stream`` objects and ``HandlerContext`` are private
+    implementation details.
+
+    State is partitioned into two WebSocket connections:
+    - *data stream* (``_data_stream``): carries all market-data streams
+      (klines, trades, tickers, etc.) via the combined ``/stream`` endpoint.
+    - *user stream* (``_user_stream``): carries authenticated user-data events
+      via the WebSocket API (``wss://ws-api.binance.com``).
+    """
+
     _data_stream: Optional[Stream]
     _user_stream: Optional[Stream]
     _subscribed: Set[tuple]
@@ -309,12 +329,69 @@ class SubscriptionManager:
             self._user_recovering = False
 
     async def subscribe(self, *args):
+        """Subscribe to one or more market or user-data streams.
+
+        Supports several calling conventions (overloads):
+
+        - ``subscribe(SubType.TRADE, 'BTCUSDT')`` — single subtype + symbol.
+        - ``subscribe([SubType.TRADE, SubType.TICKER], ['BTCUSDT', 'BNBUSDT'])``
+          — lists of subtypes and symbols; the Cartesian product is subscribed.
+        - ``subscribe((SubType.KLINE, 'BTCUSDT', TimeFrame.D1), ...)``
+          — tuple pairs/triples for subtypes that require extra parameters
+          (klines need a ``TimeFrame`` interval; order-book streams accept an
+          optional update-speed interval in ms).
+        - ``subscribe(SubType.ALL_MARKET_MINI_TICKERS)`` — subtypes that
+          require no symbol parameter.
+        - ``subscribe(SubType.USER)`` — authenticate and subscribe to the
+          user-data stream; sends a signed ``userDataStream.subscribe``
+          request over the WebSocket API connection.
+
+        The data stream (and user stream when needed) is created lazily on
+        the first call. After a reconnect, all subscriptions are replayed
+        automatically by the ``on_connected`` hook.
+
+        Args:
+            *args: Subtype(s) and parameter(s) per the overloads above.
+                See the project README for the full calling convention.
+
+        Returns:
+            None
+        """
         return await self._subscribe(True, args)
 
     async def unsubscribe(self, *args):
+        """Unsubscribe from one or more market or user-data streams.
+
+        Accepts the same calling conventions as ``subscribe`` (same overloads
+        for subtype, symbol, and extra parameters).
+
+        For the user-data stream (``SubType.USER``), sends an unsigned
+        ``userDataStream.unsubscribe`` request over the WebSocket API and
+        clears ``_want_user_stream`` so the stream is not re-established
+        after reconnects.
+
+        Args:
+            *args: Subtype(s) and parameter(s) — same shape as ``subscribe``.
+
+        Returns:
+            None
+        """
         return await self._subscribe(False, args)
 
     async def list_subscriptions(self) -> List[str]:
+        """Query the live data stream for the names of currently active streams.
+
+        Sends a ``LIST_SUBSCRIPTIONS`` request over the data WebSocket and
+        returns the result as a list of stream-name strings (e.g.
+        ``['btcusdt@aggTrade', 'btcusdt@depth']``).
+
+        This queries the Binance server's view of the connection, which may
+        differ from the local ``_subscribed`` set during reconnect races.
+
+        Returns:
+            List[str]: stream names currently active on the data WebSocket
+            connection, as reported by the Binance server.
+        """
         return await self._get_data_stream().send({
             'method': 'LIST_SUBSCRIPTIONS'
         })

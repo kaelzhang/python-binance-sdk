@@ -38,6 +38,20 @@ ORDER_BOOK_COLUMNS = ORDER_BOOK_COLUMNS_MAP.keys()
 
 
 def create_depth_df(depth_list: list):
+    """Convert a raw Binance depth list into a ``StockDataFrame``.
+
+    Binance depth payloads represent each level as a two-element list
+    ``[price, quantity]``.  This function normalises that into a
+    ``StockDataFrame`` with named ``price`` and ``quantity`` columns.
+
+    Args:
+        depth_list (list): A list of ``[price, quantity]`` pairs as returned
+            by the Binance depth REST endpoint or ``depthUpdate`` stream.
+
+    Returns:
+        StockDataFrame: A dataframe with ``price`` and ``quantity`` columns,
+            one row per price level.
+    """
     return StockDataFrame([
         {'price': x[0], 'quantity': x[1]} for x in depth_list
     ])
@@ -47,6 +61,37 @@ METHOD_NAME_RECEIVE = 'receive'
 
 
 class OrderBookHandlerBase(Handler):
+    """Base handler for the ``SubType.ORDER_BOOK`` (full depth diff) stream.
+
+    Manages a collection of per-symbol ``OrderBook`` instances that are kept
+    continuously in sync with the exchange by consuming ``depthUpdate`` stream
+    events and periodically re-fetching REST snapshots via the Binance client.
+
+    Typical usage — obtain an ``OrderBook`` for the symbol you subscribed to,
+    then await updates::
+
+        handler = MyOrderBookHandler()
+        client.handler(handler)
+        await client.subscribe(SubType.ORDER_BOOK, 'BTCUSDT')
+
+        book = handler.orderbook('BTCUSDT')
+        while True:
+            await book.updated()
+            process(book.bids, book.asks)
+
+    Optionally override ``receive(payload)`` to be notified of every raw
+    ``depthUpdate`` event as well; if no ``receive`` override is provided only
+    the ``OrderBook`` objects are maintained and no additional dispatch occurs.
+
+    Args:
+        limit (int): Depth snapshot size (number of price levels) to request
+            from the REST endpoint when (re-)initialising an ``OrderBook``.
+            Defaults to ``DEFAULT_DEPTH_LIMIT`` (100).
+        retry_policy (RetryPolicy): Retry strategy used when a REST snapshot
+            fetch fails.  Defaults to ``DEFAULT_RETRY_POLICY`` (bounded
+            exponential back-off with jitter).
+    """
+
     COLUMNS_MAP = ORDER_BOOK_COLUMNS_MAP
     COLUMNS = ORDER_BOOK_COLUMNS
 

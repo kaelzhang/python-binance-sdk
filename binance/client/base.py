@@ -82,6 +82,21 @@ KEY_FORCE_PARAMS = 'force_params'
 def get_headers(
     api_key: Optional[str]
 ) -> Dict[str, str]:
+    """Build the base HTTP headers for a Binance REST request.
+
+    Always includes ``Accept: application/json`` and a ``User-Agent``
+    identifying the SDK.  When ``api_key`` is not ``None`` the Binance
+    API-key header (``X-MBX-APIKEY``) is added so the exchange can
+    attribute the request to the correct account.
+
+    Args:
+        api_key: The Binance API key string, or ``None`` for unauthenticated
+            requests (``SecurityType.NONE`` endpoints).
+
+    Returns:
+        A dict of HTTP header name → value pairs ready for use in an
+        ``aiohttp.ClientSession``.
+    """
     headers = {
         'Accept': 'application/json',
         'User-Agent': 'binance-sdk'
@@ -94,6 +109,25 @@ def get_headers(
 
 
 class ClientBase:
+    """Internal base class that handles authentication, request building, and rate-limit accounting.
+
+    Responsibilities:
+
+    - Stores the raw ``api_key`` / ``api_secret`` credentials set by the
+      ``Client`` constructor (or updated via ``key()`` / ``secret()``).
+    - Builds signed aiohttp requests: timestamping, HMAC-SHA256 signature
+      generation, parameter sorting, and header construction.
+    - Dispatches HTTP requests (GET/POST/PUT/DELETE) and surfaces typed
+      exceptions for non-2xx responses, rate-limit violations, and IP bans.
+    - Captures ``X-MBX-USED-WEIGHT-*`` and ``X-MBX-ORDER-COUNT-*`` response
+      headers after every call and forwards them to the ``RateLimiter``.
+    - Drives the ``RateLimiter`` so that ``_request`` awaits the limiter
+      before sending, preventing proactive overrun of Binance's per-IP and
+      per-account budgets.
+
+    This class is not intended to be instantiated directly; use ``Client``.
+    """
+
     _api_key: Optional[str]
     _api_secret: Optional[str]
     _request_params: Optional[dict]

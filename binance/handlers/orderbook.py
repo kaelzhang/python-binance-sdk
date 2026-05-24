@@ -40,6 +40,25 @@ KEY_ASKS = 'a'
 
 
 class OrderBook:
+    """A local order book for a single symbol, kept in sync with Binance.
+
+    Maintains two ``SequencedList`` objects — ``bids`` and ``asks`` — that
+    reflect the current state of the Binance order book for the configured
+    symbol.  On initialisation (or whenever synchronisation is lost) the book
+    automatically fetches a fresh depth snapshot from the REST API via the
+    associated ``Client``, then applies any buffered ``depthUpdate`` WebSocket
+    events to catch up to the live state.
+
+    You normally create an ``OrderBook`` indirectly through
+    ``OrderBookHandlerBase.orderbook(symbol)`` rather than instantiating it
+    directly.  If you do instantiate it directly, call ``set_client`` with a
+    connected ``Client`` instance so the automatic snapshot fetching can work.
+
+    Attributes:
+        asks (SequencedList): Current ask levels, ordered ascending by price.
+        bids (SequencedList): Current bid levels, ordered descending by price.
+    """
+
     asks: SequencedList
     bids: SequencedList
     _retry_policy: RetryPolicy
@@ -130,9 +149,34 @@ class OrderBook:
         self,
         limit: int
     ) -> None:
+        """Set the depth-snapshot limit (number of price levels to fetch).
+
+        This controls how many price levels are requested from the REST
+        ``GET /api/v3/depth`` endpoint when (re-)initialising the order book.
+        Binance accepts ``5``, ``10``, ``20``, ``50``, ``100``, ``500``, or
+        ``1000``; values outside these tiers are rounded up by the exchange.
+
+        Args:
+            limit (int): Number of price levels per side to include in each
+                depth snapshot request.
+        """
         self._limit = limit
 
     def set_client(self, client) -> None:
+        """Attach a ``Client`` instance and trigger an initial depth snapshot fetch.
+
+        Once a client is set the order book begins fetching its initial depth
+        snapshot automatically if it is not already ``ready``.  This method is
+        called automatically by ``OrderBookHandlerBase`` when a client is
+        registered with the handler; you only need to call it directly if you
+        are managing an ``OrderBook`` outside of a handler.
+
+        Passing ``None`` or a falsy value is a no-op.
+
+        Args:
+            client: A connected ``binance.Client`` instance used to make REST
+                calls (specifically ``get_orderbook``).
+        """
         if not client:
             return
 

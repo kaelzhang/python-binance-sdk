@@ -1,3 +1,15 @@
+"""The unified rate-limit core.
+
+:class:`RateLimiter` is the single source of truth for every Binance rate-limit
+pool. It owns one :class:`~binance.rate_limit.bucket.RateLimitBucket` per shared
+IP/account pool plus per-connection message/stream buckets, gates the REST and
+WebSocket transports proactively (``acquire_*``), reconciles against response
+headers and ``exchangeInfo``, and exposes a read-only
+:class:`~binance.rate_limit.snapshot.RateLimitSnapshot` for monitoring. A
+``Client`` keeps one private instance, surfaced only through
+``client.rate_limit_snapshot()``.
+"""
+
 import time
 from typing import Dict, Iterable, List, Optional
 
@@ -44,6 +56,19 @@ class RateLimiter:
 
     # ---- configuration / reconciliation ------------------------------
     def configure_from_exchange_info(self, rate_limits) -> None:
+        """Update pool limits from an ``exchangeInfo`` ``rateLimits`` array.
+
+        Lets the limits track your account's real caps (e.g. a higher VIP tier)
+        instead of the conservative built-in defaults. Each entry is matched to
+        a shared bucket by ``rateLimitType`` and by interval
+        (``interval``x``intervalNum`` -> seconds); unknown types/intervals are
+        ignored. The client calls this automatically for any REST response that
+        carries a ``rateLimits`` array.
+
+        Args:
+            rate_limits: The ``rateLimits`` list from an ``exchangeInfo``
+                response (``None`` or empty is tolerated as a no-op).
+        """
         for entry in rate_limits or []:
             limit_type = _EXCHANGE_INFO_TYPE.get(entry.get('rateLimitType'))
             if limit_type is None:
@@ -58,6 +83,17 @@ class RateLimiter:
                     bucket.set_limit(int(entry['limit']))
 
     def sync_from_headers(self, used_weight, order_count) -> None:
+        """Reconcile the weight and order pools against authoritative headers.
+
+        Each mapping is keyed by interval label (e.g. ``'1m'``, ``'10s'``) and
+        applied to the matching bucket via :meth:`RateLimitBucket.sync`, so a
+        server reading can only raise a pool's ``used``, never hide local usage.
+        Called after every REST response.
+
+        Args:
+            used_weight: ``{interval: used}`` from ``X-MBX-USED-WEIGHT-*``.
+            order_count: ``{interval: used}`` from ``X-MBX-ORDER-COUNT-*``.
+        """
         self._sync(RateLimitType.REQUEST_WEIGHT, used_weight)
         self._sync(RateLimitType.ORDERS, order_count)
 
@@ -69,6 +105,18 @@ class RateLimiter:
                     bucket.sync(int(value))
 
     def note_retry_after(self, seconds, status) -> None:
+        """Record a server-imposed back-off deadline from a 429/418 response.
+
+        A snapshot then reports the remaining seconds as
+        :attr:`RateLimitSnapshot.retry_after` and sets ``throttled`` until it
+        elapses. A falsy or non-positive ``seconds`` is ignored.
+
+        Args:
+            seconds: The ``Retry-After`` value (seconds) parsed from the
+                response, or ``None``.
+            status: The HTTP status that triggered it (e.g. ``429``/``418``);
+                accepted for context and forward compatibility.
+        """
         if seconds and int(seconds) > 0:
             self._retry_after_until = time.time() + int(seconds)
 
@@ -90,6 +138,24 @@ class RateLimiter:
                 bucket.record(cost)
 
     async def acquire_rest(self, *, weight: int, is_order: bool) -> None:
+        """Account (and, if enabled, gate) a REST request before it is sent.
+
+        Consumes the request's ``weight`` from the IP request-weight pool, one
+        unit from the IP raw-requests pool, and -- when ``is_order`` -- one unit
+        from each account orders pool. When the guard is enabled this may
+        ``await`` (weight/raw are ``SLEEP``) or raise
+        :class:`~binance.common.exceptions.RateLimitReachedException` (orders are
+        ``RAISE``); when disabled it only records usage.
+
+        Args:
+            weight: The endpoint's request weight (keyword-only).
+            is_order: ``True`` for order-placing endpoints, so the account
+                orders pools are also consumed (keyword-only).
+
+        Raises:
+            RateLimitReachedException: If an order would exceed an orders pool
+                (guard enabled).
+        """
         await self._consume(RateLimitType.REQUEST_WEIGHT, weight)
         await self._consume(RateLimitType.RAW_REQUESTS, 1)
         if is_order:
@@ -97,9 +163,25 @@ class RateLimiter:
 
     # ---- proactive enforcement: WebSocket ----------------------------
     async def acquire_connection(self) -> None:
+        """Account one WebSocket connection attempt against the IP pool.
+
+        Called by a :class:`~binance.subscribe.stream.Stream` before each
+        connect, so a reconnect storm stays under Binance's 300/5min cap. May
+        ``await`` when the guard is enabled (the pool is ``SLEEP``-enforced).
+        """
         await self._consume(RateLimitType.WS_CONNECTIONS, 1)
 
     def register_connection(self, connection_id: str) -> None:
+        """Create the per-connection message and stream buckets for ``connection_id``.
+
+        Idempotent: an already-registered id is left untouched (its live counts
+        are preserved). The per-acquire helpers auto-register on first use, so
+        calling this explicitly is optional.
+
+        Args:
+            connection_id: Stable id for one WebSocket connection (e.g.
+                ``'data'`` or ``'user'``).
+        """
         if connection_id not in self._connections:
             self._connections[connection_id] = {
                 RateLimitType.WS_MESSAGES: RateLimitBucket(WS_MESSAGE_RULE),
@@ -107,9 +189,22 @@ class RateLimiter:
             }
 
     def unregister_connection(self, connection_id: str) -> None:
+        """Drop a connection's message and stream buckets (e.g. on close).
+
+        Their usage no longer appears in a snapshot. Unknown ids are ignored.
+        """
         self._connections.pop(connection_id, None)
 
     async def acquire_message(self, connection_id: str) -> None:
+        """Account one outgoing message on ``connection_id`` (5/s per connection).
+
+        Auto-registers the connection if needed. May ``await`` when the guard is
+        enabled (the per-connection message pool is ``SLEEP``-enforced); only
+        records usage when disabled.
+
+        Args:
+            connection_id: The sending connection's id.
+        """
         self.register_connection(connection_id)
         bucket = self._connections[connection_id][RateLimitType.WS_MESSAGES]
         if self._enabled:
@@ -118,17 +213,42 @@ class RateLimiter:
             bucket.record(1)
 
     def reserve_streams(self, connection_id: str, projected_total: int) -> None:
+        """Enforce the 1024-streams-per-connection cap (absolute set).
+
+        Auto-registers the connection, then sets its stream count to
+        ``projected_total`` (a set, not an increment -- callers pass the intended
+        new total, which keeps resubscribe idempotent).
+
+        Args:
+            connection_id: The connection whose streams are being set.
+            projected_total: The intended total stream count after the change.
+
+        Raises:
+            TooManyStreamsException: If ``projected_total`` exceeds the cap.
+        """
         self.register_connection(connection_id)
         bucket = self._connections[connection_id][RateLimitType.WS_STREAMS]
         bucket.reserve(projected_total)
 
     def release_streams(self, connection_id: str, count: int) -> None:
+        """Decrease a connection's reserved stream count by ``count``.
+
+        The inverse of :meth:`reserve_streams` when streams are unsubscribed.
+        No-op for an unknown connection id.
+        """
         conn = self._connections.get(connection_id)
         if conn is not None:
             conn[RateLimitType.WS_STREAMS].release(count)
 
     # ---- monitoring ---------------------------------------------------
     def snapshot(self) -> RateLimitSnapshot:
+        """Capture a read-only :class:`RateLimitSnapshot` of every pool.
+
+        Emits one window per shared pool plus the message+stream pair of each
+        registered connection, and aggregates total pending, the remaining
+        server ``retry_after``, and the ``throttled`` flag. Local and
+        allocation-cheap -- no network, safe to poll frequently.
+        """
         windows: List[RateLimitWindow] = []
         total_pending = 0
         for bucket in self._shared:
