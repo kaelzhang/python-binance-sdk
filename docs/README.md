@@ -1,13 +1,16 @@
 # binance-sdk
 
-`binance-sdk` is an another unofficial Binance SDK for python 3.7+, which:
+`binance-sdk` is an unofficial Binance SDK for Python 3.9+, which:
 
 - Based on [Binance Official API Docs v3](https://github.com/binance/binance-official-api-docs).
-- Uses Binance's new websocket stream which supports live pub/sub so that we only need **ONE** websocket connection.
+- Routes every request/response call (general, market-data, account and trading) over the **Binance WebSocket API** (`wss://ws-api.binance.com`) for low latency, while keeping a generic `client.get/post/put/delete` REST escape hatch for arbitrary endpoints.
+- Uses **TWO** WebSocket connections: a market-data **stream** connection (`subscribe(...)`) and a shared **WS-API** connection (request/response calls + user-data-stream subscription).
 - Returns `StockDataFrame` (from `stock-pandas`) for stream payloads with renamed columns.
-- Based on python `async`/`await`
+- Based on Python `async`/`await`
 - Manages the order book for you (handled by `OrderBookHandlerBase`), so that you need not to worry about websocket reconnection and message losses. For details, see the section [`OrderBookHandlerBase`](#orderbookhandlerbasekwargs)
-- Supports to change API endpoints, so that we could use faster API hosts.
+- Supports changing API endpoints, so that you can use faster API hosts.
+
+> **Prices and quantities must be strings.** The SDK rejects `float` params at the API boundary because Python's `str(float)` can produce scientific notation (`1e-08`) or imprecise decimal representations that silently corrupt price/quantity fields. Pass strings (e.g. `price='0.00000001'`) or format with `Decimal`.
 
 ## Install
 
@@ -118,7 +121,6 @@ And since we subscribe to **THREE** new types of messages, we need to set the ha
 - `TickerHandlerBase`
 - `AllMarketMiniTickersHandlerBase`
 - `AllMarketWindowTickersHandlerBase`
-- `AccountInfoHandlerBase`
 - `AccountPositionHandlerBase`
 - `BalanceUpdateHandlerBase`
 - `OrderUpdateHandlerBase`
@@ -126,7 +128,7 @@ And since we subscribe to **THREE** new types of messages, we need to set the ha
 - `ExternalLockUpdateHandlerBase`
 - `EventStreamTerminatedHandlerBase`
 - `HandlerExceptionHandlerBase` a special handler to handle stream exceptions
-- `StreamErrorHandlerBase` a special handler for stream-control errors (resubscribe / logon failures after reconnect)
+- `StreamErrorHandlerBase` a special handler for post-reconnect resubscribe and `session.logon` failures; receives a `StreamError` with `stream`/`phase`/`exception`/`recovering` fields
 
 ```py
 client.handler(MyTradeHandler(), MyOrderBookHandler(), MyKlineHandler())
@@ -135,16 +137,18 @@ client.handler(MyTradeHandler(), MyOrderBookHandler(), MyKlineHandler())
 ### Subscribe to user streams
 
 ```py
-# Before subscribe to user stream, you need to provide `api_secret` (and also `api_key`)
-client.secret(api_secret)
+# Before subscribing to the user stream, provide credentials via the constructor.
+# HMAC (deprecated by Binance):
+client = Client(api_key=api_key, api_secret=api_secret)
 
-# Or, you should provide `api_secret` when initialize the client
-# ```
-# client = Client(api_key, api_secret)
-# ```
+# Asymmetric key (recommended — Ed25519 enables session.logon for zero
+# per-request signing overhead):
+client = Client(api_key=api_key, private_key='/path/to/ed25519.pem')
 
-# binance-sdk handles user stream subscription internally via
-# WebSocket API `userDataStream.subscribe.signature`
+# binance-sdk handles user stream subscription internally via the
+# WebSocket API `userDataStream.subscribe.signature` method.
+# With an Ed25519 private_key the WS-API connection also issues
+# session.logon automatically after (re)connect.
 await client.subscribe(SubType.USER)
 ```
 
@@ -212,20 +216,23 @@ client.handler(MyStreamErrors())
 
 ## Client(**kwargs)
 
-All arguments of the constructor Client are keyworded arguments and all optional.
+All arguments of the constructor Client are keyword arguments and all optional.
 
-- **api_key?** `str=None` binance api key
-- **api_secret?** `str=None` binance api secret for HMAC-SHA256 signing (deprecated by Binance; prefer asymmetric keys)
-- **private_key?** `str|bytes=None` Ed25519 or RSA PEM private key (PEM content or file path). When provided, used for request signing instead of `api_secret`. Binance recommends Ed25519 (fastest) or RSA over the deprecated HMAC keys.
+- **api_key?** `str=None` Binance API key
+- **api_secret?** `str=None` Binance API secret for HMAC-SHA256 signing (deprecated by Binance; prefer asymmetric keys via `private_key`)
+- **private_key?** `str|bytes=None` Ed25519 or RSA PEM private key (PEM content or file path). When provided, used for request signing instead of `api_secret`. Binance recommends Ed25519 (fastest) or RSA over the deprecated HMAC keys. With an Ed25519 key the WS-API connection issues `session.logon` automatically after each (re)connect, allowing subsequent signed requests to omit `apiKey`/`signature` entirely.
 - **private_key_pass?** `str|bytes=None` password to decrypt an encrypted PEM private key; `None` for unencrypted keys
-- **request_params?** `dict=None` global request params for aiohttp
-- **stream_retry_policy?** `Callable[[int, Exception], Tuple[bool, int, bool]]` retry policy for websocket stream. For details, see [RetryPolicy](#retrypolicy)
+- **request_params?** `dict=None` global request params for aiohttp (REST escape hatch)
+- **stream_retry_policy?** `Callable[[int, Exception], Tuple[bool, int, bool]]` retry policy for websocket streams. For details, see [RetryPolicy](#retrypolicy)
 - **stream_timeout?** `int=30` seconds of stream silence before the SDK pings to probe a possibly-dead connection
-- **rate_limit_guard?** `bool=True` when `True`, the client proactively throttles REST requests with a client-side weight/raw/order budget to stay under Binance's per-IP and per-account caps. When `False`, usage is still tracked (so monitoring works) but requests are never delayed. On by default. See [Rate Limits](#rate-limits).
-- **api_host?** `str='https://api.binance.com'` to specify another API host for rest API requests. 这个参数的存在意义，使用方法，不累述，你懂的。
-- **stream_host?** `str='wss://stream.binance.com'` to specify another stream host for websocket connections.
-- **ws_api_host?** `str='wss://ws-api.binance.com/ws-api/v3'` to specify the WebSocket API host. Every request/response call (general, market-data, account and trading) and the user-stream subscription share this single connection.
+- **rate_limit_guard?** `bool=True` when `True`, the client proactively throttles requests with a client-side weight/raw/order budget to stay under Binance's per-IP and per-account caps. When `False`, usage is still tracked (so monitoring works) but requests are never delayed. See [Rate Limits](#rate-limits).
+- **rate_limiter?** `RateLimiter=None` inject a shared `RateLimiter` instance so multiple `Client` objects on the same IP share one IP-level pool. When `None` (default) a private limiter is built from `rate_limit_guard`.
+- **request_timeout?** `float=10` total seconds before an aiohttp REST request (via the generic `get`/`post`/... escape hatch) is abandoned.
+- **recv_window?** `int=None` default `recvWindow` (ms) injected into every signed WS-API request that does not already supply one. Clamped to at most 60000 ms. `None` uses Binance's server-side default (5000 ms). Can always be overridden per-call by passing `recvWindow=<value>` to any signed method.
 - **time_unit?** `str=None` WebSocket-API timestamp unit. `None` (default) or `'millisecond'` keeps Binance's millisecond default; `'microsecond'` (case-insensitive) opts the whole WS-API connection into microsecond-precision timestamps (appends `?timeUnit=MICROSECOND` to the connection URL).
+- **api_host?** `str='https://api.binance.com'` REST host for the generic `get`/`post`/`put`/`delete` escape hatch.
+- **stream_host?** `str='wss://stream.binance.com'` host for the market-data stream connection (`subscribe(...)`).
+- **ws_api_host?** `str='wss://ws-api.binance.com/ws-api/v3'` host for the shared WS-API connection (request/response calls + user-data-stream subscription).
 
 Create a binance client.
 
@@ -240,26 +247,19 @@ from binance import (
     TimeInForce
 )
 
-# All arguments are keyworded arguments.
+# All arguments are keyword arguments.
 await client.create_order(
     symbol='BTCUSDT',
 
-    # You could use string `BUY` (NOT recommended) instead of
-    # the built-in enum types of Binance-sdk.
-
-    # But it is a good practise to use enums which could help
-    # us to avoid spelling mistakes, and save our money.
+    # Use the built-in enum types to avoid spelling mistakes.
     side=OrderSide.BUY,
     type=OrderType.LIMIT,
     timeInForce=TimeInForce.GTC,
 
-    # Binance-sdk will not handle Decimals for you,
-    # so you'd better to know how to deal with python float precisions.
-    # Or you could use string-type quantity.
-    quantity=10.,
-
-    # It is better to use string type instead of float.
-    # The same as `quantity`
+    # IMPORTANT: pass prices and quantities as STRINGS, not Python floats.
+    # The SDK rejects float params — str(float) can produce scientific
+    # notation ('1e-08') or imprecise decimals that silently corrupt orders.
+    quantity='10',
     price='7000.1'
 )
 ```
@@ -323,10 +323,10 @@ Define or change api secret, especially when we have not define api secret in `C
 ### await client.put(uri, **kwargs)
 ### await client.delete(uri, **kwargs)
 
-- **uri** `str` the request url
+- **uri** `str` the absolute request URL
 - **security_type?** `SecurityType` endpoint security type. Defaults to `SecurityType.NONE`.
 
-Send a GET/POST/PUT/DELETE HTTPs request.
+Generic REST escape hatch — sends a GET/POST/PUT/DELETE HTTPS request over the shared `aiohttp` session. Use this for arbitrary or unwrapped endpoints (e.g. `/sapi/` paths) that are not yet covered by the named WS-API methods. Errors from this path surface as `RateLimitException` (HTTP 429), `IPBannedException` (HTTP 418), or `StatusException` (other non-2xx).
 
 ### await client.subscribe(subtype, *subtype_params) -> None
 ### await client.subscribe(*subscriptions) -> None
@@ -496,33 +496,56 @@ Binance enforces several independent pools; the core models each one:
 
 Orders never sleep — delaying an order can be worse than not sending it, so an over-budget order fails fast with `RateLimitReachedException` (carrying `retry_after`) and lets your strategy decide. Usage is **always** accounted (even with the guard off), so monitoring stays accurate.
 
-### REST: typed errors and used-weight visibility
+### WS-API: typed errors from trading/account/market-data calls
 
-The rate-limit headers on every REST response are captured. After any call you can read the latest values:
+Trading, account, and market-data calls now go over the WS-API connection. Server errors on this path surface as:
 
-```py
-await client.get_exchange_info()
-
-client.used_weight   # e.g. {'1m': 20}   (from X-MBX-USED-WEIGHT-*)
-client.order_count   # e.g. {'10s': 3}   (from X-MBX-ORDER-COUNT-*)
-```
-
-When Binance throttles you, the client raises a typed exception carrying `retry_after` (seconds) so your strategy can back off precisely:
+- `StreamSubscribeException` — any server-side error (`code`/`msg` fields match the Binance WS-API error object).
+- `StreamRateLimitException` (subclass of `StreamSubscribeException`) — rate-limit rejection (code `-1003`, status `429`/`418`); carries `retry_after` in milliseconds.
 
 ```py
-from binance import RateLimitException, IPBannedException
+from binance import StreamSubscribeException, StreamRateLimitException
 
 try:
-    await client.create_order(...)
+    await client.create_order(symbol='BTCUSDT', side='BUY', ...)
+except StreamRateLimitException as e:
+    # WS-API rate-limited; e.retry_after is milliseconds
+    await asyncio.sleep(e.retry_after / 1000)
+except StreamSubscribeException as e:
+    print(f'WS-API error {e.code}: {e.msg}')
+```
+
+### REST escape hatch: typed errors
+
+The generic `client.get/post/put/delete` REST path raises typed HTTP exceptions:
+
+```py
+from binance import RateLimitException, IPBannedException, StatusException
+
+try:
+    await client.get('https://api.binance.com/sapi/v1/...')
 except IPBannedException as e:
     # HTTP 418 — your IP is banned; wait it out
     await asyncio.sleep(e.retry_after)
 except RateLimitException as e:
     # HTTP 429 — too many requests; back off
     await asyncio.sleep(e.retry_after)
+except StatusException as e:
+    print(f'HTTP {e.status_code}: {e.response}')
 ```
 
-Both subclass `StatusException`, so existing `except StatusException` handlers keep working. The client **never auto-retries** (a blind retry of an order could double-fill) — it surfaces `retry_after` and lets you decide.
+Both `RateLimitException` and `IPBannedException` subclass `StatusException`. The client **never auto-retries** — it surfaces `retry_after` and lets your strategy decide.
+
+### REST: used-weight visibility
+
+The rate-limit headers on every REST response are captured. After any REST escape-hatch call you can read the latest values:
+
+```py
+await client.get('https://api.binance.com/api/v3/exchangeInfo')
+
+client.used_weight   # e.g. {'1m': 20}   (from X-MBX-USED-WEIGHT-*)
+client.order_count   # e.g. {'10s': 3}   (from X-MBX-ORDER-COUNT-*)
+```
 
 ### REST: proactive throttle
 
@@ -589,14 +612,14 @@ WebSocket-API (user stream) rate-limit errors (code `-1003`, status `418`/`429`)
 ## OrderBookHandlerBase(**kwargs)
 
 - **kwargs**
-  - **limit?** `int=100` the limit of the depth snapshot
+  - **limit?** `int=1000` the limit of the depth snapshot (default 1000, max 5000 — any value; Binance caps at 5000)
   - **retry_policy?** `RetryPolicy=`
 
 By default, binance-sdk maintains the orderbook for you according to the rules of [the official documentation](https://github.com/binance-exchange/binance-official-api-docs/blob/master/web-socket-streams.md#how-to-manage-a-local-order-book-correctly).
 
 Specifically, `OrderBookHandlerBase` does the job.
 
-We could get the managed `OrderBook` object by method `handler.orderbook(symbol)`. The handler-level `limit` (default `100`) applies to every symbol; to use a different snapshot depth for a single symbol, pass `handler.orderbook(symbol, limit=...)` before subscribing (Binance accepts `5`, `10`, `20`, `50`, `100`, `500`, `1000`, `5000` — use a larger value for a deeper local book).
+We can get the managed `OrderBook` object by method `handler.orderbook(symbol)`. The handler-level `limit` (default `1000`) applies to every symbol; to use a different snapshot depth for a single symbol, pass `handler.orderbook(symbol, limit=...)` before subscribing (default 1000, max 5000; any value is accepted and Binance caps it at 5000).
 
 ```py
 async def main():
@@ -632,7 +655,7 @@ loop.run_forever()
 
 - **symbol** `str` the symbol name
 - **kwargs**
-  - **limit?** `int=100` limit of the orderbook
+  - **limit?** `int=1000` limit of the orderbook snapshot (default 1000, max 5000 — any value; Binance caps at 5000)
   - **client** `Client=None` the instance of `binance.Client`
   - **retry_policy?** `Callable[[int, Exception], (bool, int, bool)]` retry policy for depth snapshot which has the same mechanism as `Client::stream_retry_policy`
 
