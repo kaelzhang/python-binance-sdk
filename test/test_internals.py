@@ -57,6 +57,16 @@ def test_client_logger_property():
 
 # --- subscribe/manager.py -------------------------------------------------
 
+def test_reconcile_ws_api_rate_limits_ignores_non_dict():
+    """The on_response reconcile hook tolerates a non-dict message (no-op)."""
+    client = Client()
+    # Must not raise and must not touch the rate-limit core.
+    client._reconcile_ws_api_rate_limits('not-a-dict')
+    client._reconcile_ws_api_rate_limits(None)
+
+
+
+
 @pytest.mark.asyncio
 async def test_receive_ignored_when_not_receiving():
     client = Client()

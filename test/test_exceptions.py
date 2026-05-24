@@ -30,16 +30,22 @@ async def test_no_key():
         await client.get('/foo', security_type=SecurityType.USER_DATA)
 
 
+# The data endpoints now travel over the WebSocket API, but the generic REST
+# request plumbing (`client.get`/`_request`/`_handle_response`) still backs the
+# escape hatch -- exercise its error paths directly against a raw URL.
+_TIME_URL = 'https://api.binance.com/api/v3/time'
+
+
 @pytest.mark.asyncio
 async def test_invalid_json():
     """Test Invalid response Exception"""
 
     with pytest.raises(InvalidResponseException, match='invalid response'):
         with aioresponses() as m:
-            m.get('https://api.binance.com/api/v3/time', body='<head></html>')
+            m.get(_TIME_URL, body='<head></html>')
 
             client = Client('api_key')
-            await client.get_server_time()
+            await client.get(_TIME_URL)
 
 
 @pytest.mark.asyncio
@@ -48,10 +54,21 @@ async def test_api_exception():
     with pytest.raises(StatusException, match='status'):
         with aioresponses() as m:
             json_obj = {"code": 1002, "msg": "Invalid API call"}
-            m.get('https://api.binance.com/api/v3/time', payload=json_obj, status=400)
+            m.get(_TIME_URL, payload=json_obj, status=400)
 
             client = Client('api_key')
-            await client.get_server_time()
+            await client.get(_TIME_URL)
+
+
+@pytest.mark.asyncio
+async def test_api_exception_5xx_server_error():
+    """A 5xx response yields a StatusException with the generic server-error message."""
+    with pytest.raises(StatusException, match='Binance server error'):
+        with aioresponses() as m:
+            m.get(_TIME_URL, body='<html>502 Bad Gateway</html>', status=502)
+
+            client = Client('api_key')
+            await client.get(_TIME_URL)
 
 
 @pytest.mark.asyncio
@@ -63,10 +80,10 @@ async def test_api_exception_invalid_json():
     with pytest.raises(StatusException):
         with aioresponses() as m:
             not_json_str = "<html><body>Error</body></html>"
-            m.get('https://api.binance.com/api/v3/time', body=not_json_str, status=400)
+            m.get(_TIME_URL, body=not_json_str, status=400)
 
             client = Client('api_key')
-            await client.get_server_time()
+            await client.get(_TIME_URL)
 
 
 @pytest.mark.asyncio

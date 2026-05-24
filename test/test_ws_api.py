@@ -65,16 +65,26 @@ class WSAPIServer:
         # default rateLimits array attached to every success unless overridden
         self.default_rate_limits = None
 
+        # The lazy server-time sync (`sync_time`) issues a public WS-API `time`
+        # request before the FIRST signed request on a connection. Pre-register
+        # a canned reply so every signed-request test works without having to
+        # opt in; individual tests may still override it via `.on('time', ...)`.
+        self.on('time', result={'serverTime': 1_700_000_000_000})
+
         app = web.Application()
         app.add_routes([web.get('/ws-api/v3', self._handler)])
         self._runner = web.AppRunner(app)
 
     def on(self, method, result=None, rate_limits=None):
         self._results[method] = (200, result, rate_limits)
+        # `on` and `on_error` are mutually exclusive per method: registering a
+        # success clears any prior error so re-presetting works in sequence.
+        self._errors.pop(method, None)
         return self
 
     def on_error(self, method, code, msg='boom', status=400, data=None):
         self._errors[method] = (code, msg, status, data)
+        self._results.pop(method, None)
         return self
 
     @property
@@ -191,6 +201,7 @@ async def test_ws_api_request_signed_per_request_signing():
     await server.run()
     try:
         client = _make_client(server, api_key='K', api_secret='S')
+        client._time_synced = True   # isolate from the lazy `time` sync
         result = await client._ws_api_request(
             'account.status', None,
             security=SecurityType.USER_DATA, weight=20)

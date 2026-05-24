@@ -1,7 +1,6 @@
 import pytest
 import asyncio
 
-from aioresponses import aioresponses
 from stock_pandas import StockDataFrame
 
 from binance import (
@@ -39,10 +38,12 @@ TICKER_RES = dict(
 )
 
 
-def install_fake_stream(monkeypatch):
-    """Patch the manager's Stream so `_get_data_stream()` runs its real body
-    (constructing a Stream, covering the manager wiring) but never opens a
-    socket. `send()` returns a canned value for LIST_SUBSCRIPTIONS and `None`
+def install_fake_stream(monkeypatch, depth_snapshot=None):
+    """Patch the manager's Stream so `_get_data_stream()` /
+    `_get_ws_api_stream()` run their real bodies (constructing a Stream,
+    covering the manager wiring) but never open a socket. `send()` returns a
+    canned value for `LIST_SUBSCRIPTIONS` and for the WS-API `depth` request
+    (the order-book snapshot, now served over the WebSocket API), and `None`
     otherwise.
     """
     class FakeStream:
@@ -53,8 +54,11 @@ def install_fake_stream(monkeypatch):
             return self
 
         async def send(self, req):
-            if req.get('method') == 'LIST_SUBSCRIPTIONS':
+            method = req.get('method')
+            if method == 'LIST_SUBSCRIPTIONS':
                 return ['btcusdt@depth']
+            if method == 'depth':
+                return depth_snapshot
             return None
 
         async def close(self, code=4999):
@@ -334,10 +338,7 @@ async def test_user_stream_auto_recover_without_user_handler(client):
     await client.close()
 
 
-# Canned depth snapshot served instead of the live REST endpoint.
-_SNAPSHOT_URL = (
-    'https://api.binance.com/api/v3/depth?limit=1000&symbol=BTCUSDT'
-)
+# Canned depth snapshot served by the fake WS-API stream instead of a live fetch.
 _SNAPSHOT_ASKS = [[100, 10]]
 _SNAPSHOT_BIDS = [[99, 5]]
 
@@ -375,7 +376,14 @@ _UPDATE_STALE = dict(
 
 
 async def run_orderbook_handler(client, monkeypatch, init_orderbook_first):
-    install_fake_stream(monkeypatch)
+    # The depth snapshot is now fetched over the WebSocket API (`depth`); the
+    # fake stream serves the same canned snapshot for every snapshot request
+    # (set_client + any background refetch).
+    install_fake_stream(monkeypatch, depth_snapshot=dict(
+        lastUpdateId=10,
+        asks=_SNAPSHOT_ASKS,
+        bids=_SNAPSHOT_BIDS
+    ))
 
     f = create_future()
 
@@ -385,79 +393,65 @@ async def run_orderbook_handler(client, monkeypatch, init_orderbook_first):
 
     handler = OrderBookHandler()
 
-    with aioresponses() as m:
-        # The depth snapshot may be fetched more than once (set_client +
-        # any background refetch); serve the same canned snapshot repeatedly.
-        m.get(
-            _SNAPSHOT_URL,
-            payload=dict(
-                lastUpdateId=10,
-                asks=_SNAPSHOT_ASKS,
-                bids=_SNAPSHOT_BIDS
-            ),
-            status=200,
-            repeat=True
-        )
+    if init_orderbook_first:
+        # Created before the client is attached -> goes to the
+        # uninit list and gets its client in set_client().
+        orderbook = handler.orderbook('BTCUSDT')
 
-        if init_orderbook_first:
-            # Created before the client is attached -> goes to the
-            # uninit list and gets its client in set_client().
-            orderbook = handler.orderbook('BTCUSDT')
+    # When init_orderbook_first, this triggers the snapshot fetch.
+    client.handler(handler)
+    await client.subscribe(SubType.ORDER_BOOK, 'BTCUSDT')
 
-        # When init_orderbook_first, this triggers the snapshot fetch.
-        client.handler(handler)
-        await client.subscribe(SubType.ORDER_BOOK, 'BTCUSDT')
+    # Feed the first depthUpdate hermetically. When the orderbook is
+    # created lazily (not init_orderbook_first), this also triggers
+    # the snapshot fetch and the payload is queued until it resolves.
+    await client._receive({'data': _UPDATE_FIRST})
 
-        # Feed the first depthUpdate hermetically. When the orderbook is
-        # created lazily (not init_orderbook_first), this also triggers
-        # the snapshot fetch and the payload is queued until it resolves.
-        await client._receive({'data': _UPDATE_FIRST})
+    info, [bids, asks] = await f
+    assert isinstance(info, StockDataFrame)
+    assert isinstance(bids, StockDataFrame)
+    assert isinstance(asks, StockDataFrame)
 
-        info, [bids, asks] = await f
-        assert isinstance(info, StockDataFrame)
-        assert isinstance(bids, StockDataFrame)
-        assert isinstance(asks, StockDataFrame)
+    if not init_orderbook_first:
+        orderbook = handler.orderbook('BTCUSDT')
 
-        if not init_orderbook_first:
-            orderbook = handler.orderbook('BTCUSDT')
+    async def assert_no_change():
+        asks = [*orderbook.asks]
+        await asyncio.sleep(0.2)
 
-        async def assert_no_change():
-            asks = [*orderbook.asks]
-            await asyncio.sleep(0.2)
+        # should have no change
+        assert asks == orderbook.asks
 
-            # should have no change
-            assert asks == orderbook.asks
+    # Drain any in-progress snapshot fetch so the orderbook is ready.
+    if not orderbook.ready:  # type: ignore
+        await orderbook.updated()  # type: ignore
 
-        # Drain any in-progress snapshot fetch so the orderbook is ready.
-        if not orderbook.ready:  # type: ignore
-            await orderbook.updated()  # type: ignore
+    # Await the NEXT emit, triggered by feeding a mergeable update.
+    # Grab the pending future BEFORE feeding the update: _emit_updated
+    # resolves the current future and then swaps in a fresh one, so
+    # awaiting `orderbook.updated()` *after* the emit would block forever.
+    next_update = orderbook._updated_future  # type: ignore
+    await client._receive({'data': _UPDATE_NEXT})
+    await next_update
 
-        # Await the NEXT emit, triggered by feeding a mergeable update.
-        # Grab the pending future BEFORE feeding the update: _emit_updated
-        # resolves the current future and then swaps in a fresh one, so
-        # awaiting `orderbook.updated()` *after* the emit would block forever.
-        next_update = orderbook._updated_future  # type: ignore
-        await client._receive({'data': _UPDATE_NEXT})
-        await next_update
+    # A stale update is abandoned without changing the book.
+    await client._receive({'data': _UPDATE_STALE})
 
-        # A stale update is abandoned without changing the book.
-        await client._receive({'data': _UPDATE_STALE})
+    assert len(orderbook.asks) != 0  # type: ignore
+    assert len(orderbook.bids) != 0  # type: ignore
 
-        assert len(orderbook.asks) != 0  # type: ignore
-        assert len(orderbook.bids) != 0  # type: ignore
+    assert await client.list_subscriptions() == ['btcusdt@depth']
 
-        assert await client.list_subscriptions() == ['btcusdt@depth']
+    client.stop()
+    await assert_no_change()
 
-        client.stop()
-        await assert_no_change()
+    client.start()
 
-        client.start()
+    await client.unsubscribe(SubType.ORDER_BOOK, 'BTCUSDT')
 
-        await client.unsubscribe(SubType.ORDER_BOOK, 'BTCUSDT')
+    await assert_no_change()
 
-        await assert_no_change()
-
-        await client.close()
+    await client.close()
 
 
 @pytest.mark.asyncio

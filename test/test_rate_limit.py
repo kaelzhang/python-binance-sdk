@@ -140,32 +140,45 @@ async def test_order_endpoint_consumes_orders_pool():
 @pytest.mark.asyncio
 async def test_non_order_endpoint_does_not_consume_orders_pool():
     from binance import Client
-    client = Client()
-    with aioresponses() as m:
-        m.get(_URL + '?symbol=BTCUSDT&limit=100', status=200,
-              payload={'lastUpdateId': 1, 'bids': [], 'asks': []})
+    from test.test_ws_api import WSAPIServer
+    # get_orderbook is now a public WS-API `depth` request.
+    server = WSAPIServer(port=9091)
+    server.on('depth', result={'lastUpdateId': 1, 'bids': [], 'asks': []})
+    await server.run()
+    try:
+        client = Client(ws_api_host=server.uri)
         await client.get_orderbook(symbol='BTCUSDT', limit=100)
-    snap = client.rate_limit_snapshot()
-    orders = [w for w in snap.windows if w.type == 'orders']
-    # A plain market-data GET must never touch the ORDERS pool.
-    assert orders and all(w.used == 0 for w in orders)
+        snap = client.rate_limit_snapshot()
+        orders = [w for w in snap.windows if w.type == 'orders']
+        # A plain market-data request must never touch the ORDERS pool.
+        assert orders and all(w.used == 0 for w in orders)
+    finally:
+        await client.close()
+        await server.shutdown()
 
 
 @pytest.mark.asyncio
 async def test_exchange_info_autoconfigures_pool_limits():
-    import re
     from binance import Client
-    client = Client()
-    with aioresponses() as m:
-        m.get(re.compile(r'.*/api/v3/exchangeInfo.*'), status=200, payload={
-            'rateLimits': [
-                {'rateLimitType': 'REQUEST_WEIGHT', 'interval': 'MINUTE',
-                 'intervalNum': 1, 'limit': 12000},
-            ],
-            'symbols': []
-        })
+    from test.test_ws_api import WSAPIServer
+    # exchangeInfo is now served over the WebSocket API; its `result` carries
+    # the pool caps, which the on_response reconciler folds into the core.
+    server = WSAPIServer(port=9090)
+    server.on('exchangeInfo', result={
+        'rateLimits': [
+            {'rateLimitType': 'REQUEST_WEIGHT', 'interval': 'MINUTE',
+             'intervalNum': 1, 'limit': 12000},
+        ],
+        'symbols': []
+    })
+    await server.run()
+    try:
+        client = Client(ws_api_host=server.uri)
         await client.get_exchange_info()
-    snap = client.rate_limit_snapshot()
-    weight = [w for w in snap.windows if w.type == 'request_weight'][0]
-    # configured cap 12000 * 0.9 safety ratio = 10800 effective
-    assert weight.limit == 10800
+        snap = client.rate_limit_snapshot()
+        weight = [w for w in snap.windows if w.type == 'request_weight'][0]
+        # configured cap 12000 * 0.9 safety ratio = 10800 effective
+        assert weight.limit == 10800
+    finally:
+        await client.close()
+        await server.shutdown()

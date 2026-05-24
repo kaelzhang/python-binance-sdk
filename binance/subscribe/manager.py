@@ -1,6 +1,8 @@
 import time
 from typing import (
     Any,
+    Awaitable,
+    Callable,
     List,
     Iterable,
     Set,
@@ -20,8 +22,10 @@ from binance.common.constants import (
     SecurityType,
     SubType,
     STREAM_KEY_RATE_LIMITS,
+    STREAM_KEY_RESULT,
     WS_API_METHOD_SESSION_LOGON,
-    ERROR_CODE_UNAUTHORIZED
+    ERROR_CODE_UNAUTHORIZED,
+    ERROR_CODE_INVALID_TIMESTAMP
 )
 from binance.common.exceptions import (
     APIKeyNotDefinedException,
@@ -79,6 +83,8 @@ class SubscriptionManager:
     _api_secret: Optional[str]
     _private_key: Optional[object]
     _time_offset: int
+    _time_synced: bool
+    sync_time: Callable[[], Awaitable]
 
     def start(self):
         """Starts receiving messages.
@@ -205,13 +211,27 @@ class SubscriptionManager:
         """``on_response`` hook: reconcile a WS-API response's ``rateLimits``.
 
         Called by the shared WS-API :class:`Stream` with the full id-correlated
-        response message. The authoritative ``rateLimits`` array (present on
-        every WS-API response) is folded into the shared rate-limit core,
-        keeping the local weight/orders/raw pools exact.
+        response message. Two distinct arrays are folded into the shared
+        rate-limit core:
+
+        - the top-level authoritative ``rateLimits`` array (present on every
+          WS-API response; carries ``count``) reconciles current pool *usage*,
+          keeping the local weight/orders/raw pools exact; and
+        - an ``exchangeInfo`` response's ``result.rateLimits`` array (carries
+          ``limit``) reconfigures the pool *caps* to the account's real limits
+          (mirrors the former REST ``_handle_response`` behaviour).
         """
-        if isinstance(msg, dict):
-            self._rate_limiter.sync_from_ws_rate_limits(
-                msg.get(STREAM_KEY_RATE_LIMITS))
+        if not isinstance(msg, dict):
+            return
+
+        self._rate_limiter.sync_from_ws_rate_limits(
+            msg.get(STREAM_KEY_RATE_LIMITS))
+
+        # `exchangeInfo` carries the pool caps inside its `result`.
+        result = msg.get(STREAM_KEY_RESULT)
+        if isinstance(result, dict) and STREAM_KEY_RATE_LIMITS in result:
+            self._rate_limiter.configure_from_exchange_info(
+                result[STREAM_KEY_RATE_LIMITS])
 
     async def _on_ws_api_connected(self) -> None:
         """``on_connected`` hook for the shared WS-API connection.
@@ -263,7 +283,9 @@ class SubscriptionManager:
           (``apiKey``+``timestamp``+``signature``) is built.
         - ``USER_STREAM``: always the full signed payload.
 
-        Raises the same credential guards as the REST path before any send.
+        Credential presence is validated by the caller
+        (:meth:`_ws_api_request`) before any network round-trip, so this only
+        assembles the auth fields.
         """
         need_api_key, need_signed = security.value
 
@@ -271,23 +293,15 @@ class SubscriptionManager:
             # SecurityType.NONE -> public, no credentials.
             return params
 
-        if self._api_key is None:
-            raise APIKeyNotDefinedException(method)
+        if need_signed and self._ws_api_authenticated:
+            # Session is logged on: omit apiKey + signature, keep timestamp.
+            return {
+                **params,
+                'timestamp': int(time.time() * 1000) + self._time_offset
+            }
 
-        if need_signed:
-            if self._api_secret is None and self._private_key is None:
-                raise APISecretNotDefinedException(method)
-
-            if self._ws_api_authenticated:
-                # Session is logged on: omit apiKey + signature, keep timestamp.
-                return {
-                    **params,
-                    'timestamp': int(time.time() * 1000) + self._time_offset
-                }
-
-            return self._ws_api_signature_params(**params)
-
-        # USER_STREAM: api key + timestamp + signature (no session shortcut).
+        # Per-request signing: apiKey + timestamp + signature.
+        # (USER_STREAM has no session shortcut, so it always lands here too.)
         return self._ws_api_signature_params(**params)
 
     async def _ws_api_request(
@@ -332,6 +346,26 @@ class SubscriptionManager:
             if value is not None
         }
 
+        # Validate credentials BEFORE any network round-trip (mirrors the REST
+        # `_request` ordering), so a signed request lacking credentials raises
+        # immediately rather than first issuing the lazy `time` sync.
+        need_api_key, need_signed = security.value
+        if need_api_key and self._api_key is None:
+            raise APIKeyNotDefinedException(method)
+        if (
+            need_signed
+            and self._api_secret is None
+            and self._private_key is None
+        ):
+            raise APISecretNotDefinedException(method)
+
+        # Lazily sync the server-time offset before the FIRST signed request
+        # (mirrors the old REST `_request`). `sync_time()` itself issues the
+        # unsigned (NONE) WS-API `time` request, so `need_signed` is False there
+        # and this never recurses.
+        if need_signed and not self._time_synced:
+            await self.sync_time()
+
         request_params = self._ws_api_auth_params(method, request_params, security)
 
         await self._rate_limiter.acquire_request(weight=weight, is_order=is_order)
@@ -350,6 +384,11 @@ class SubscriptionManager:
                 # authenticated flag so the next request re-signs per-request
                 # and the next (re)connect re-runs session.logon.
                 self._ws_api_authenticated = False
+            elif e.code == ERROR_CODE_INVALID_TIMESTAMP:
+                # -1021: our timestamp fell outside the recvWindow (clock
+                # drift). Re-arm the lazy time-sync so the next signed request
+                # re-fetches the server-time offset (mirrors the REST path).
+                self._time_synced = False
             raise
 
     def _split_subscriptions(

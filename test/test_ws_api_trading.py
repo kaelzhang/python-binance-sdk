@@ -33,7 +33,13 @@ _PORT = 9087
 
 
 def _make_client(server) -> Client:
-    return Client(ws_api_host=server.uri, api_key='K', api_secret='S')
+    client = Client(ws_api_host=server.uri, api_key='K', api_secret='S')
+    # Pre-mark the server-time offset as synced so the endpoint under test is
+    # the FIRST frame sent (otherwise the lazy `time` sync would precede the
+    # first signed request). The lazy-sync arming itself is covered in
+    # test_time_sync.py.
+    client._time_synced = True
+    return client
 
 
 def _weight_used(client) -> int:
@@ -469,7 +475,9 @@ def test_ws_apis_registry_matches_spec():
             'openOrderLists.status', SecurityType.USER_DATA, False),
     }
 
-    assert set(by_name) == set(expected)
+    # The trading endpoints are a subset of the full WS-API registry (which
+    # also carries the general / market-data / account endpoints).
+    assert set(expected) <= set(by_name)
     for name, (ws_method, security, is_order) in expected.items():
         entry = by_name[name]
         assert entry['ws_method'] == ws_method

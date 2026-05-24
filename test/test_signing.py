@@ -8,10 +8,8 @@ cryptographically valid output, not just plausible-looking bytes.
 import base64
 import hmac
 import hashlib
-import re
 
 import pytest
-from aioresponses import aioresponses
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
@@ -26,6 +24,8 @@ from cryptography.hazmat.primitives.serialization import (
 from binance import Client
 from binance.client.base import encode_params
 from binance.common.exceptions import APISecretNotDefinedException
+
+from test.test_ws_api import WSAPIServer
 
 
 # ---------------------------------------------------------------------------
@@ -190,42 +190,36 @@ def test_ed25519_encrypted_pem():
 
 
 # ---------------------------------------------------------------------------
-# Signed REST request with private_key — no api_secret needed
+# Signed WS-API request with private_key — no api_secret needed
 # ---------------------------------------------------------------------------
 
-_ACCOUNT_URL_RE = re.compile(r'https://api\.binance\.com/api/v3/account(\?.*)?$')
-
-
 @pytest.mark.asyncio
-async def test_signed_rest_request_with_private_key_no_api_secret():
+async def test_signed_ws_api_request_with_private_key_no_api_secret():
     _priv, pem_str, _pub = _ed25519_pem_str()
-    client = Client(api_key='k', private_key=pem_str)
 
-    with aioresponses() as m:
-        # Mock the lazy time-sync call
-        m.get(
-            'https://api.binance.com/api/v3/time',
-            payload={'serverTime': 1_700_000_000_000},
-        )
-        # Mock the signed account endpoint — use regex so the dynamic
-        # signature/timestamp query params don't need exact matching
-        m.get(
-            _ACCOUNT_URL_RE,
-            payload={
-                'makerCommission': 10,
-                'takerCommission': 10,
-                'buyerCommission': 0,
-                'sellerCommission': 0,
-                'canTrade': True,
-                'canWithdraw': True,
-                'canDeposit': True,
-                'balances': [],
-            },
-        )
-        # Must not raise APISecretNotDefinedException
+    server = WSAPIServer(port=9089)
+    # Ed25519 keys log on after connect; canned (empty) reply is enough.
+    server.on('session.logon', result={'apiKey': 'k', 'authorizedSince': 1})
+    server.on('account.status', result={
+        'makerCommission': 10,
+        'takerCommission': 10,
+        'buyerCommission': 0,
+        'sellerCommission': 0,
+        'canTrade': True,
+        'canWithdraw': True,
+        'canDeposit': True,
+        'balances': [],
+    })
+    await server.run()
+    try:
+        client = Client(
+            ws_api_host=server.uri, api_key='k', private_key=pem_str)
+        # Must not raise APISecretNotDefinedException (signs with the key).
         result = await client.get_account()
-
-    assert result['canTrade'] is True
+        assert result['canTrade'] is True
+    finally:
+        await client.close()
+        await server.shutdown()
 
 
 # ---------------------------------------------------------------------------

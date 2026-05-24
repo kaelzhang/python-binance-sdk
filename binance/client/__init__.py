@@ -9,12 +9,53 @@ from binance.common.constants import (
     REST_API_HOST,
     STREAM_HOST,
     WS_API_HOST,
+    WS_API_TIME_UNIT_QUERY,
+    WS_API_TIME_UNIT_MICROSECOND,
+    WS_API_TIME_UNIT_MILLISECOND,
     DEFAULT_RETRY_POLICY, DEFAULT_STREAM_TIMEOUT
 )
 from binance.rate_limit import RateLimiter, RateLimitSnapshot
 from binance.common.types import Timeout
 
 from .base import ClientBase
+
+
+def _apply_time_unit(ws_api_host: str, time_unit) -> str:
+    """Append ``?timeUnit=...`` to the WS-API host URL when opting into microseconds.
+
+    F-13: the WS-API exposes a per-connection ``timeUnit`` option. Setting it on
+    the connection URL makes EVERY timestamp on that connection (response fields
+    and any server-side time handling) use the chosen unit. ``None`` (default)
+    leaves the URL untouched, keeping Binance's millisecond default.
+
+    Args:
+        ws_api_host: The base ``wss://.../ws-api/v3`` URL.
+        time_unit: ``None``/``'millisecond'`` (default ms, no change) or
+            ``'microsecond'`` (case-insensitive) to request microseconds.
+
+    Raises:
+        ValueError: If ``time_unit`` is not a recognised value.
+    """
+    if time_unit is None:
+        return ws_api_host
+
+    normalized = str(time_unit).upper()
+
+    if normalized == WS_API_TIME_UNIT_MILLISECOND:
+        # Explicit millisecond is the server default -> no query needed.
+        return ws_api_host
+
+    if normalized != WS_API_TIME_UNIT_MICROSECOND:
+        raise ValueError(
+            "time_unit must be None, 'millisecond', or 'microsecond', "
+            f'got {time_unit!r}'
+        )
+
+    separator = '&' if '?' in ws_api_host else '?'
+    return (
+        f'{ws_api_host}{separator}'
+        f'{WS_API_TIME_UNIT_QUERY}={WS_API_TIME_UNIT_MICROSECOND}'
+    )
 
 
 class Client(
@@ -27,15 +68,18 @@ class Client(
 
     Combines four building blocks via multiple inheritance:
 
-    - ``ClientBase``: holds API credentials, signs and sends aiohttp requests,
-      captures rate-limit response headers, and drives the ``RateLimiter``.
-    - ``RestAPIGetters``: generated async methods for the ``/api/`` REST
-      endpoints still served over REST (e.g. ``ping``, ``get_orderbook``,
-      ``get_account``).
-    - ``WsApiGetters``: generated async methods for the trading endpoints now
-      served over the WebSocket API (e.g. ``create_order``, ``cancel_order``,
-      ``create_oco``), each an id-correlated request on the shared WS-API
-      connection.
+    - ``ClientBase``: holds API credentials, signs requests, drives the
+      ``RateLimiter``, and provides the generic REST escape hatch
+      (``get``/``post``/...) plus ``sync_time()``.
+    - ``RestAPIGetters``: a now-empty shell (every former REST endpoint was
+      migrated to the WebSocket API); retained only for the generic REST escape
+      hatch and pending removal.
+    - ``WsApiGetters``: generated async methods for every request/response
+      endpoint -- general (``get_server_time``, ``get_exchange_info``),
+      market-data (``get_orderbook``, ``get_klines``, ``get_ticker``, ...),
+      account (``get_account``, ``get_commission``, ...) and trading
+      (``create_order``, ``cancel_order``, ``create_oco``, ...) -- each an
+      id-correlated request on the shared WS-API connection.
     - ``SubscriptionManager``: manages WebSocket market-data and user-data
       stream connections via ``subscribe()`` / ``unsubscribe()``, and owns the
       shared WS-API request connection used by ``WsApiGetters``.
@@ -44,7 +88,7 @@ class Client(
 
         client = Client(api_key='KEY', api_secret='SECRET')
 
-        # REST call — awaitable coroutine
+        # WebSocket-API call — awaitable coroutine
         info = await client.get_exchange_info()
 
         # Subscribe to a trade stream and attach a handler
@@ -69,6 +113,7 @@ class Client(
         # website_host=WEBSITE_HOST,
         stream_host: str = STREAM_HOST,
         ws_api_host: str = WS_API_HOST,
+        time_unit=None,
         stream_retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
         stream_timeout: Timeout = DEFAULT_STREAM_TIMEOUT,
         rate_limit_guard: bool = True,
@@ -87,6 +132,7 @@ class Client(
             private_key_pass (str or bytes, optional): Password to decrypt an encrypted PEM
                 private key.  Pass ``None`` (default) for unencrypted keys.
             requests_params (:obj:`dict`, optional): Dictionary of requests params to use for all calls
+            time_unit (:obj:`str`, optional): WebSocket-API timestamp unit. ``None`` (default) or ``'millisecond'`` keeps Binance's millisecond default; ``'microsecond'`` (case-insensitive) opts the whole WS-API connection into microsecond-precision timestamps by appending ``?timeUnit=MICROSECOND`` to the connection URL.
             rate_limit_guard (:obj:`bool`, optional): when True, proactively throttle REST requests with a client-side weight/raw/order budget to stay under the per-IP and per-account caps. When False, usage is still tracked (so monitoring works) but requests are never delayed. Defaults to True.
         """
 
@@ -108,7 +154,7 @@ class Client(
         self._api_host = api_host
 
         self._stream_host = stream_host
-        self._ws_api_host = ws_api_host
+        self._ws_api_host = _apply_time_unit(ws_api_host, time_unit)
         self._stream_retry_policy = stream_retry_policy
         self._stream_timeout = stream_timeout
 

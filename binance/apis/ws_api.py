@@ -5,6 +5,7 @@ from typing import (
 )
 
 from binance.common.constants import SecurityType
+from binance.rate_limit import depth_weight
 
 # WS-API trading endpoints ref:
 # https://github.com/binance/binance-spot-api-docs/blob/master/web-socket-api.md
@@ -25,7 +26,176 @@ def _open_orders_status_weight(kwargs) -> int:
     return 6 if 'symbol' in kwargs else 80
 
 
+def _depth_weight(kwargs) -> int:
+    """`depth` weight from the requested ``limit`` (Binance tiers)."""
+    return depth_weight(int(kwargs.get('limit', 100)))
+
+
+def _ticker_24hr_weight(kwargs) -> int:
+    """`ticker.24hr` weight.
+
+    A single ``symbol`` costs 2. A ``symbols`` list is tiered by count
+    (<=20 -> 2, <=100 -> 40, else 80). Querying every symbol (neither
+    ``symbol`` nor ``symbols``) is the most expensive at 80.
+    """
+    if 'symbol' in kwargs:
+        return 2
+    symbols = kwargs.get('symbols')
+    if symbols is None:
+        return 80
+    count = len(symbols)
+    if count <= 20:
+        return 2
+    if count <= 100:
+        return 40
+    return 80
+
+
+def _ticker_price_weight(kwargs) -> int:
+    """`ticker.price` weight: 2 for a single ``symbol``, else 4."""
+    return 2 if 'symbol' in kwargs else 4
+
+
+def _ticker_book_weight(kwargs) -> int:
+    """`ticker.book` weight: 2 for a single ``symbol``, else 4."""
+    return 2 if 'symbol' in kwargs else 4
+
+
+def _my_trades_weight(kwargs) -> int:
+    """`myTrades` weight: 5 when scoped by ``orderId``, else 20."""
+    return 5 if 'orderId' in kwargs else 20
+
+
 WS_APIS = [
+    # ----- general ---------------------------------------------------------
+    # These three historically took NO params on the REST path
+    # (``params=False``); preserve that so no stray kwargs are forwarded.
+    dict(
+        name='ping',
+        ws_method='ping',
+        params=False,
+        security_type=SecurityType.NONE,
+        weight=1
+    ),
+    dict(
+        name='get_server_time',
+        ws_method='time',
+        params=False,
+        security_type=SecurityType.NONE,
+        weight=1
+    ),
+    dict(
+        name='get_exchange_info',
+        ws_method='exchangeInfo',
+        params=False,
+        security_type=SecurityType.NONE,
+        weight=20
+    ),
+
+    # ----- market data (NONE) ----------------------------------------------
+    dict(
+        name='get_orderbook',
+        ws_method='depth',
+        security_type=SecurityType.NONE,
+        weight=_depth_weight
+    ),
+    dict(
+        name='get_recent_trades',
+        ws_method='trades.recent',
+        security_type=SecurityType.NONE,
+        weight=25
+    ),
+    dict(
+        name='get_historical_trades',
+        ws_method='trades.historical',
+        # F-03: Binance reclassified historical trades from MARKET_DATA to
+        # NONE (2023-07-11); over the WS-API it is a public (NONE) request.
+        security_type=SecurityType.NONE,
+        weight=25
+    ),
+    dict(
+        name='get_aggregate_trades',
+        ws_method='trades.aggregate',
+        security_type=SecurityType.NONE,
+        weight=4
+    ),
+    dict(
+        name='get_klines',
+        ws_method='klines',
+        security_type=SecurityType.NONE,
+        weight=2
+    ),
+    dict(
+        name='get_average_price',
+        ws_method='avgPrice',
+        security_type=SecurityType.NONE,
+        weight=2
+    ),
+    dict(
+        name='get_ticker',
+        ws_method='ticker.24hr',
+        security_type=SecurityType.NONE,
+
+        # 2 for one symbol; tiered by `symbols` count; 80 for all symbols.
+        weight=_ticker_24hr_weight
+    ),
+    dict(
+        name='get_ticker_price',
+        ws_method='ticker.price',
+        security_type=SecurityType.NONE,
+
+        # 2 for a single symbol, else 4.
+        weight=_ticker_price_weight
+    ),
+    dict(
+        name='get_orderbook_ticker',
+        ws_method='ticker.book',
+        security_type=SecurityType.NONE,
+
+        # 2 for a single symbol, else 4.
+        weight=_ticker_book_weight
+    ),
+
+    # ----- account (USER_DATA) ---------------------------------------------
+    dict(
+        name='get_account',
+        ws_method='account.status',
+        security_type=SecurityType.USER_DATA,
+        weight=20
+    ),
+    dict(
+        name='get_trades',
+        ws_method='myTrades',
+        security_type=SecurityType.USER_DATA,
+
+        # 5 when scoped by `orderId`, else 20.
+        weight=_my_trades_weight
+    ),
+    dict(
+        name='get_commission',
+        ws_method='account.commission',
+        security_type=SecurityType.USER_DATA,
+        weight=20
+    ),
+    dict(
+        name='get_order_rate_limit',
+        ws_method='account.rateLimits.orders',
+        security_type=SecurityType.USER_DATA,
+        weight=40
+    ),
+    dict(
+        name='get_prevented_matches',
+        ws_method='myPreventedMatches',
+        security_type=SecurityType.USER_DATA,
+        weight=20
+    ),
+    dict(
+        name='get_allocations',
+        ws_method='myAllocations',
+        security_type=SecurityType.USER_DATA,
+        weight=20
+    ),
+
     # ----- order.* ---------------------------------------------------------
     dict(
         name='create_order',
@@ -218,17 +388,624 @@ def define_ws_getter(
 
 
 class WsApiGetters:
-    """Internal mixin providing dynamically-generated async methods for Binance WebSocket-API trading endpoints.
+    """Internal mixin providing dynamically-generated async methods for every Binance WebSocket-API endpoint.
 
-    The trading surface (``order.*``, ``orderList.*``, ``sor.*``,
-    ``openOrders.*``) is served over the WebSocket API rather than REST. Every
-    method here is an ``await``-able coroutine that issues a single id-correlated
-    request over the shared WS-API connection via :meth:`_ws_api_request` and
-    returns the response ``result``. Public method names and signatures are
-    identical to the former REST methods; only the transport changed.
+    The entire request/response surface -- general (``ping``/``time``/
+    ``exchangeInfo``), market data (``depth``/``klines``/``trades.*``/
+    ``ticker.*``/...), account (``account.*``/``myTrades``/...) and trading
+    (``order.*``/``orderList.*``/``sor.*``/``openOrders.*``) -- is served over
+    the WebSocket API rather than REST. Every method here is an ``await``-able
+    coroutine that issues a single id-correlated request over the shared WS-API
+    connection via :meth:`_ws_api_request` and returns the response ``result``.
+    Public method names and signatures are identical to the former REST methods;
+    only the transport changed.
     """
 
     _ws_api_request: Callable[..., Awaitable]
+
+    # ----- general ---------------------------------------------------------
+
+    def ping(self) -> Awaitable:
+        """Tests connectivity to the WebSocket API.
+
+        Returns:
+            dict: An empty dict `{}`
+        """
+        ...  # pragma: no cover
+
+    def get_server_time(self) -> Awaitable:
+        """Tests connectivity to the WebSocket API and gets the current server time.
+
+        Returns:
+            dict: A dict contains only one key `serverTime`. For example::
+
+                {"serverTime": 1499827319559}
+        """
+        ...  # pragma: no cover
+
+    def get_exchange_info(self) -> Awaitable:
+        """Gets Current exchange trading rules and symbol information.
+
+        Returns:
+            dict: A dict of the exchange info. For example::
+
+                {
+                    'timezone': 'UTC',
+                    'serverTime': 1565246363776,
+                    'rateLimits': [
+                        {
+                            # These are defined in the `ENUM definitions` section under `Rate Limiters (rateLimitType)`.
+                            # All limits are optional
+                        }
+                    ],
+                    'exchangeFilters': [
+                        # These are the defined filters in the `Filters` section.
+                        # All filters are optional.
+                    ],
+                    'symbols': [
+                        {
+                            'symbol': 'ETHBTC',
+                            'status': 'TRADING',
+                            'baseAsset': 'ETH',
+                            'baseAssetPrecision': 8,
+                            'quoteAsset': 'BTC',
+                            'quotePrecision': 8,
+                            'baseCommissionPrecision': 8,
+                            'quoteCommissionPrecision': 8,
+                            'orderTypes': [
+                                'LIMIT',
+                                'LIMIT_MAKER',
+                                'MARKET',
+                                'STOP_LOSS',
+                                'STOP_LOSS_LIMIT',
+                                'TAKE_PROFIT',
+                                'TAKE_PROFIT_LIMIT'
+                            ],
+                            'icebergAllowed': True,
+                            'ocoAllowed': True,
+                            'quoteOrderQtyMarketAllowed': True,
+                            'isSpotTradingAllowed': True,
+                            'isMarginTradingAllowed': True,
+                            'filters': [
+                                # These are defined in the Filters section.
+                                # All filters are optional
+                            ]
+                        }
+                    ]
+                }
+        """
+        ...  # pragma: no cover
+
+    # ----- market data -----------------------------------------------------
+
+    def get_orderbook(self, **kwargs) -> Awaitable:
+        """Gets the orderbook for a certain symbol.
+
+        Args:
+            symbol (str): The symbol of the orderbook.
+            limit (:obj:`int`, optional): Defaults to 100; max 5000. Valid limits: [5, 10, 20, 50, 100, 500, 1000, 5000].
+
+        Returns:
+            dict: The orderbook. For example::
+
+                {
+                    'lastUpdateId': 1027024,
+                    'bids': [
+                        [
+                            '4.00000000',  # PRICE
+                            '431.00000000' # QTY
+                        ]
+                    ],
+                    'asks': [
+                        [
+                            '4.00000200',
+                            '12.00000000'
+                        ]
+                    ]
+                }
+        """
+        ...  # pragma: no cover
+
+    def get_recent_trades(self, **kwargs) -> Awaitable:
+        """Gets recent trades.
+
+        Args:
+            symbol (str): The symbol.
+            limit (:obj:`int`, optional): Defaults to 100; max 5000.
+
+        Returns:
+            list: A list of recent trade orders. For example::
+
+                [
+                    {
+                        'id': 28457,
+                        'price': '4.00000100',
+                        'qty': '12.00000000',
+                        'quoteQty': '48.000012',
+                        'time': 1499865549590,
+                        'isBuyerMaker': True,
+                        'isBestMatch': True
+                    }
+
+                    # ...
+                ]
+        """
+        ...  # pragma: no cover
+
+    def get_historical_trades(self, **kwargs) -> Awaitable:
+        """Get older trades.
+
+        Args:
+            symbol (str): The symbol name
+            limit (:obj:`int`, optional): Defaults to 500, max 1000.
+            fromId (:obj:`long`, optional): TradeId to fetch from. Default gets most recent trades.
+
+        Returns:
+            list: A list of trade orders. For example::
+
+                [
+                    {
+                        'id': 28457,
+                        'price': '4.00000100',
+                        'qty': '12.00000000',
+                        'quoteQty': '48.000012',
+                        'time': 1499865549590,
+                        'isBuyerMaker': True,
+                        'isBestMatch': True
+                    }
+
+                    # ...
+                ]
+        """
+        ...  # pragma: no cover
+
+    def get_aggregate_trades(self, **kwargs) -> Awaitable:
+        """Gets compressed, aggregate trades. Trades that fill at the time, from the same order, with the same price will have the quantity aggregated.
+
+        Args:
+            symbol (str): The symbol name.
+            fromId (:obj:`long`, optional): ID to get aggregate trades from INCLUSIVE.
+            startTime (:obj:`long`, optional): Timestamp in ms to get aggregate trades from INCLUSIVE.
+            endTime (:obj:`long`, optional): Timestamp in ms to get aggregate trades until INCLUSIVE.
+            limit (:obj:`int`, optional): Defaults to 500, max 1000.
+
+            If both ``startTime`` and ``endTime`` are sent, time between ``startTime`` and ``endTime`` must be less than 1 hour.
+            If ``fromId``, ``startTime``, and ``endTime`` are not sent, the most recent aggregate trades will be returned.
+
+        Returns:
+            list: A list of aggregated trade orders. For example::
+
+                [
+                    {
+                        'a': 26129,         # Aggregate tradeId
+                        'p': '0.01633102',  # Price
+                        'q': '4.70443515',  # Quantity
+                        'f': 27781,         # First tradeId
+                        'l': 27781,         # Last tradeId
+                        'T': 1498793709153, # Timestamp
+                        'm': True,          # Was the buyer the maker?
+                        'M': True           # Was the trade the best price match?
+                    }
+                ]
+        """
+        ...  # pragma: no cover
+
+    def get_klines(self, **kwargs) -> Awaitable:
+        """Gets kline/candlestick bars for a symbol. Klines are uniquely identified by their open time.
+
+        Args:
+            symbol (str):
+            interval (TimeFrame):
+            startTime (:obj:`long`, optional):
+            endTime (:obj:`long`, optional):
+            limit (:obj:`int`, optional): Defaults to 500, max 1000.
+
+            If ``startTime`` and ``endTime`` are not sent, the most recent klines are returned.
+
+        Returns:
+            list: A list of candlesticks. For example::
+
+                [
+                    [
+                        1499040000000,      # Open time
+                        '0.01634790',       # Open
+                        '0.80000000',       # High
+                        '0.01575800',       # Low
+                        '0.01577100',       # Close
+                        '148976.11427815',  # Volume
+                        1499644799999,      # Close time
+                        '2434.19055334',    # Quote asset volume
+                        308,                # Number of trades
+                        '1756.87402397',    # Taker buy base asset volume
+                        '28.46694368',      # Taker buy quote asset volume
+                        '17928899.62484339' # Ignore.
+                    ]
+                ]
+        """
+        ...  # pragma: no cover
+
+    def get_average_price(self, **kwargs) -> Awaitable:
+        """Gets current average price for a symbol.
+
+        Args:
+            symbol (str): The symbol name.
+
+        Returns:
+            dict: For example::
+
+                {
+                    'mins': 5,
+                    'price': '9.35751834'
+                }
+        """
+        ...  # pragma: no cover
+
+    def get_ticker(self, **kwargs) -> Awaitable:
+        """Gets 24 hour rolling window price change statistics. Careful when accessing this with no symbol.
+
+        Weight: 2 for a single ``symbol``; tiered by ``symbols`` count
+        (<=20 -> 2, <=100 -> 40, else 80); 80 when neither is sent.
+
+        Args:
+            symbol (:obj:`str`, optional): A single symbol.
+            symbols (:obj:`list`, optional): A list of symbols. If neither
+                ``symbol`` nor ``symbols`` is sent, tickers for all symbols
+                will be returned in a list.
+
+        Returns:
+            dict: If the ``symbol`` parameter is specified::
+
+                {
+                    'symbol': 'BNBBTC',
+                    'priceChange': '-94.99999800',
+                    'priceChangePercent': '-95.960',
+                    'weightedAvgPrice': '0.29628482',
+                    'prevClosePrice': '0.10002000',
+                    'lastPrice': '4.00000200',
+                    'lastQty': '200.00000000',
+                    'bidPrice': '4.00000000',
+                    'askPrice': '4.00000200',
+                    'openPrice': '99.00000000',
+                    'highPrice': '100.00000000',
+                    'lowPrice': '0.10000000',
+                    'volume': '8913.30000000',
+                    'quoteVolume': '15.30000000',
+                    'openTime': 1499783499040,
+                    'closeTime': 1499869899040,
+                    'firstId': 28385,   # First tradeId
+                    'lastId': 28460,    # Last tradeId
+                    'count': 76         # Trade count
+                }
+
+            list: If the ``symbol`` parameter is omitted::
+
+                [
+                    {
+                        'symbol': 'BNBBTC',
+                        'priceChange': '-94.99999800',
+                        'priceChangePercent': '-95.960',
+                        'weightedAvgPrice': '0.29628482',
+                        'prevClosePrice': '0.10002000',
+                        'lastPrice': '4.00000200',
+                        'lastQty': '200.00000000',
+                        'bidPrice': '4.00000000',
+                        'askPrice': '4.00000200',
+                        'openPrice': '99.00000000',
+                        'highPrice': '100.00000000',
+                        'lowPrice': '0.10000000',
+                        'volume': '8913.30000000',
+                        'quoteVolume': '15.30000000',
+                        'openTime': 1499783499040,
+                        'closeTime': 1499869899040,
+                        'firstId': 28385,   # First tradeId
+                        'lastId': 28460,    # Last tradeId
+                        'count': 76         # Trade count
+                    }
+                ]
+
+        """
+        ...  # pragma: no cover
+
+    def get_ticker_price(self, **kwargs) -> Awaitable:
+        """Gets latest price for a symbol or symbols.
+
+        Weight: 2 for a single symbol; 4 when the symbol parameter is omitted.
+
+        Args:
+            symbol (:obj:`str`, optional): If the ``symbol`` is not sent, prices for all symbols will be returned in a list.
+
+        Returns:
+            dict: If the ``symbol`` parameter is specified::
+
+                {
+                    'symbol': 'LTCBTC',
+                    'price': '4.00000200'
+                }
+
+            list: If the ``symbol`` parameter is omitted::
+
+                [
+                    {
+                        'symbol': 'LTCBTC',
+                        'price': '4.00000200'
+                    },
+                    {
+                        'symbol': 'ETHBTC',
+                        'price': '0.07946600'
+                    }
+                ]
+        """
+        ...  # pragma: no cover
+
+    def get_orderbook_ticker(self, **kwargs) -> Awaitable:
+        """Gets the best price/quantity on the order book for a symbol or symbols.
+
+        Weight: 2 for a single symbol; 4 when the symbol parameter is omitted.
+
+        Args:
+            symbol (:obj:`str`, optional): If the ``symbol`` is not sent, bookTickers for all symbols will be returned in a list.
+
+        Returns:
+            dict: If the ``symbol`` parameter is specified::
+
+                {
+                    'symbol': 'LTCBTC',
+                    'bidPrice': '4.00000000',
+                    'bidQty': '431.00000000',
+                    'askPrice': '4.00000200',
+                    'askQty': '9.00000000'
+                }
+
+
+            list: If the ``symbol`` parameter is omitted::
+
+                [
+                    {
+                        'symbol': 'LTCBTC',
+                        'bidPrice': '4.00000000',
+                        'bidQty': '431.00000000',
+                        'askPrice': '4.00000200',
+                        'askQty': '9.00000000'
+                    },
+                    {
+                        'symbol': 'ETHBTC',
+                        'bidPrice': '0.07946700',
+                        'bidQty': '9.00000000',
+                        'askPrice': '100000.00000000',
+                        'askQty': '1000.00000000'
+                    }
+                ]
+        """
+        ...  # pragma: no cover
+
+    # ----- account ---------------------------------------------------------
+
+    def get_account(self, **kwargs) -> Awaitable:
+        """Gets current account information.
+
+        Weight: 20
+
+        Args:
+            recvWindow (:obj:`long`, optional): The value cannot be greater than 60000。
+            timestamp (long):
+
+        Returns:
+            dict: For example::
+
+                {
+                    'makerCommission': 15,
+                    'takerCommission': 15,
+                    'buyerCommission': 0,
+                    'sellerCommission': 0,
+                    'canTrade': True,
+                    'canWithdraw': True,
+                    'canDeposit': True,
+                    'updateTime': 123456789,
+                    'accountType': 'SPOT',
+                    'balances': [
+                        {
+                            'asset': 'BTC',
+                            'free': '4723846.89208129',
+                            'locked': '0.00000000'
+                        },
+                        {
+                            'asset': 'LTC',
+                            'free': '4763368.68006011',
+                            'locked': '0.00000000'
+                        }
+                    ]
+                }
+        """
+        ...  # pragma: no cover
+
+    def get_trades(self, **kwargs) -> Awaitable:
+        """Gets trades for a specific account and symbol.
+
+        Weight: 5 when scoped by ``orderId``, else 20.
+
+        Args:
+            symbol (str):
+            orderId (:obj:`long`, optional): If set, fetches the trades for this
+                order only (must be used together with ``symbol``).
+            startTime (:obj:`long`, optional):
+            endTime (:obj:`long`, optional):
+            fromId (:obj:`long`, optional): TradeId to fetch from. Default gets most recent trades.
+            limit (:obj:`int`, optional): Defaults to 500, max 1000.
+            recvWindow (:obj:`long`, optional): The value cannot be greater than 60000。
+            timestamp (long):
+
+            If ``fromId`` is set, it will get orders >= that ``fromId``. Otherwise most recent orders are returned.
+
+        Returns:
+            list: For example::
+
+                [
+                    {
+                        'symbol': 'BNBBTC',
+                        'id': 28457,
+                        'orderId': 100234,
+                        'orderListId': -1,
+                        'price': '4.00000100',
+                        'qty': '12.00000000',
+                        'quoteQty': '48.000012',
+                        'commission': '10.10000000',
+                        'commissionAsset': 'BNB',
+                        'time': 1499865549590,
+                        'isBuyer': True,
+                        'isMaker': False,
+                        'isBestMatch': True
+                    }
+                ]
+
+        """
+        ...  # pragma: no cover
+
+    def get_commission(self, **kwargs) -> Awaitable:
+        """Gets current account commission rates.
+
+        Weight: 20
+
+        Args:
+            symbol (str):
+            recvWindow (:obj:`long`, optional): The value cannot be greater than 60000.
+            timestamp (long):
+
+        Returns:
+            dict: For example::
+
+                {
+                    'symbol': 'BTCUSDT',
+                    'standardCommission': {
+                        'maker': '0.00000010',
+                        'taker': '0.00000020',
+                        'buyer': '0.00000030',
+                        'seller': '0.00000040'
+                    },
+                    'taxCommission': {
+                        'maker': '0.00000112',
+                        'taker': '0.00000114',
+                        'buyer': '0.00000118',
+                        'seller': '0.00000116'
+                    },
+                    'discount': {
+                        'enabledForAccount': True,
+                        'enabledForSymbol': True,
+                        'discountAsset': 'BNB',
+                        'discount': '0.25000000'
+                    }
+                }
+        """
+        ...  # pragma: no cover
+
+    def get_order_rate_limit(self, **kwargs) -> Awaitable:
+        """Gets the current unfilled order count for all the account's order rate limits.
+
+        Weight: 40
+
+        Args:
+            recvWindow (:obj:`long`, optional): The value cannot be greater than 60000.
+            timestamp (long):
+
+        Returns:
+            list: For example::
+
+                [
+                    {
+                        'rateLimitType': 'ORDERS',
+                        'interval': 'SECOND',
+                        'intervalNum': 10,
+                        'limit': 50,
+                        'count': 0
+                    },
+                    {
+                        'rateLimitType': 'ORDERS',
+                        'interval': 'DAY',
+                        'intervalNum': 1,
+                        'limit': 160000,
+                        'count': 0
+                    }
+                ]
+        """
+        ...  # pragma: no cover
+
+    def get_prevented_matches(self, **kwargs) -> Awaitable:
+        """Displays the list of orders that were expired due to STP.
+
+        Weight: 20
+
+        Args:
+            symbol (str):
+            preventedMatchId (:obj:`long`, optional):
+            orderId (:obj:`long`, optional):
+            fromPreventedMatchId (:obj:`long`, optional):
+            limit (:obj:`int`, optional): Defaults to 500, max 1000.
+            recvWindow (:obj:`long`, optional): The value cannot be greater than 60000.
+            timestamp (long):
+
+            Supported parameter combinations:
+                ``symbol`` + ``preventedMatchId``
+                ``symbol`` + ``orderId``
+                ``symbol`` + ``orderId`` + ``fromPreventedMatchId`` (+ ``limit``)
+
+        Returns:
+            list: For example::
+
+                [
+                    {
+                        'symbol': 'BTCUSDT',
+                        'preventedMatchId': 1,
+                        'takerOrderId': 5,
+                        'makerOrderId': 3,
+                        'tradeGroupId': 1,
+                        'selfTradePreventionMode': 'EXPIRE_MAKER',
+                        'price': '1.100000',
+                        'makerPreventedQuantity': '1.300000',
+                        'transactTime': 1669101687094
+                    }
+                ]
+        """
+        ...  # pragma: no cover
+
+    def get_allocations(self, **kwargs) -> Awaitable:
+        """Retrieves allocations resulting from SOR order placement.
+
+        Weight: 20
+
+        Args:
+            symbol (str):
+            startTime (:obj:`long`, optional):
+            endTime (:obj:`long`, optional):
+            fromAllocationId (:obj:`int`, optional):
+            limit (:obj:`int`, optional): Defaults to 500, max 1000.
+            orderId (:obj:`long`, optional):
+            recvWindow (:obj:`long`, optional): The value cannot be greater than 60000.
+            timestamp (long):
+
+        Returns:
+            list: For example::
+
+                [
+                    {
+                        'symbol': 'BTCUSDT',
+                        'allocationId': 0,
+                        'allocationType': 'SOR',
+                        'orderId': 1,
+                        'orderListId': -1,
+                        'price': '1.00000000',
+                        'qty': '5.00000000',
+                        'quoteQty': '5.00000000',
+                        'commission': '0.00000000',
+                        'commissionAsset': 'BTC',
+                        'time': 1687506878118,
+                        'isBuyer': True,
+                        'isMaker': False,
+                        'isAllocator': False
+                    }
+                ]
+        """
+        ...  # pragma: no cover
+
+    # ----- trading ---------------------------------------------------------
 
     def create_order(self, **kwargs) -> Awaitable:
         """Sends in a new order.

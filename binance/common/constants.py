@@ -313,6 +313,14 @@ ERROR_KEY_MESSAGE = 'msg'
 WS_API_METHOD_SESSION_LOGON = 'session.logon'
 ERROR_CODE_UNAUTHORIZED = -2015   # API-key revoked / session invalid/expired
 
+# WS-API timeUnit (F-13, web-socket-api.md "Timing security").
+# Opt in to microsecond-precision timestamps for an entire WS-API connection by
+# appending `?timeUnit=MICROSECOND` to the connection URL. Default (None /
+# omitted) keeps Binance's millisecond default.
+WS_API_TIME_UNIT_QUERY = 'timeUnit'
+WS_API_TIME_UNIT_MICROSECOND = 'MICROSECOND'
+WS_API_TIME_UNIT_MILLISECOND = 'MILLISECOND'
+
 # Rate limits — verified 2026-05-23 against Binance Spot API docs
 # ==================================================
 

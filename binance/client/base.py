@@ -313,14 +313,18 @@ class ClientBase:
     async def sync_time(self) -> int:
         """Sync the local clock offset against Binance server time.
 
-        Calls ``GET /api/v3/time`` and stores ``server_time - local_time`` (ms)
-        as an offset that is added to the ``timestamp`` of every signed request,
-        preventing ``-1021`` (timestamp outside recvWindow) rejections from a
-        drifting local clock. Called automatically before the first signed
-        request and re-armed whenever a ``-1021`` is seen; you may also call it
-        manually (e.g. periodically). Returns the new offset in milliseconds.
+        Issues the WebSocket-API ``time`` request (``get_server_time``) and
+        stores ``server_time - local_time`` (ms) as an offset that is added to
+        the ``timestamp`` of every signed request, preventing ``-1021``
+        (timestamp outside recvWindow) rejections from a drifting local clock.
+        Called automatically before the first signed request and re-armed
+        whenever a ``-1021`` is seen; you may also call it manually (e.g.
+        periodically). Returns the new offset in milliseconds.
+
+        ``time`` is a public (``NONE``) request, so this never re-triggers the
+        signed-request time-sync arming (no recursion).
         """
-        # get_server_time is provided by the RestAPIGetters mixin on Client
+        # get_server_time is provided by the WsApiGetters mixin on Client
         res = await self.get_server_time()  # type: ignore[attr-defined]
         self._time_offset = int(res['serverTime']) - int(time.time() * 1000)
         self._time_synced = True

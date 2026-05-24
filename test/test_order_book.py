@@ -1,13 +1,13 @@
 import pytest
 import asyncio
 
-from aioresponses import aioresponses
-
 from binance import (
     Client,
     OrderBook,
     OrderBookFetchAbandonedException
 )
+
+from test.test_ws_api import WSAPIServer
 
 
 def test_order_book_no_client():
@@ -33,8 +33,12 @@ def test_orderbook_handler_per_symbol_limit():
 
 @pytest.mark.asyncio
 async def test_order_book():
-    with aioresponses() as m:
+    # The depth snapshot is now fetched over the WebSocket API (`depth`); drive
+    # it through the local WS-API request/response harness instead of REST.
+    server = WSAPIServer(port=9092)
+    await server.run()
 
+    try:
         # Prepare
         # -----------------------------------------------------------
         a00, b00, b01, a10 = [100, 10], [99, 100], [98, 2], [101, 3]
@@ -45,28 +49,30 @@ async def test_order_book():
         asks1 = [a10, a00]
         asks1_sort = [a00, a10]
 
-        client = Client('api_key')
+        client = Client('api_key', ws_api_host=server.uri)
 
         def preset_10():
-            m.get('https://api.binance.com/api/v3/depth?limit=1000&symbol=BTCUSDT', payload=dict(
+            server.on('depth', result=dict(
                 lastUpdateId=10,
                 asks=asks,
                 bids=bids
-            ), status=200)
+            ))
 
         def assert_state_a():
             assert orderbook.asks == asks
             assert orderbook.bids == bids_sort
 
         def preset_13():
-            m.get(
-                'https://api.binance.com/api/v3/depth?limit=1000&symbol=BTCUSDT', payload=dict(
-                    lastUpdateId=13,
-                    asks=asks1,
-                    bids=bids
-                ),
-                status=200
-            )
+            server.on('depth', result=dict(
+                lastUpdateId=13,
+                asks=asks1,
+                bids=bids
+            ))
+
+        def preset_unavailable():
+            # Mimic a not-yet-available snapshot: the refetch fails (and the
+            # retry policy keeps retrying) until a `preset_*` restores success.
+            server.on_error('depth', code=-1000, msg='unavailable', status=503)
 
         def assert_state_b():
             assert orderbook.asks == asks1_sort
@@ -92,6 +98,9 @@ async def test_order_book():
         assert_state_a()
 
         print('round two  : wrong update, refetch, retry policy and finally fetched')
+
+        # The snapshot is not yet available -> the refetch keeps retrying.
+        preset_unavailable()
 
         f = orderbook.updated()
 
@@ -165,6 +174,10 @@ async def test_order_book():
         orderbook.set_retry_policy(no_retry_policy)
 
         async def test_no_retry_policy():
+            # Snapshot unavailable -> the triggered refetch fails and, with no
+            # retry, is abandoned.
+            preset_unavailable()
+
             orderbook.update(dict(
                 # U=16 is missing
                 U=17,
@@ -210,8 +223,6 @@ async def test_order_book():
         if not orderbook.ready:
             await orderbook.updated()
 
-        preset_10()
-        # will fetch twice
         preset_10()
 
         def allow_retry_once(info):
@@ -260,17 +271,8 @@ async def test_order_book():
 
         print('round seven: fetch abandon')
 
-        def preset_error():
-            m.get(
-                'https://api.binance.com/api/v3/depth?limit=1000&symbol=BTCUSDT', payload=dict(
-                    lastUpdateId=13,
-                    asks=asks1,
-                    bids=bids
-                ),
-                status=500
-            )
-
-        preset_error()
+        # A server error on the depth request -> the snapshot fetch is abandoned.
+        server.on_error('depth', code=-1000, msg='boom', status=500)
 
         orderbook.set_retry_policy(None)
 
@@ -283,3 +285,6 @@ async def test_order_book():
             match='abandoned'
         ):
             await f
+    finally:
+        await client.close()
+        await server.shutdown()
