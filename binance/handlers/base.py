@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from stock_pandas import StockDataFrame
 
@@ -15,8 +15,10 @@ class Handler:
     def _receive(
         self,
         payload: Payload,
-        index: List[int] = [0]
+        index: Optional[List[int]] = None
     ) -> StockDataFrame:
+        if index is None:
+            index = [0]
         return StockDataFrame(
             payload, columns=self.COLUMNS, index=index
         ).rename(columns=self.COLUMNS_MAP)

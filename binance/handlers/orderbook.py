@@ -55,8 +55,10 @@ class OrderBook:
     connected ``Client`` instance so the automatic snapshot fetching can work.
 
     Attributes:
-        asks (SequencedList): Current ask levels, ordered ascending by price.
-        bids (SequencedList): Current bid levels, ordered descending by price.
+        asks (SequencedList): Current ask levels, ordered ascending by price;
+            the best (lowest) ask is ``asks[0]``.
+        bids (SequencedList): Current bid levels, ordered ascending by price;
+            the best (highest) bid is ``bids[-1]``.
     """
 
     asks: SequencedList
