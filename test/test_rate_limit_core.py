@@ -29,6 +29,69 @@ async def test_acquire_rest_consumes_weight_raw_orders():
 
 
 @pytest.mark.asyncio
+async def test_acquire_request_is_canonical_and_acquire_rest_aliases_it():
+    # acquire_request is the canonical gate; acquire_rest must delegate to it
+    # with identical effect (so REST callers keep working unchanged).
+    rl = RateLimiter()
+    await rl.acquire_request(weight=7, is_order=True)
+    snap = rl.snapshot()
+    assert _windows_by(snap, 'request_weight')[0].used == 7
+    assert _windows_by(snap, 'raw_requests')[0].used == 1
+    assert all(w.used == 1 for w in _windows_by(snap, 'orders'))
+
+    rl2 = RateLimiter()
+    await rl2.acquire_rest(weight=7, is_order=True)
+    snap2 = rl2.snapshot()
+    assert _windows_by(snap2, 'request_weight')[0].used == 7
+    assert _windows_by(snap2, 'raw_requests')[0].used == 1
+    assert all(w.used == 1 for w in _windows_by(snap2, 'orders'))
+
+
+def test_sync_from_ws_rate_limits_reconciles_matching_buckets():
+    rl = RateLimiter()
+    rl.sync_from_ws_rate_limits([
+        # weight pool (MINUTE x1 -> 60s -> the request_weight bucket)
+        {'rateLimitType': 'REQUEST_WEIGHT', 'interval': 'MINUTE',
+         'intervalNum': 1, 'limit': 6000, 'count': 4321},
+        # orders pool (SECOND x10 -> 10s)
+        {'rateLimitType': 'ORDERS', 'interval': 'SECOND',
+         'intervalNum': 10, 'limit': 100, 'count': 7},
+        # raw requests (5 MINUTES -> 300s)
+        {'rateLimitType': 'RAW_REQUESTS', 'interval': 'MINUTE',
+         'intervalNum': 5, 'limit': 300000, 'count': 99},
+    ])
+    snap = rl.snapshot()
+    weight = _windows_by(snap, 'request_weight')[0]
+    assert weight.used == 4321 and weight.source == 'header'
+    orders10 = [w for w in _windows_by(snap, 'orders') if w.interval == '10s'][0]
+    assert orders10.used == 7 and orders10.source == 'header'
+    raw = _windows_by(snap, 'raw_requests')[0]
+    assert raw.used == 99 and raw.source == 'header'
+
+
+def test_sync_from_ws_rate_limits_tolerates_garbage_and_none():
+    rl = RateLimiter()
+    rl.sync_from_ws_rate_limits(None)               # None -> no-op
+    rl.sync_from_ws_rate_limits([
+        'not-a-dict',                               # non-dict entry skipped
+        {'rateLimitType': 'CONNECTIONS', 'interval': 'MINUTE',
+         'intervalNum': 5, 'count': 1},            # unknown type skipped
+        {'rateLimitType': 'REQUEST_WEIGHT', 'interval': 'WEEK',
+         'intervalNum': 1, 'count': 1},            # unknown interval skipped
+        {'rateLimitType': 'REQUEST_WEIGHT', 'interval': 'HOUR',
+         'intervalNum': 1, 'count': 1},            # no matching bucket -> skip
+        {'rateLimitType': 'REQUEST_WEIGHT', 'interval': 'MINUTE',
+         'intervalNum': 1},                        # missing count -> skip
+        {'rateLimitType': 'ORDERS', 'interval': 'SECOND',
+         'intervalNum': 10, 'count': None},        # None count -> skip
+    ])
+    # nothing became authoritative
+    snap = rl.snapshot()
+    assert _windows_by(snap, 'request_weight')[0].source == 'client'
+    assert all(w.source == 'client' for w in _windows_by(snap, 'orders'))
+
+
+@pytest.mark.asyncio
 async def test_disabled_records_but_never_blocks_or_raises():
     rl = RateLimiter(enabled=False)
     for _ in range(5):

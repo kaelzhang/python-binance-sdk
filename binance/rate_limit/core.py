@@ -82,6 +82,44 @@ class RateLimiter:
                         and bucket.rule.interval_seconds == seconds):
                     bucket.set_limit(int(entry['limit']))
 
+    def sync_from_ws_rate_limits(self, rate_limits) -> None:
+        """Reconcile shared pools against a WS-API response ``rateLimits`` array.
+
+        Every WebSocket-API response carries an authoritative ``rateLimits``
+        list (``[{rateLimitType, interval, intervalNum, limit, count}, ...]``)
+        describing the server's own view of each pool right after the request
+        was counted. This is strictly better than REST header parsing: it is
+        exact, per-response, and covers the weight, orders and raw-request
+        pools at once. Each entry is matched to a shared bucket by
+        ``rateLimitType`` and by interval (``interval``x``intervalNum`` ->
+        seconds) -- the same matching as :meth:`configure_from_exchange_info`
+        -- and the bucket's ``used`` is reconciled to ``count`` via
+        :meth:`RateLimitBucket.sync` (which can only raise the local estimate,
+        never hide local usage). Unknown types/intervals, missing buckets, and
+        missing/None ``count`` are tolerated.
+
+        Args:
+            rate_limits: The ``rateLimits`` list from a WS-API response
+                (``None`` or empty is tolerated as a no-op).
+        """
+        for entry in rate_limits or []:
+            if not isinstance(entry, dict):
+                continue
+            limit_type = _EXCHANGE_INFO_TYPE.get(entry.get('rateLimitType'))
+            if limit_type is None:
+                continue
+            unit = _INTERVAL_SECONDS.get(entry.get('interval'))
+            if unit is None:
+                continue
+            count = entry.get('count')
+            if count is None:
+                continue
+            seconds = float(unit * int(entry.get('intervalNum', 1)))
+            for bucket in self._shared:
+                if (bucket.rule.type == limit_type
+                        and bucket.rule.interval_seconds == seconds):
+                    bucket.sync(int(count))
+
     def sync_from_headers(self, used_weight, order_count) -> None:
         """Reconcile the weight and order pools against authoritative headers.
 
@@ -129,7 +167,7 @@ class RateLimiter:
             return None
         return remaining
 
-    # ---- proactive enforcement: REST ---------------------------------
+    # ---- proactive enforcement: REST + WS-API ------------------------
     async def _consume(self, limit_type: RateLimitType, cost: int) -> None:
         for bucket in self._buckets_of(limit_type):
             if self._enabled:
@@ -137,15 +175,18 @@ class RateLimiter:
             else:
                 bucket.record(cost)
 
-    async def acquire_rest(self, *, weight: int, is_order: bool) -> None:
-        """Account (and, if enabled, gate) a REST request before it is sent.
+    async def acquire_request(self, *, weight: int, is_order: bool) -> None:
+        """Account (and, if enabled, gate) a request before it is sent.
 
-        Consumes the request's ``weight`` from the IP request-weight pool, one
-        unit from the IP raw-requests pool, and -- when ``is_order`` -- one unit
-        from each account orders pool. When the guard is enabled this may
-        ``await`` (weight/raw are ``SLEEP``) or raise
-        :class:`~binance.common.exceptions.RateLimitReachedException` (orders are
-        ``RAISE``); when disabled it only records usage.
+        The canonical gate for any request that draws on the shared IP/account
+        pools -- both REST and the WebSocket API, which share the same
+        REQUEST_WEIGHT / RAW_REQUESTS / ORDERS budgets. Consumes the request's
+        ``weight`` from the IP request-weight pool, one unit from the IP
+        raw-requests pool, and -- when ``is_order`` -- one unit from each
+        account orders pool. When the guard is enabled this may ``await``
+        (weight/raw are ``SLEEP``) or raise
+        :class:`~binance.common.exceptions.RateLimitReachedException` (orders
+        are ``RAISE``); when disabled it only records usage.
 
         Args:
             weight: The endpoint's request weight (keyword-only).
@@ -160,6 +201,10 @@ class RateLimiter:
         await self._consume(RateLimitType.RAW_REQUESTS, 1)
         if is_order:
             await self._consume(RateLimitType.ORDERS, 1)
+
+    async def acquire_rest(self, *, weight: int, is_order: bool) -> None:
+        """Backwards-compatible alias of :meth:`acquire_request` for REST callers."""
+        await self.acquire_request(weight=weight, is_order=is_order)
 
     # ---- proactive enforcement: WebSocket ----------------------------
     async def acquire_connection(self) -> None:
