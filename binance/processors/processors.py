@@ -2,6 +2,7 @@
 Ref: https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams
 """
 
+import re
 from stock_pandas import TimeFrame
 
 from binance.handlers.handlers import (
@@ -248,13 +249,13 @@ class PartialOrderBookProcessor(Processor):
     HANDLER = PartialOrderBookHandlerBase
     SUB_TYPE = SubType.PARTIAL_ORDER_BOOK
 
-    STREAM_PREFIX = '@depth'
+    STREAM_PATTERN = re.compile(r'@depth\d+')
 
     def is_message_type(self, msg):
         stream_type = msg.get(KEY_STREAM_TYPE)
         payload = msg.get(KEY_PAYLOAD)
 
-        if stream_type is None or self.STREAM_PREFIX not in stream_type:
+        if stream_type is None or not self.STREAM_PATTERN.search(stream_type):
             return False, None
 
         if (

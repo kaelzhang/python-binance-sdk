@@ -155,3 +155,22 @@ def test_partial_order_book_processor_message_routing():
         }
     })
     assert not is_partial
+
+
+def test_partial_order_book_rejects_diff_depth_stream():
+    """F-10: a diff-depth `@depth` stream must NOT route to the partial
+    processor even if the payload happens to carry bids/asks keys; only
+    `@depth<level>` streams are partial."""
+    processor = PartialOrderBookProcessor(None)
+
+    is_partial, _ = processor.is_message_type({
+        'stream': 'btcusdt@depth',
+        'data': {'bids': [], 'asks': []}
+    })
+    assert not is_partial
+
+    is_partial, _ = processor.is_message_type({
+        'stream': 'btcusdt@depth@100ms',
+        'data': {'bids': [], 'asks': []}
+    })
+    assert not is_partial
