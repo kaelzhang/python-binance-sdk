@@ -193,7 +193,7 @@ All arguments of the constructor Client are keyworded arguments and all optional
 - **private_key_pass?** `str|bytes=None` password to decrypt an encrypted PEM private key; `None` for unencrypted keys
 - **request_params?** `dict=None` global request params for aiohttp
 - **stream_retry_policy?** `Callable[[int, Exception], Tuple[bool, int, bool]]` retry policy for websocket stream. For details, see [RetryPolicy](#retrypolicy)
-- **stream_timeout?** `int=5` seconds util the stream reach an timeout error
+- **stream_timeout?** `int=30` seconds of stream silence before the SDK pings to probe a possibly-dead connection
 - **rate_limit_guard?** `bool=True` when `True`, the client proactively throttles REST requests with a client-side weight/raw/order budget to stay under Binance's per-IP and per-account caps. When `False`, usage is still tracked (so monitoring works) but requests are never delayed. On by default. See [Rate Limits](#rate-limits).
 - **api_host?** `str='https://api.binance.com'` to specify another API host for rest API requests. 这个参数的存在意义，使用方法，不累述，你懂的。
 - **stream_host?** `str='wss://stream.binance.com'` to specify another stream host for websocket connections.
@@ -503,6 +503,14 @@ A `RateLimitWindow` describes one pool: `scope` (`ip`/`account`/`connection`), `
 
 WebSocket-API (user stream) rate-limit errors (code `-1003`, status `418`/`429`) raise `StreamRateLimitException` (a subclass of `StreamSubscribeException`) carrying `retry_after`.
 
+### Behavioral changes in 3.4.0
+
+- **Asymmetric signing**: `Client(private_key=..., private_key_pass=...)` now signs requests with Ed25519 or RSA (Binance's recommended key types; HMAC via `api_secret` remains the default fallback).
+- **Server-time sync**: signed requests auto-sync a clock offset (and re-sync on `-1021`) to avoid timestamp-out-of-recvWindow rejections; call `await client.sync_time()` to warm it up.
+- **Per-symbol order book depth**: `OrderBookHandlerBase.orderbook(symbol, limit=...)` overrides the snapshot depth for a single symbol.
+- **Removed the dead `wapi`/`sapi` API surface** (`get_deposit_history`, `withdraw`, sub-account helpers, etc.): every endpoint returned 404 from Binance. Proper `/sapi/` support, if needed, will be a separate addition.
+- **WebSocket keepalive simplified**: the redundant `websockets` client-side ping is disabled (the library still auto-replies pong to Binance server pings); `stream_timeout` now defaults to 30s.
+
 ### Behavioral changes in 3.3.0
 
 - All rate limiting — REST weight/raw/orders and WS connections/messages/streams — now flows through one unified core (`binance.rate_limit`), the single source of truth.
@@ -527,7 +535,7 @@ By default, binance-sdk maintains the orderbook for you according to the rules o
 
 Specifically, `OrderBookHandlerBase` does the job.
 
-We could get the managed `OrderBook` object by method `handler.orderbook(symbol)`.
+We could get the managed `OrderBook` object by method `handler.orderbook(symbol)`. The handler-level `limit` (default `100`) applies to every symbol; to use a different snapshot depth for a single symbol, pass `handler.orderbook(symbol, limit=...)` before subscribing (Binance accepts `5`, `10`, `20`, `50`, `100`, `500`, `1000`, `5000` — use a larger value for a deeper local book).
 
 ```py
 async def main():
