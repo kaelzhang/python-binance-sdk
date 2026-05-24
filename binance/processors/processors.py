@@ -34,6 +34,12 @@ from binance.common.utils import normalize_symbol
 from .base import Processor
 
 
+VALID_KLINE_INTERVALS = frozenset((
+    '1s', '1m', '3m', '5m', '15m', '30m',
+    '1h', '2h', '4h', '6h', '8h', '12h',
+    '1d', '3d', '1w', '1M'
+))
+
 WINDOW_TIME_FRAMES = (
     TimeFrame.H1,
     TimeFrame.H4,
@@ -149,6 +155,15 @@ class KlineProcessor(Processor):
         if not isinstance(interval, TimeFrame):
             raise InvalidSubTypeParamException(
                 t, 'interval', '`TimeFrame` expected but got `%s`' % symbol)
+
+        interval_str = str(interval)
+        if interval_str not in VALID_KLINE_INTERVALS:
+            raise InvalidSubTypeParamException(
+                t,
+                'interval',
+                'invalid kline interval `%s`; must be one of %s'
+                % (interval_str, sorted(VALID_KLINE_INTERVALS))
+            )
 
         return f'{normalize_symbol(symbol)}@{KLINE_TYPE_PREFIX}{interval}'
 

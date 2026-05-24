@@ -63,6 +63,16 @@ def test_kline_utc8_processor():
     ) == 'btcusdt@kline_1d@+08:00'
 
 
+def test_kline_invalid_interval():
+    """An invalid kline interval (not in Binance allowlist) raises InvalidSubTypeParamException."""
+    from binance.processors.processors import KlineProcessor
+    processor = KlineProcessor(None)
+
+    # TimeFrame.Y1 ('1y') is a valid TimeFrame but NOT a valid Binance kline interval.
+    with pytest.raises(InvalidSubTypeParamException, match='invalid kline interval'):
+        processor.subscribe_param(None, SubType.KLINE, 'BTCUSDT', TimeFrame.Y1)
+
+
 def test_order_book_processor():
     processor = OrderBookProcessor(None)
 
