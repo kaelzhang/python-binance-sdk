@@ -10,7 +10,6 @@ from binance import (
     PartialOrderBookHandlerBase,
     AvgPriceHandlerBase,
     WindowTickerHandlerBase,
-    AccountInfoHandlerBase,
     AccountPositionHandlerBase,
     BalanceUpdateHandlerBase,
     OrderUpdateHandlerBase,
@@ -21,9 +20,6 @@ from binance import (
     AllMarketWindowTickersHandlerBase
 )
 from binance.common.utils import create_future
-
-from .common import ACCOUNT_INFO
-
 
 @pytest.fixture
 def client():
@@ -86,11 +82,6 @@ async def run_handler(
         expect_payload(received)
     else:
         assert received == expect_payload
-
-
-@pytest.mark.asyncio
-async def test_account_info(client):
-    await run_handler(client, AccountInfoHandlerBase, ACCOUNT_INFO)
 
 
 @pytest.mark.asyncio

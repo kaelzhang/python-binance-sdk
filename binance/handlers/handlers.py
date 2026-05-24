@@ -96,7 +96,7 @@ AGG_TRADE_COLUMNS_MAP = {
     'l': 'last_trade_id',
 }
 
-AGG_TRADE_COLUMNS = AGG_TRADE_COLUMNS_MAP
+AGG_TRADE_COLUMNS = AGG_TRADE_COLUMNS_MAP.keys()
 
 
 class AggTradeHandlerBase(Handler):
@@ -295,13 +295,16 @@ class AvgPriceHandlerBase(Handler):
 
 TICKER_COLUMNS_MAP = {
     **MINI_TICKER_COLUMNS_MAP,
-    'p': 'price',
+    'c': 'last_price',
+    'p': 'price_change',
     'P': 'percent',
     'w': 'weighted_average_price',
     'x': 'first_trade_price',
     'Q': 'last_quantity',
     'b': 'best_bid_price',
     'B': 'best_bid_quantity',
+    'a': 'best_ask_price',
+    'A': 'best_ask_quantity',
     'O': 'stat_open_time',
     'C': 'stat_close_time',
     'F': 'first_trade_id',
