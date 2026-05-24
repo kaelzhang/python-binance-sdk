@@ -188,7 +188,9 @@ client.handler(HandlerExceptionHandlerBase())
 All arguments of the constructor Client are keyworded arguments and all optional.
 
 - **api_key?** `str=None` binance api key
-- **api_secret?** `str=None` binance api secret
+- **api_secret?** `str=None` binance api secret for HMAC-SHA256 signing (deprecated by Binance; prefer asymmetric keys)
+- **private_key?** `str|bytes=None` Ed25519 or RSA PEM private key (PEM content or file path). When provided, used for request signing instead of `api_secret`. Binance recommends Ed25519 (fastest) or RSA over the deprecated HMAC keys.
+- **private_key_pass?** `str|bytes=None` password to decrypt an encrypted PEM private key; `None` for unencrypted keys
 - **request_params?** `dict=None` global request params for aiohttp
 - **stream_retry_policy?** `Callable[[int, Exception], Tuple[bool, int, bool]]` retry policy for websocket stream. For details, see [RetryPolicy](#retrypolicy)
 - **stream_timeout?** `int=5` seconds util the stream reach an timeout error

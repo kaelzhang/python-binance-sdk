@@ -54,6 +54,8 @@ class Client(
         self,
         api_key=None,
         api_secret=None,
+        private_key=None,
+        private_key_pass=None,
         request_params=None,
         # so that you can change api_host for CN network
         api_host: str = REST_API_HOST,
@@ -69,13 +71,21 @@ class Client(
 
         Args:
             api_key (str): API Key
-            api_secret (str): API Secret
+            api_secret (str): API Secret used for HMAC-SHA256 signing (deprecated by Binance).
+            private_key (str or bytes, optional): Ed25519 or RSA private key for asymmetric
+                request signing.  Can be the PEM content (``str`` or ``bytes``) or a file path
+                to a PEM file.  When supplied, the private key is used for signing instead of
+                ``api_secret``.  Binance recommends Ed25519 (fastest) or RSA over the
+                deprecated HMAC API keys.
+            private_key_pass (str or bytes, optional): Password to decrypt an encrypted PEM
+                private key.  Pass ``None`` (default) for unencrypted keys.
             requests_params (:obj:`dict`, optional): Dictionary of requests params to use for all calls
             rate_limit_guard (:obj:`bool`, optional): when True, proactively throttle REST requests with a client-side weight/raw/order budget to stay under the per-IP and per-account caps. When False, usage is still tracked (so monitoring works) but requests are never delayed. Defaults to True.
         """
 
         self._api_key = None
         self._api_secret = None
+        self._private_key = None
 
         self._used_weight = {}
         self._order_count = {}
@@ -85,6 +95,7 @@ class Client(
 
         self.key(api_key)
         self.secret(api_secret)
+        self._load_private_key(private_key, private_key_pass)
 
         self._request_params = request_params
         self._api_host = api_host

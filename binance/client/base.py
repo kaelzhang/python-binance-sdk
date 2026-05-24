@@ -1,9 +1,16 @@
 import asyncio
+import base64
 import hashlib
 import hmac
+import os
 import time
 from operator import itemgetter
 from urllib.parse import quote
+
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 from typing import (
     List,
@@ -161,18 +168,45 @@ class ClientBase:
 
         return kwargs
 
+    def _load_private_key(self, private_key, private_key_pass) -> None:
+        """Load an Ed25519/RSA PEM private key (path or PEM content) for signing."""
+        if private_key is None:
+            self._private_key = None
+            return
+        if isinstance(private_key, (bytes, bytearray)):
+            pem = bytes(private_key)
+        elif os.path.isfile(private_key):
+            with open(private_key, 'rb') as f:
+                pem = f.read()
+        else:
+            pem = private_key.encode('utf-8')
+        password = (
+            private_key_pass.encode('utf-8')
+            if isinstance(private_key_pass, str) else private_key_pass
+        )
+        self._private_key = load_pem_private_key(pem, password)
+
     def _generate_signature(
         self,
         data: dict
     ) -> str:
         query_string = encode_params(data)
-
+        if self._private_key is not None:
+            return self._sign_asymmetric(query_string)
         m = hmac.new(
             self._api_secret.encode('utf-8'),
             query_string.encode('utf-8'),
             hashlib.sha256)
-
         return m.hexdigest()
+
+    def _sign_asymmetric(self, query_string: str) -> str:
+        message = query_string.encode('utf-8')
+        key = self._private_key
+        if isinstance(key, Ed25519PrivateKey):
+            signature = key.sign(message)
+        else:  # RSA
+            signature = key.sign(message, padding.PKCS1v15(), hashes.SHA256())
+        return base64.b64encode(signature).decode('utf-8')
 
     def _ws_api_signature_params(
         self,
@@ -182,7 +216,7 @@ class ClientBase:
         if self._api_key is None:
             raise APIKeyNotDefinedException('userDataStream.subscribe.signature')
 
-        if self._api_secret is None:
+        if self._api_secret is None and self._private_key is None:
             raise APISecretNotDefinedException('userDataStream.subscribe.signature')
 
         signed = {
@@ -288,7 +322,7 @@ class ClientBase:
         else:
             api_key = None
 
-        if need_signed and self._api_secret is None:
+        if need_signed and self._api_secret is None and self._private_key is None:
             raise APISecretNotDefinedException(uri)
 
         if need_signed and not self._time_synced:
