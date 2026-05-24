@@ -15,6 +15,22 @@ def test_order_book_no_client():
     assert not orderbook._fetching
 
 
+def test_orderbook_handler_per_symbol_limit():
+    from binance import OrderBookHandlerBase
+    # No client attached -> no snapshot fetch is triggered (hermetic).
+    handler = OrderBookHandlerBase(limit=100)
+
+    custom = handler.orderbook('BTCUSDT', limit=500)
+    assert custom._limit == 500                 # per-symbol override
+
+    default = handler.orderbook('ETHUSDT')
+    assert default._limit == 100                # handler-level default
+
+    # The book is cached; a later get returns the same instance unchanged.
+    assert handler.orderbook('BTCUSDT') is custom
+    assert custom._limit == 500
+
+
 @pytest.mark.asyncio
 async def test_order_book():
     with aioresponses() as m:

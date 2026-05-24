@@ -1,3 +1,5 @@
+from typing import Optional
+
 from aioretry import RetryPolicy
 from stock_pandas import StockDataFrame
 
@@ -113,17 +115,27 @@ class OrderBookHandlerBase(Handler):
 
     def orderbook(
         self,
-        symbol: str
+        symbol: str,
+        limit: Optional[int] = None
     ) -> OrderBook:
-        """Gets the orderbook for a certain symbol. If you get a certain orderbook, don't forget to subscribe to the orderbook stream of `symbol`::
+        """Gets (or lazily creates) the ``OrderBook`` for a symbol.
 
+        Don't forget to also subscribe to the symbol's depth stream::
+
+            book = handler.orderbook('BTCUSDT', limit=1000)
             await client.subscribe(SubType.ORDER_BOOK, 'BTCUSDT')
 
         Args:
             symbol (str): The symbol name.
+            limit (:obj:`int`, optional): REST depth-snapshot size for THIS
+                symbol's book, overriding the handler-level default. Only
+                applied when the book is first created — call this before
+                subscribing to choose a per-symbol depth (Binance accepts 5,
+                10, 20, 50, 100, 500, 1000, 5000). Defaults to the handler's
+                ``limit``.
 
         Returns:
-            OrderBook: The orderbook.
+            OrderBook: The orderbook for ``symbol``.
         """
         symbol = normalize_symbol(symbol)
 
@@ -132,7 +144,7 @@ class OrderBookHandlerBase(Handler):
 
         orderbook = OrderBook(
             symbol,
-            limit=self._limit,
+            limit=self._limit if limit is None else limit,
             retry_policy=self._retry_policy
         )
 
