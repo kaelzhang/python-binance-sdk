@@ -31,21 +31,7 @@ from binance.common.utils import (
 
 
 class HandlerContext:
-    """Internal: routes incoming WebSocket messages to registered handlers.
-
-    Created lazily by ``SubscriptionManager._get_handler_ctx()`` and held for
-    the lifetime of a session (reset by ``SubscriptionManager.close()``).
-
-    Responsibilities:
-    - Maintain the set of active ``Processor`` instances (one per stream
-      sub-type) that have at least one handler registered.
-    - Translate ``subscribe``/``unsubscribe`` argument overloads into
-      canonical ``(SubType, ...)`` tuples via ``overload_subscriptions``.
-    - Resolve those tuples into wire-format subscribe params (stream-name
-      strings or dicts for the WS API) via ``subscribe_params``.
-    - Fan out each incoming message to all active processors that claim it,
-      delegating exception handling to ``ExceptionProcessor``.
-    """
+    """Internal: routes incoming stream messages to handlers and builds subscribe params."""
 
     PROCESSORS = PROCESSORS
 
@@ -66,21 +52,7 @@ class HandlerContext:
         self._exception_processor = ExceptionProcessor(client)
 
     def set_handler(self, handler) -> bool:
-        """Register a handler with the appropriate processor.
-
-        Checks the exception processor first (``HandlerExceptionHandlerBase``),
-        then iterates ``_all_processors`` in order. The first processor whose
-        ``supports_handler`` returns ``True`` receives the handler and is added
-        to the active ``_processors`` set.
-
-        Args:
-            handler: A ``Handler`` subclass instance to register.
-
-        Returns:
-            bool: ``True`` if a matching processor was found and the handler
-            was registered; ``False`` if no processor claimed the handler
-            (caller should raise ``InvalidHandlerException``).
-        """
+        """Register a handler with the first processor that claims it; return False if none does."""
         if self._exception_processor.supports_handler(handler):
             self._exception_processor.add_handler(handler)
             return True
@@ -110,30 +82,7 @@ class HandlerContext:
     #       (SubType.TICKER, 'BNBUSDT)
     # )
     def overload_subscriptions(self, *args) -> List[tuple]:
-        """Normalize ``subscribe``/``unsubscribe`` positional arguments into canonical tuples.
-
-        Supports four calling shapes:
-
-        - ``(SubType,)`` — subtype with no extra params (e.g. ``ALL_MARKET_MINI_TICKERS``).
-        - ``(SubType, symbol)`` or ``([SubType, ...], [symbol, ...])`` — the
-          Cartesian product of subtypes and symbols is expanded.
-        - ``(SubType, symbol, interval_or_window)`` — for subtypes that require
-          a third parameter (``KLINE``, ``KLINE_UTC8``, ``ORDER_BOOK``,
-          ``PARTIAL_ORDER_BOOK``, ``WINDOW_TICKER``).
-        - ``((SubType, ...), (SubType, ...), ...)`` — multiple pre-formed tuples
-          are processed individually.
-
-        Args:
-            *args: Raw positional arguments forwarded from ``subscribe``/``unsubscribe``.
-
-        Returns:
-            List[tuple]: Canonical subscription tuples, each of the form
-            ``(SubType, ...)`` ready for ``subscribe_params``.
-
-        Raises:
-            InvalidSubParamsException: If the argument shape does not match
-                any supported overload.
-        """
+        """Normalize subscribe/unsubscribe positional args into canonical ``(SubType, ...)`` tuples."""
         # Subs is a Tuple[tuple]
         subs = args if type(args[0]) is tuple else (args,)
         params = []
@@ -201,24 +150,7 @@ class HandlerContext:
         subscribe: bool,
         subscriptions: Iterable[tuple]
     ) -> Tuple[Union[str, dict], ...]:
-        """Resolve canonical subscription tuples into wire-format subscribe params.
-
-        Delegates to each subscription's processor via ``_subscribe_param``,
-        running all resolutions concurrently with ``asyncio.gather``.
-
-        Args:
-            subscribe: ``True`` to build subscribe params; ``False`` for
-                unsubscribe. Passed through to each processor so it can
-                apply direction-specific logic (e.g. ``UserProcessor`` checks
-                subscription state).
-            subscriptions: Iterable of canonical ``(SubType, ...)`` tuples as
-                produced by ``overload_subscriptions``.
-
-        Returns:
-            Tuple[Union[str, dict], ...]: One param per subscription. Market
-            streams yield a stream-name ``str`` (e.g. ``'btcusdt@aggTrade'``);
-            user-stream subscriptions yield a ``dict`` of WS-API parameters.
-        """
+        """Resolve canonical subscription tuples into wire-format params concurrently."""
         tasks = [
             self._subscribe_param(subscribe, *params)
             for params in subscriptions
@@ -259,19 +191,7 @@ class HandlerContext:
                 await processor.dispatch(payload)
 
     async def receive(self, msg) -> None:
-        """Dispatch a parsed WebSocket message to all active processors.
-
-        Calls the internal ``_receive`` which fans out to every processor in
-        ``_processors`` that claims the message via ``is_message_type``. Any
-        exception raised during dispatch is caught and forwarded to
-        ``_exception_processor.dispatch`` so registered exception handlers
-        receive it instead of crashing the receive loop.
-
-        Args:
-            msg: Parsed JSON dict from the WebSocket. Shape varies by stream
-                type; the processors are responsible for recognising their own
-                payload format.
-        """
+        """Fan out a message to active processors; forward any exception to the exception processor."""
         try:
             await self._receive(msg)
         except Exception as e:

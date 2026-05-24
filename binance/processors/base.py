@@ -21,28 +21,7 @@ from binance.handlers.base import Handler
 
 
 class Processor:
-    """Internal base class for a single stream sub-type.
-
-    Each concrete ``Processor`` subclass handles one ``SubType`` (e.g.
-    ``SubType.TRADE``) end-to-end:
-
-    - Recognising its own messages via ``is_message_type``.
-    - Building the Binance wire-format subscribe param string via
-      ``subscribe_param``.
-    - Registering handlers via ``add_handler`` and dispatching payloads to
-      them via ``dispatch``.
-
-    Class attributes that subclasses must or may override:
-
-    - ``HANDLER`` — the ``Handler`` base class whose instances this processor
-      accepts (checked by ``supports_handler``).
-    - ``SUB_TYPE`` — the ``SubType`` enum value this processor handles
-      (checked by ``supports_subtype``). Also used as the default
-      ``PAYLOAD_TYPE`` when left as ``ATOM``.
-    - ``PAYLOAD_TYPE`` — the ``'e'`` field value expected in the ``'data'``
-      envelope. Defaults to ``SUB_TYPE.value``; override explicitly when the
-      stream's event type differs (e.g. ``'depthUpdate'`` for order-book).
-    """
+    """Internal base class for a single stream sub-type."""
 
     # The handler class
     HANDLER: type
@@ -68,17 +47,6 @@ class Processor:
         self,
         t: SubType
     ) -> bool:
-        """Return whether this processor handles the given ``SubType``.
-
-        Used by ``HandlerContext._get_processor`` to look up which processor
-        owns a particular subscription key.
-
-        Args:
-            t: The ``SubType`` to check.
-
-        Returns:
-            bool: ``True`` if ``t == self.SUB_TYPE``.
-        """
         return t == self.SUB_TYPE
 
     # -----------------------------------------------
@@ -102,30 +70,7 @@ class Processor:
         t: SubType,
         *args
     ) -> Union[str, dict]:
-        """Build the Binance wire-format subscribe parameter for this stream.
-
-        The default implementation produces ``<SYMBOL_LOWER>@<subtype>``
-        (e.g. ``'btcusdt@trade'``). Subclasses override this when the stream
-        name has a different structure (extra suffixes, no symbol, or when a
-        signed dict must be returned for WS-API streams).
-
-        Args:
-            subscribe: ``True`` for subscribe, ``False`` for unsubscribe.
-                Processors that need direction-specific behaviour (e.g.
-                ``UserProcessor``) can inspect this.
-            t: The ``SubType`` being subscribed.
-            *args: Additional parameters — typically the symbol string, and
-                optionally a time-frame, depth level, or update interval
-                depending on the subtype.
-
-        Returns:
-            Union[str, dict]: A stream-name string for market streams, or a
-            dict of WS-API request parameters for user-data streams.
-
-        Raises:
-            InvalidSubTypeParamException: If a required parameter (e.g.
-                symbol) is missing or has the wrong type.
-        """
+        """Build the wire-format subscribe param (default: ``<symbol>@<subtype>``)."""
         symbol = self._get_param_symbol(t, args)
 
         return f'{normalize_symbol(symbol)}@{t}'
@@ -134,39 +79,10 @@ class Processor:
         self,
         handler: Handler
     ) -> bool:
-        """Return whether this processor can accept the given handler.
-
-        Checks ``isinstance(handler, self.HANDLER)``. Subclasses that support
-        multiple handler base classes (like ``UserProcessor``) override this
-        to check against a tuple of handler types.
-
-        Args:
-            handler: The handler instance to inspect.
-
-        Returns:
-            bool: ``True`` if the handler belongs to this processor's stream
-            type.
-        """
         return isinstance(handler, self.HANDLER)
 
     def is_message_type(self, msg):
-        """Determine whether an incoming message belongs to this processor.
-
-        The default implementation looks for ``msg['data']['e'] == PAYLOAD_TYPE``
-        (the standard combined-stream envelope). Subclasses override this for
-        streams that use a different envelope shape — for example,
-        ``BookTickerProcessor`` matches on ``msg['stream']`` suffix, and
-        ``PartialOrderBookProcessor`` additionally checks for ``'bids'``/
-        ``'asks'`` keys.
-
-        Args:
-            msg: Parsed WebSocket JSON dict.
-
-        Returns:
-            Tuple[bool, Optional[dict]]: ``(True, payload_dict)`` when the
-            message matches, ``(False, None)`` otherwise. ``payload_dict`` is
-            the inner payload that will be forwarded to ``dispatch``.
-        """
+        """Return ``(True, payload)`` if the message belongs to this processor, else ``(False, None)``."""
         payload = msg.get(KEY_PAYLOAD)
 
         if (
@@ -182,16 +98,6 @@ class Processor:
         self,
         handler: Handler
     ) -> None:
-        """Register a handler instance with this processor.
-
-        Sets the client reference on the handler (via ``handler.set_client``)
-        so the handler can make API calls, then adds it to the internal
-        ``_handlers`` set. Duplicate registrations are silently ignored.
-
-        Args:
-            handler: The handler instance to register. Must be an instance of
-                ``self.HANDLER`` (enforced upstream by ``supports_handler``).
-        """
         if handler not in self._handlers:
             # set the client to handler
             handler.set_client(self._client)
@@ -202,20 +108,7 @@ class Processor:
         self,
         payload
     ) -> Awaitable[None]:
-        """Fan out a matched payload to all registered handlers.
-
-        Delegates to ``_dispatch``, which calls ``handler.receiveDispatch``
-        on every handler in ``_handlers`` and gathers any resulting coroutines
-        concurrently. Subclasses (e.g. ``UserProcessor``) override this to
-        route payloads to per-event-type handler sub-sets.
-
-        Args:
-            payload: The inner payload dict extracted by ``is_message_type``.
-
-        Returns:
-            Awaitable[None]: A coroutine that resolves when all handlers have
-            finished processing the payload.
-        """
+        """Fan out a matched payload to all registered handlers."""
         return self._dispatch(payload, self._handlers)
 
     async def _dispatch(

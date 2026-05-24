@@ -38,20 +38,7 @@ ORDER_BOOK_COLUMNS = ORDER_BOOK_COLUMNS_MAP.keys()
 
 
 def create_depth_df(depth_list: list):
-    """Convert a raw Binance depth list into a ``StockDataFrame``.
-
-    Binance depth payloads represent each level as a two-element list
-    ``[price, quantity]``.  This function normalises that into a
-    ``StockDataFrame`` with named ``price`` and ``quantity`` columns.
-
-    Args:
-        depth_list (list): A list of ``[price, quantity]`` pairs as returned
-            by the Binance depth REST endpoint or ``depthUpdate`` stream.
-
-    Returns:
-        StockDataFrame: A dataframe with ``price`` and ``quantity`` columns,
-            one row per price level.
-    """
+    """Convert a raw ``[price, quantity]`` depth list into a ``StockDataFrame``."""
     return StockDataFrame([
         {'price': x[0], 'quantity': x[1]} for x in depth_list
     ])

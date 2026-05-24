@@ -197,41 +197,7 @@ def define_getter(
     security_type=SecurityType.NONE,
     is_order=False
 ):
-    """Factory that attaches a concrete async REST getter method to ``Target``.
-
-    For each entry in ``APIS``, this function builds a closure (``getter``)
-    that:
-
-    - constructs the full URI via ``self._rest_uri(path, version)``,
-    - resolves the per-call weight (using ``depth_weight`` for the ``depth``
-      endpoint when a ``limit`` kwarg is present, otherwise falling back to
-      the static value from ``REST_ENDPOINT_WEIGHTS``),
-    - forwards ``is_order=True`` for order-placement endpoints so the
-      ``RateLimiter`` charges the ORDERS pool instead of the weight pool,
-    - drops all kwargs when ``params=False`` (for no-argument endpoints like
-      ``ping``),
-    - and delegates to ``self._request(method, uri, security_type, ...)``.
-
-    The placeholder method already defined on ``Target`` under ``name`` must
-    carry the public docstring; ``define_getter`` migrates that docstring onto
-    the new closure before installing it via ``setattr``.
-
-    Args:
-        Target: The class (``RestAPIGetters``) on which to install the method.
-        name: Python attribute name for the method (e.g. ``'get_orderbook'``).
-        path: Binance REST path segment (e.g. ``'depth'``).
-        params: When ``False``, all caller kwargs are ignored (used for
-            zero-parameter endpoints such as ``ping``). Defaults to ``True``.
-        version: API version string inserted into the URL. Defaults to
-            ``REST_API_VERSION``.
-        method: HTTP verb as a ``RequestMethod`` enum. Defaults to
-            ``RequestMethod.GET``.
-        security_type: Authentication requirement for this endpoint. Defaults
-            to ``SecurityType.NONE`` (no key or signature needed).
-        is_order: When ``True``, the call is counted against the ORDERS
-            rate-limit pool in addition to the weight pool. Defaults to
-            ``False``.
-    """
+    """Internal factory: build a concrete async REST closure and install it on ``Target``."""
     base_weight = REST_ENDPOINT_WEIGHTS.get(path, 1)
 
     def getter(self, **kwargs):
@@ -274,17 +240,7 @@ def define_getter(
 
 
 class RestAPIGetters:
-    """Internal mixin that provides generated async methods for Binance ``/api/`` REST endpoints.
-
-    All public methods on this class are stubs carrying only their docstrings.
-    At module load time ``define_getter`` overwrites each stub with a concrete
-    closure that calls ``self._request``, so runtime instances always invoke
-    the real implementation.  The IDE-visible stubs exist solely to allow
-    static analysis tools and editors to discover method signatures and
-    docstrings that ``setattr`` would otherwise hide.
-
-    Intended to be mixed into ``Client`` alongside ``ClientBase``.
-    """
+    """Internal mixin providing dynamically-generated async methods for Binance ``/api/`` endpoints."""
 
     _api_host: str
 

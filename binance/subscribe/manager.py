@@ -40,25 +40,7 @@ def _extract_event_type(msg):
 
 
 class SubscriptionManager:
-    """Mixin mixed into ``Client`` that owns the data and user WebSocket streams.
-
-    ``SubscriptionManager`` is responsible for the full subscription lifecycle:
-    creating and lazily starting the data stream (``/stream``) and the
-    user-data WebSocket API stream, routing incoming messages to the active
-    ``HandlerContext``, and resubscribing all previously registered streams
-    after a reconnect.
-
-    It exposes the public user-facing API: ``subscribe``, ``unsubscribe``,
-    ``list_subscriptions``, ``handler``, ``start``, ``stop``, and ``close``.
-    The underlying ``Stream`` objects and ``HandlerContext`` are private
-    implementation details.
-
-    State is partitioned into two WebSocket connections:
-    - *data stream* (``_data_stream``): carries all market-data streams
-      (klines, trades, tickers, etc.) via the combined ``/stream`` endpoint.
-    - *user stream* (``_user_stream``): carries authenticated user-data events
-      via the WebSocket API (``wss://ws-api.binance.com``).
-    """
+    """Internal mixin merged into ``Client`` that manages data and user WebSocket stream lifecycles."""
 
     _data_stream: Optional[Stream]
     _user_stream: Optional[Stream]

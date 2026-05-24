@@ -99,20 +99,8 @@ class EnforceMode(str, Enum):
 
 
 def interval_label(seconds: float) -> str:
-    """Render a window length (in seconds) as Binance's compact interval label.
-
-    Picks the largest exact unit: ``60 -> '1m'``, ``600 -> '10m'``,
-    ``3600 -> '1h'``, ``86400 -> '1d'``, and otherwise seconds (``10 -> '10s'``).
-
-    Args:
-        seconds: The window length. A non-positive value (used by ``CAP`` rules,
-            which have no time window) yields the empty string.
-
-    Returns:
-        The label, or ``''`` when ``seconds <= 0``. The non-empty labels match
-        the interval keys Binance uses in its rate-limit headers, so the result
-        doubles as the header-reconciliation key.
-    """
+    """Internal: render a window length in seconds as a compact label
+    (``60 -> '1m'``, ``86400 -> '1d'``); ``''`` when ``seconds <= 0``."""
     if seconds <= 0:
         return ''
     if seconds % 86400 == 0:

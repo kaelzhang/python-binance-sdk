@@ -96,26 +96,10 @@ RETRY_MAX_DELAY = 30.0
 
 
 def DEFAULT_RETRY_POLICY(info: RetryInfo) -> RetryPolicyStrategy:
-    """Bounded exponential backoff with full jitter — the recommended stream retry policy.
-
-    Implements a "full jitter" exponential backoff capped at `RETRY_MAX_DELAY`
-    (30 s).  The delay for the n-th failure is drawn uniformly from the interval
-    [ceiling/2, ceiling], where `ceiling = min(30, 2^(n-1))` seconds.  The policy
-    never abandons, so streams will keep reconnecting indefinitely.
-
-    Combined with the per-IP connection limiter, this strategy stays safely
-    below the Binance limit of 300 connections per 5 minutes.
-
-    This function conforms to the `aioretry` `RetryPolicyStrategy` protocol and
-    is used as the default value of `Client(stream_retry_policy=...)`.
-
-    Args:
-        info: An `aioretry.RetryInfo` instance.  `info.fails` is the count of
-            consecutive failures seen so far (1-based on the first retry).
-
-    Returns:
-        A tuple `(abandon, delay)` where `abandon` is always `False` and
-        `delay` is the number of seconds to wait before the next attempt.
+    """The default `Client(stream_retry_policy=...)`: bounded full-jitter
+    exponential backoff capped at 30s, never abandoning. Stays safely under
+    Binance's 300-connections-per-5-min limit when paired with the connection
+    limiter.
     """
     # Bounded exponential backoff with full jitter and a floor, never abandoning.
     # Combined with the per-IP connection limiter this cannot breach 300/5min.
@@ -125,19 +109,8 @@ def DEFAULT_RETRY_POLICY(info: RetryInfo) -> RetryPolicyStrategy:
 
 
 def NO_RETRY_POLICY(_) -> RetryPolicyStrategy:
-    """Retry policy that immediately abandons on the first failure.
-
-    Returns `(True, 0)` unconditionally, causing `aioretry` to abandon the
-    operation without waiting.  Use this as `Client(stream_retry_policy=NO_RETRY_POLICY)`
-    when the application wants to handle stream disconnections itself rather
-    than having the SDK silently reconnect.
-
-    Args:
-        _: Ignored `aioretry.RetryInfo` argument (required by the protocol).
-
-    Returns:
-        A tuple `(abandon=True, delay=0)`, signalling immediate abandonment.
-    """
+    """A `stream_retry_policy` that abandons immediately on the first failure
+    (never reconnects) — use it to handle disconnections yourself."""
     return True, 0
 
 
