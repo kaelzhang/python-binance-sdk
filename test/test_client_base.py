@@ -9,6 +9,8 @@ from binance import (
     StatusException
 )
 from binance.common.constants import SecurityType
+from binance.client.base import _reject_float_params
+from binance.rate_limit import RateLimiter
 
 # TODO:
 # global request_params
@@ -195,3 +197,273 @@ async def test_rest_escape_hatch_1021_rearms_time_sync():
 
     assert exc_info.value.code == -1021
     assert client._time_synced is False
+
+
+# ---------------------------------------------------------------------------
+# F-07 — float param rejection on REST path
+# ---------------------------------------------------------------------------
+
+def test_reject_float_params_raises_with_message():
+    """_reject_float_params raises ValueError naming the offending key."""
+    with pytest.raises(ValueError, match="price.*float.*pass a string"):
+        _reject_float_params({'symbol': 'BTCUSDT', 'price': 0.01})
+
+
+def test_reject_float_params_allows_int_str_bool():
+    """int, str, and bool values are all accepted."""
+    _reject_float_params({'qty': 1, 'price': '0.01', 'test': True})
+
+
+@pytest.mark.asyncio
+async def test_rest_float_param_rejected():
+    """A float param in a GET REST call raises ValueError before any network call."""
+    client = Client()
+    with pytest.raises(ValueError, match="float"):
+        await client.get(URL, price=0.01)
+
+
+@pytest.mark.asyncio
+async def test_rest_post_float_param_rejected():
+    """A float param in a POST REST call raises ValueError before any network call."""
+    client = Client()
+    with pytest.raises(ValueError, match="float"):
+        await client.post(URL, qty=0.1)
+
+
+# ---------------------------------------------------------------------------
+# F-35 — contract test: signed string == wire string (GET and POST)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_f35_get_signed_equals_wire():
+    """F-47: for a signed GET the query string on the wire is byte-identical to
+    what was signed.  The param value contains '/' and a space to exercise
+    percent-encoding paths that previously diverged between signing and sending."""
+    client = Client(api_key='k', api_secret='secret')
+    # Pre-arm time-sync so the request doesn't try to open a WS connection.
+    client._time_synced = True
+    client._time_offset = 0
+
+    captured_url = []
+
+    with aioresponses() as m:
+        # Match any URL for this host.
+        pattern = re.compile(r'https://api\.binance\.com/.*')
+        m.get(pattern, payload={'ok': True})
+
+        # Intercept _build_rest_request to capture the URL object it produces.
+        original_build = client._build_rest_request
+
+        def capturing_build(method, uri, need_signed, api_key, **data):
+            result_uri, req_kwargs = original_build(
+                method, uri, need_signed, api_key, **data)
+            if 'url' in req_kwargs:
+                captured_url.append(str(req_kwargs['url']))
+            return result_uri, req_kwargs
+
+        client._build_rest_request = capturing_build
+        await client.get(
+            'https://api.binance.com/api/v3/account',
+            security_type=SecurityType.USER_DATA,
+            newClientOrderId='a/b c',
+            recvWindow=5000,
+        )
+
+    # Reconstruct the expected signed payload from the captured query.
+    assert captured_url, "URL was not captured"
+    query_part = captured_url[0].split('?', 1)[1]
+
+    # Parse the params back out and verify the signature.
+    pairs = {}
+    for part in query_part.split('&'):
+        k, v = part.split('=', 1)
+        pairs[k] = v
+
+    # The signing input must be everything except the signature itself,
+    # assembled as 'key=value&...' in the SAME percent-encoded form.
+    sig = pairs.pop('signature')
+    # Rebuild the signing input from the wire pairs (already encoded).
+    # Signature is at the end; the input is everything before &signature=.
+    signing_input = '&'.join(f'{k}={v}' for k, v in sorted(pairs.items()))
+    # The wire string is percent-encoded; signing was over the same encoded string.
+    expected_sig = hmac.new(
+        b'secret', signing_input.encode(), hashlib.sha256
+    ).hexdigest()
+    assert sig == expected_sig, (
+        f"signed string != wire string.\n"
+        f"  signing_input: {signing_input!r}\n"
+        f"  expected sig:  {expected_sig!r}\n"
+        f"  got sig:       {sig!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_f35_post_signed_body_equals_signed():
+    """F-47: for a signed POST the body on the wire is byte-identical to what
+    was signed.  The param value contains '/' and a space."""
+    client = Client(api_key='k', api_secret='secret')
+    client._time_synced = True
+    client._time_offset = 0
+
+    captured_body = []
+
+    with aioresponses() as m:
+        pattern = re.compile(r'https://api\.binance\.com/.*')
+        m.post(pattern, payload={'ok': True})
+
+        original_build = client._build_rest_request
+
+        def capturing_build(method, uri, need_signed, api_key, **data):
+            result_uri, req_kwargs = original_build(
+                method, uri, need_signed, api_key, **data)
+            if 'data' in req_kwargs:
+                captured_body.append(req_kwargs['data'])
+            return result_uri, req_kwargs
+
+        client._build_rest_request = capturing_build
+        await client.post(
+            'https://api.binance.com/api/v3/order',
+            security_type=SecurityType.TRADE,
+            newClientOrderId='a/b c',
+            side='BUY',
+        )
+
+    assert captured_body, "body was not captured"
+    body = captured_body[0]
+
+    # Parse pairs from the body.
+    pairs = {}
+    for part in body.split('&'):
+        k, v = part.split('=', 1)
+        pairs[k] = v
+
+    sig = pairs.pop('signature')
+    # Signing input is exactly the body minus the trailing &signature=...
+    # = everything before the last &signature= segment
+    signing_input = body[:body.rfind('&signature=')]
+    expected_sig = hmac.new(
+        b'secret', signing_input.encode(), hashlib.sha256
+    ).hexdigest()
+    assert sig == expected_sig, (
+        f"signed body != wire body.\n"
+        f"  signing_input: {signing_input!r}\n"
+        f"  expected sig:  {expected_sig!r}\n"
+        f"  got sig:       {sig!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# F-12 / F-42 — shared ClientSession + configurable timeout
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_single_session_reused_across_requests():
+    """The same ClientSession instance is reused for multiple REST calls."""
+    client = Client(request_timeout=5)
+    session1_id = None
+    session2_id = None
+
+    with aioresponses() as m:
+        m.get(URL, payload={'ok': 1})
+        m.get(URL, payload={'ok': 2})
+        await client.get(URL)
+        session1_id = id(client._rest_session)
+        await client.get(URL)
+        session2_id = id(client._rest_session)
+
+    assert session1_id == session2_id, "Session was not reused"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_close_closes_rest_session():
+    """client.close() closes the shared REST ClientSession."""
+    client = Client()
+    with aioresponses() as m:
+        m.get(URL, payload={'ok': True})
+        await client.get(URL)
+    assert client._rest_session is not None
+    assert not client._rest_session.closed
+    await client.close()
+    assert client._rest_session is None
+
+
+@pytest.mark.asyncio
+async def test_close_when_session_never_opened():
+    """client.close() is safe even if no REST request was ever made."""
+    client = Client()
+    assert client._rest_session is None
+    await client.close()  # must not raise
+
+
+def test_request_timeout_stored():
+    """Client(request_timeout=...) stores the value for session creation."""
+    client = Client(request_timeout=42)
+    assert client._request_timeout == 42.0
+
+
+# ---------------------------------------------------------------------------
+# F-49 — shared RateLimiter injection
+# ---------------------------------------------------------------------------
+
+def test_shared_rate_limiter_injection():
+    """Client(rate_limiter=...) uses the injected limiter rather than building one."""
+    shared = RateLimiter(enabled=False)
+    client = Client(rate_limiter=shared)
+    assert client._rate_limiter is shared
+
+
+def test_default_rate_limiter_created_without_injection():
+    """Without rate_limiter=, a fresh RateLimiter is created."""
+    client = Client(rate_limit_guard=True)
+    assert isinstance(client._rate_limiter, RateLimiter)
+
+
+@pytest.mark.asyncio
+async def test_shared_rate_limiter_shared_between_clients():
+    """Two clients sharing a RateLimiter see each other's REST weight usage."""
+    shared = RateLimiter(enabled=False)
+    client_a = Client(rate_limiter=shared)
+    client_b = Client(rate_limiter=shared)
+    assert client_a._rate_limiter is client_b._rate_limiter
+
+    with aioresponses() as m:
+        m.get(URL, payload={'ok': True},
+              headers={'X-MBX-Used-Weight-1m': '5'})
+        await client_a.get(URL)
+
+    # client_b's limiter was updated by client_a's response headers.
+    client_a._rate_limiter.sync_from_headers(
+        client_a._used_weight, client_a._order_count)
+    snap = shared.snapshot()
+    weight_windows = [w for w in snap.windows if w.type == 'request_weight']
+    assert weight_windows[0].used == 5
+
+
+# ---------------------------------------------------------------------------
+# POST body (no force_params) — exercises _build_rest_request body path
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_post_body_sends_encoded_form():
+    """A POST with no force_params sends params as a url-encoded body."""
+    client = Client()
+    with aioresponses() as m:
+        m.post(URL, payload={'ok': True})
+        result = await client.post(URL, symbol='BTCUSDT', side='BUY')
+    assert result == {'ok': True}
+
+
+@pytest.mark.asyncio
+async def test_put_and_delete_methods():
+    """PUT and DELETE methods are dispatched correctly."""
+    client = Client()
+    with aioresponses() as m:
+        m.put(URL, payload={'updated': True})
+        res = await client.put(URL)
+    assert res == {'updated': True}
+
+    with aioresponses() as m:
+        m.delete(URL, payload={'deleted': True})
+        res = await client.delete(URL)
+    assert res == {'deleted': True}

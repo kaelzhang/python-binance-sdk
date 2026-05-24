@@ -1,5 +1,5 @@
 from binance.rate_limit.defaults import (
-    parse_retry_after, depth_weight, REST_ENDPOINT_WEIGHTS, DEFAULT_RULES
+    parse_retry_after, depth_weight, DEFAULT_RULES
 )
 from binance.rate_limit.types import RateLimitType
 
@@ -22,10 +22,6 @@ def test_depth_weight_tiers():
     assert depth_weight(1000) == 50
     assert depth_weight(5000) == 250
 
-
-def test_rest_endpoint_weights():
-    assert REST_ENDPOINT_WEIGHTS['order'] == 4
-    assert REST_ENDPOINT_WEIGHTS['ticker/24hr'] == 80
 
 
 def test_default_rules_cover_pools():

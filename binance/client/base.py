@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import hashlib
 import hmac
@@ -6,6 +5,8 @@ import os
 import time
 from operator import itemgetter
 from urllib.parse import quote
+
+import yarl
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -25,7 +26,8 @@ from typing import (
 
 from aiohttp import (
     ClientSession,
-    ClientResponse
+    ClientResponse,
+    ClientTimeout
 )
 
 from binance.common.exceptions import (
@@ -54,6 +56,8 @@ from binance.common.types import APIResponse
 
 # pylint: disable=no-member
 
+_CONTENT_TYPE_FORM = 'application/x-www-form-urlencoded'
+
 
 def sort_params(data: dict) -> List[Tuple[str, str]]:
     """
@@ -78,34 +82,60 @@ def sort_params(data: dict) -> List[Tuple[str, str]]:
 
 
 def encode_params(data: dict) -> str:
-    """Build an URL-encoded query string sorted by parameter name."""
+    """Build an URL-encoded query string sorted by parameter name.
+
+    Uses ``quote(safe='')`` so every special character (``/``, ``:``, space,
+    ``+``, non-ASCII …) is percent-encoded.  This is the canonical wire
+    encoding for Binance REST requests and the exact string that
+    :meth:`ClientBase._generate_signature` signs.  The same pre-built string
+    is sent verbatim -- aiohttp is never allowed to re-encode it -- so the
+    signed bytes are always identical to the bytes on the wire (F-35).
+    """
     return '&'.join(
-        f'{quote(key, safe="")}={quote(value, safe="")}'
+        f'{quote(key, safe="")}={quote(str(value), safe="")}'
         for key, value in sort_params(data)
     )
+
+
+def _reject_float_params(data: dict) -> None:
+    """Raise ``ValueError`` if any value in *data* is a ``float`` (F-07).
+
+    Floats must be rejected at the API boundary because Python's ``str(float)``
+    can produce scientific notation (e.g. ``'1e-08'``) or imprecise decimal
+    representations that silently corrupt price/quantity fields.  Pass a string
+    (e.g. ``price='0.00000001'``) or an int instead.
+    """
+    for key, value in data.items():
+        if isinstance(value, float):
+            raise ValueError(
+                f"param {key!r} is a float ({value!r}); "
+                "pass a string for prices/quantities to avoid precision loss "
+                "or scientific notation"
+            )
 
 
 KEY_REQUEST_PARAMS = 'request_params'
 KEY_FORCE_PARAMS = 'force_params'
 
-
-def get_headers(
-    api_key: Optional[str]
-) -> Dict[str, str]:
-    """Assemble aiohttp request headers; adds the API-key header when ``api_key`` is present."""
-    headers = {
-        'Accept': 'application/json',
-        'User-Agent': 'binance-sdk'
-    }
-
-    if api_key is not None:
-        headers[HEADER_API_KEY] = api_key
-
-    return headers
+_BASE_HEADERS = {
+    'Accept': 'application/json',
+    'User-Agent': 'binance-sdk',
+}
 
 
 class ClientBase:
-    """Internal base class handling auth, request building, and rate-limit accounting for ``Client``."""
+    """Internal base class handling auth, request building, and rate-limit accounting for ``Client``.
+
+    Constructor keyword arguments (set by :class:`~binance.client.Client`):
+
+    - ``request_timeout`` (:obj:`float`, default ``10``): total seconds before
+      an aiohttp request is abandoned.  Exposed via ``Client(request_timeout=...)``.
+    - ``rate_limiter`` (:obj:`RateLimiter` or ``None``): inject a shared
+      :class:`~binance.rate_limit.RateLimiter` instance so multiple ``Client``
+      objects on the same IP share one IP-level pool (F-49).  When ``None``
+      (default) a private :class:`~binance.rate_limit.RateLimiter` is created
+      from ``rate_limit_guard``.
+    """
 
     _api_key: Optional[str]
     _api_secret: Optional[str]
@@ -113,62 +143,95 @@ class ClientBase:
     _used_weight: Dict[str, int]
     _order_count: Dict[str, int]
     _rate_limiter: RateLimiter
+    _rest_session: Optional[ClientSession]
+    _request_timeout: float
 
-    def _init_api_session(
-        self,
-        api_key: Optional[str]
-    ) -> ClientSession:
-        session = ClientSession(
-            loop=asyncio.get_running_loop(),
-            headers=get_headers(api_key)
-        )
-        return session
+    def _get_session(self) -> ClientSession:
+        """Return the shared REST :class:`~aiohttp.ClientSession`, creating it lazily.
 
-    def _get_request_kwargs(
+        A single session is reused across all REST calls (F-12 / F-42).  The
+        API-key header is set **per request** (not per session) via the
+        ``headers`` kwarg in :meth:`_request`, so the session itself carries no
+        credentials and can safely be shared regardless of security type.
+        """
+        if self._rest_session is None or self._rest_session.closed:
+            self._rest_session = ClientSession(
+                headers=_BASE_HEADERS,
+                timeout=ClientTimeout(total=self._request_timeout),
+            )
+        return self._rest_session
+
+    async def _close_rest_session(self) -> None:
+        """Close the shared REST session if it was ever opened."""
+        if self._rest_session is not None and not self._rest_session.closed:
+            await self._rest_session.close()
+        self._rest_session = None
+
+    def _build_rest_request(
         self,
         method: RequestMethod,
+        uri: str,
         need_signed: bool,
+        api_key: Optional[str],
         **data
-    ) -> Dict[str, Any]:
-        # Usually, `data` is the data param for aiohttp
+    ) -> Tuple[str, Dict[str, Any]]:
+        """Build the final (url, kwargs) pair for an aiohttp request (F-35).
 
-        kwargs: Dict[str, Any] = dict(
-            # set default requests timeout
-            # TODO: no hard coding
-            timeout=10
-        )
+        ONE canonical percent-encoded string is built for the entire param set
+        (including ``timestamp`` and ``signature`` when ``need_signed`` is
+        True).  That same string is BOTH what is signed and what goes on the
+        wire -- aiohttp never re-encodes it:
 
-        # add global requests params for aiohttp
+        - GET / ``force_params``: the encoded string is appended to ``uri``
+          (``?<encoded>`` or ``&<encoded>``) and the URL is handed to aiohttp
+          as a pre-encoded :class:`~yarl.URL` (``encoded=True``) so yarl does
+          not touch it.
+        - POST/PUT/DELETE body: the encoded string is passed as ``data=<str>``
+          with ``Content-Type: application/x-www-form-urlencoded``; aiohttp
+          forwards it verbatim.
+
+        The API-key header is attached per-request (not per-session) so one
+        shared :class:`~aiohttp.ClientSession` can serve any security type.
+        """
+        # Strip internal meta-keys before building the param string.
+        extra_kwargs: Dict[str, Any] = {}
         if self._request_params is not None:
-            kwargs.update(self._request_params)
-
-        # find any requests params passed and apply them
+            extra_kwargs.update(self._request_params)
         if KEY_REQUEST_PARAMS in data:
-            # merge requests params into kwargs
-            kwargs.update(data[KEY_REQUEST_PARAMS])
-            del data[KEY_REQUEST_PARAMS]
+            extra_kwargs.update(data.pop(KEY_REQUEST_PARAMS))
 
-        force_params = False
-        if KEY_FORCE_PARAMS in data:
-            force_params = True
-            del data[KEY_FORCE_PARAMS]
+        force_params = bool(data.pop(KEY_FORCE_PARAMS, False))
 
+        # F-07: reject float values
+        _reject_float_params(data)
+
+        # Add timestamp + signature AFTER float-rejection so the internally
+        # added int timestamp does not trigger the guard.
         if need_signed:
-            # generate signature
             data['timestamp'] = int(time.time() * 1000) + self._time_offset
             data['signature'] = self._generate_signature(data)
 
-        sorted_data = sort_params(data)
+        # Build ONE canonical encoded string used for BOTH signing and sending.
+        use_query = force_params or method == RequestMethod.GET
 
-        param_key = (
-            'params'
-            if force_params or method == RequestMethod.GET
-            else 'data'
-        )
+        req_kwargs: Dict[str, Any] = {**extra_kwargs}
 
-        kwargs[param_key] = sorted_data
+        # Attach the API-key as a per-request header (not a session header).
+        if api_key is not None:
+            req_kwargs['headers'] = {HEADER_API_KEY: api_key}
 
-        return kwargs
+        if data:
+            encoded = encode_params(data)
+            if use_query:
+                separator = '&' if '?' in uri else '?'
+                url = yarl.URL(f'{uri}{separator}{encoded}', encoded=True)
+                req_kwargs['url'] = url
+            else:
+                req_kwargs['data'] = encoded
+                hdr = req_kwargs.setdefault('headers', {})
+                hdr['Content-Type'] = _CONTENT_TYPE_FORM
+
+        return uri, req_kwargs
 
     _private_key: Optional[Union[Ed25519PrivateKey, RSAPrivateKey]]
 
@@ -363,7 +426,6 @@ class ClientBase:
 
         return data
 
-    # self._request('get', uri, symbol='BTCUSDT')
     async def _request(
         self,
         method: RequestMethod,
@@ -373,12 +435,19 @@ class ClientBase:
         is_order: bool = False,
         **kwargs
     ) -> APIResponse:
+        """Issue a generic REST request (the escape hatch for SAPI / unwrapped endpoints).
+
+        Credentials, signing, rate-limit accounting, and error handling all
+        apply as for any named endpoint.  Uses the shared
+        :class:`~aiohttp.ClientSession` (lazily created; closed by
+        :meth:`close`).  The API-key header is set per-request so the session
+        is credential-neutral.
+        """
         need_api_key, need_signed = security_type.value
 
         if need_api_key:
             if self._api_key is None:
                 raise APIKeyNotDefinedException(uri)
-
             api_key = self._api_key
         else:
             api_key = None
@@ -391,14 +460,20 @@ class ClientBase:
 
         await self._rate_limiter.acquire_rest(weight=weight, is_order=is_order)
 
-        req_kwargs = self._get_request_kwargs(
-            method, need_signed, **kwargs)
+        # Build the final URL + aiohttp kwargs (F-35: sign == wire).
+        final_uri, req_kwargs = self._build_rest_request(
+            method, uri, need_signed, api_key, **kwargs
+        )
 
-        async with self._init_api_session(api_key) as session:
-            async with getattr(
-                session, method.value
-            )(uri, **req_kwargs) as response:
-                return await self._handle_response(response)
+        # Use 'url' override when _build_rest_request encoded the query into the
+        # URL object, otherwise use the raw string uri.
+        request_url = req_kwargs.pop('url', final_uri)
+
+        session = self._get_session()
+        async with getattr(session, method.value)(
+            request_url, **req_kwargs
+        ) as response:
+            return await self._handle_response(response)
 
     def get(self, uri, **kwargs) -> Awaitable[APIResponse]:
         """Sends a GET request.

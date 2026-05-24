@@ -495,3 +495,48 @@ async def test_user_stream_and_ws_api_request_share_one_connection():
     finally:
         await client.close()
         await server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# F-07 — float param rejection on WS-API path
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_ws_api_float_param_rejected_before_network():
+    """A float param on a WS-API call raises ValueError before any connection."""
+    server = WSAPIServer()
+    await server.run()
+    try:
+        client = _make_client(server)
+        with pytest.raises(ValueError, match="float"):
+            await client._ws_api_request(
+                'depth',
+                {'symbol': 'BTCUSDT', 'limit': 100.0},
+                security=SecurityType.NONE,
+                weight=5,
+            )
+        # No frame should have been sent.
+        assert server.received == []
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_ws_api_int_and_str_params_accepted():
+    """int and str params on WS-API calls are accepted without error."""
+    server = WSAPIServer()
+    server.on('depth', result={'lastUpdateId': 1, 'bids': [], 'asks': []})
+    await server.run()
+    try:
+        client = _make_client(server)
+        result = await client._ws_api_request(
+            'depth',
+            {'symbol': 'BTCUSDT', 'limit': 100},   # int is fine
+            security=SecurityType.NONE,
+            weight=5,
+        )
+        assert result is not None
+    finally:
+        await client.close()
+        await server.shutdown()

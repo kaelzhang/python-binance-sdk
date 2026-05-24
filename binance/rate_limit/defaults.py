@@ -1,7 +1,7 @@
 """Built-in defaults for the rate-limit core.
 
 Holds the response-header / weight helpers (:func:`parse_retry_after`,
-:func:`depth_weight`, :data:`REST_ENDPOINT_WEIGHTS`) and the default
+:func:`depth_weight`) and the default
 :class:`~binance.rate_limit.types.RateLimitRule` set for every documented
 Binance pool: :data:`DEFAULT_RULES` (the shared IP/account pools, used by a new
 :class:`~binance.rate_limit.core.RateLimiter`) plus :data:`WS_MESSAGE_RULE` and
@@ -52,13 +52,6 @@ def depth_weight(limit: int) -> int:
     if limit <= 1000:
         return 50
     return 250
-
-
-REST_ENDPOINT_WEIGHTS = {
-    'exchangeInfo': 20, 'account': 20, 'myTrades': 20, 'allOrders': 20,
-    'openOrders': 6, 'order': 4,
-    'ticker/24hr': 80, 'ticker/price': 4, 'ticker/bookTicker': 4,
-}
 
 
 DEFAULT_RULES = (

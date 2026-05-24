@@ -1,6 +1,7 @@
 from logging import getLogger, Logger
+from typing import Optional
 
-from binance.apis import RestAPIGetters, WsApiGetters
+from binance.apis import WsApiGetters
 
 from aioretry import RetryPolicy
 
@@ -60,20 +61,16 @@ def _apply_time_unit(ws_api_host: str, time_unit) -> str:
 
 class Client(
     ClientBase,
-    RestAPIGetters,
     WsApiGetters,
     SubscriptionManager
 ):
     """Async Binance REST + WebSocket client — the primary public entry point.
 
-    Combines four building blocks via multiple inheritance:
+    Combines three building blocks via multiple inheritance:
 
     - ``ClientBase``: holds API credentials, signs requests, drives the
       ``RateLimiter``, and provides the generic REST escape hatch
       (``get``/``post``/...) plus ``sync_time()``.
-    - ``RestAPIGetters``: a now-empty shell (every former REST endpoint was
-      migrated to the WebSocket API); retained only for the generic REST escape
-      hatch and pending removal.
     - ``WsApiGetters``: generated async methods for every request/response
       endpoint -- general (``get_server_time``, ``get_exchange_info``),
       market-data (``get_orderbook``, ``get_klines``, ``get_ticker``, ...),
@@ -117,6 +114,8 @@ class Client(
         stream_retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
         stream_timeout: Timeout = DEFAULT_STREAM_TIMEOUT,
         rate_limit_guard: bool = True,
+        rate_limiter: Optional[RateLimiter] = None,
+        request_timeout: float = 10,
         logger: Logger = getLogger(__name__)
     ):
         """Binance API Client constructor
@@ -133,7 +132,15 @@ class Client(
                 private key.  Pass ``None`` (default) for unencrypted keys.
             requests_params (:obj:`dict`, optional): Dictionary of requests params to use for all calls
             time_unit (:obj:`str`, optional): WebSocket-API timestamp unit. ``None`` (default) or ``'millisecond'`` keeps Binance's millisecond default; ``'microsecond'`` (case-insensitive) opts the whole WS-API connection into microsecond-precision timestamps by appending ``?timeUnit=MICROSECOND`` to the connection URL.
-            rate_limit_guard (:obj:`bool`, optional): when True, proactively throttle REST requests with a client-side weight/raw/order budget to stay under the per-IP and per-account caps. When False, usage is still tracked (so monitoring works) but requests are never delayed. Defaults to True.
+            rate_limit_guard (:obj:`bool`, optional): when True, proactively throttle REST requests
+                with a client-side weight/raw/order budget to stay under the per-IP and per-account
+                caps. When False, usage is still tracked (so monitoring works) but requests are never
+                delayed. Ignored when ``rate_limiter`` is supplied. Defaults to True.
+            rate_limiter (:obj:`RateLimiter`, optional): inject a shared :class:`~binance.rate_limit.RateLimiter`
+                instance so multiple ``Client`` objects on the same IP share one IP-level pool (F-49).
+                When ``None`` (default) a private limiter is built from ``rate_limit_guard``.
+            request_timeout (:obj:`float`, optional): total seconds before an aiohttp REST request
+                is abandoned. Defaults to 10.
         """
 
         self._api_key = None
@@ -142,9 +149,15 @@ class Client(
 
         self._used_weight = {}
         self._order_count = {}
-        self._rate_limiter = RateLimiter(enabled=bool(rate_limit_guard))
+        if rate_limiter is not None:
+            self._rate_limiter = rate_limiter
+        else:
+            self._rate_limiter = RateLimiter(enabled=bool(rate_limit_guard))
         self._time_offset = 0
         self._time_synced = False
+        # Shared REST session — lazily opened on first REST call (F-12 / F-42).
+        self._rest_session = None
+        self._request_timeout = float(request_timeout)
 
         self.key(api_key)
         self.secret(api_secret)
@@ -182,6 +195,16 @@ class Client(
         through a different handler or level.
         """
         return self._logger
+
+    async def close(self, code: int = 4999) -> None:
+        """Close all stream connections and the shared REST session.
+
+        Extends :meth:`~binance.subscribe.manager.SubscriptionManager.close`
+        to also close the shared :class:`~aiohttp.ClientSession` used by the
+        generic REST escape hatch (F-12 / F-42).
+        """
+        await super().close(code)
+        await self._close_rest_session()
 
     def rate_limit_snapshot(self) -> RateLimitSnapshot:
         """Return a point-in-time RateLimitSnapshot of all rate-limit pools.

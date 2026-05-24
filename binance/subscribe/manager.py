@@ -38,6 +38,7 @@ from binance.common.utils import (
     format_msg,
     repr_exception
 )
+from binance.client.base import _reject_float_params
 from binance.rate_limit import RateLimiter
 
 from .stream import Stream
@@ -345,6 +346,9 @@ class SubscriptionManager:
             for key, value in (params or {}).items()
             if value is not None
         }
+
+        # F-07: reject float values before any network round-trip.
+        _reject_float_params(request_params)
 
         # Validate credentials BEFORE any network round-trip (mirrors the REST
         # `_request` ordering), so a signed request lacking credentials raises
