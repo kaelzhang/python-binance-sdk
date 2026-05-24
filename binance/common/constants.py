@@ -121,7 +121,11 @@ def NO_RETRY_POLICY(_) -> RetryPolicyStrategy:
 STREAM_HOST = 'wss://stream.binance.com'
 WS_API_HOST = 'wss://ws-api.binance.com/ws-api/v3'
 
-DEFAULT_STREAM_TIMEOUT = 5
+# Seconds of stream silence before the SDK proactively pings to probe a
+# possibly-dead connection. Kept above Binance's 20s server-ping cadence so it
+# only fires as a dead-connection detector, not a redundant keepalive (the
+# websockets library already auto-replies pong to server pings).
+DEFAULT_STREAM_TIMEOUT = 30
 
 # Close code used by binance.Stream
 # https://tools.ietf.org/html/rfc6455#section-7.4.2

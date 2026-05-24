@@ -294,7 +294,11 @@ class Stream:
             # Re-raise a genuine cancellation (not triggered by close()).
             raise  # pragma: no cover
 
-        async with connect(self._uri) as socket:
+        # ping_interval=None disables the websockets library's own client-side
+        # keepalive pings (redundant: the SDK runs its own recv-timeout ping in
+        # _receive, and the library still auto-replies pong to Binance's server
+        # pings at the protocol layer regardless of this setting).
+        async with connect(self._uri, ping_interval=None) as socket:
             self._set_socket(socket)
 
             self._connected_task = asyncio.create_task(
