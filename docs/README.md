@@ -126,6 +126,7 @@ And since we subscribe to **THREE** new types of messages, we need to set the ha
 - `ExternalLockUpdateHandlerBase`
 - `EventStreamTerminatedHandlerBase`
 - `HandlerExceptionHandlerBase` a special handler to handle stream exceptions
+- `StreamErrorHandlerBase` a special handler for stream-control errors (resubscribe / logon failures after reconnect)
 
 ```py
 client.handler(MyTradeHandler(), MyOrderBookHandler(), MyKlineHandler())
@@ -179,6 +180,32 @@ If you just want to print error stacks, we could:
 
 ```py
 client.handler(HandlerExceptionHandlerBase())
+```
+
+### Handle stream-control errors (resubscribe / logon failures)
+
+After a WebSocket reconnect, the SDK automatically replays all subscriptions. If
+that replay (or the WS-API ``session.logon``) fails, the SDK:
+
+1. logs the failure at `ERROR` level,
+2. calls `receive` on every registered `StreamErrorHandlerBase`, and
+3. schedules a `recycle()` on the affected stream so aioretry starts a fresh
+   reconnect cycle.
+
+```py
+from binance import StreamErrorHandlerBase
+
+class MyStreamErrors(StreamErrorHandlerBase):
+    async def receive(self, error):
+        # error.stream      -> 'data' | 'user'
+        # error.phase       -> 'resubscribe' | 'logon'
+        # error.exception   -> the underlying exception
+        # error.recovering  -> True (SDK is recycling the stream)
+        await alert_ops_team(
+            f"Stream {error.stream!r} {error.phase} failed: {error.exception}"
+        )
+
+client.handler(MyStreamErrors())
 ```
 
 # APIs

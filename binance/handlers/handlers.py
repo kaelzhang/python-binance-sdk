@@ -10,10 +10,46 @@ from binance.common.constants import (
 
 from binance.common.types import (
     DictPayload,
+    StreamError,
     # ListPayload
 )
 
 from .base import Handler
+
+
+class StreamErrorHandlerBase(Handler):
+    """Base handler for stream-control errors (resubscribe / logon failures).
+
+    When a post-reconnect subscription replay or WS-API ``session.logon``
+    fails, the SDK logs the error at ERROR level, schedules a
+    :meth:`~binance.subscribe.stream.Stream.recycle` on the affected stream
+    to trigger a fresh reconnect, and then calls ``receive`` on every
+    registered instance of this class.
+
+    Subclass this and override ``receive`` (sync or async) to implement
+    custom alerting or recovery logic.
+
+    Example::
+
+        from binance import StreamErrorHandlerBase
+
+        class MyStreamErrors(StreamErrorHandlerBase):
+            async def receive(self, error):
+                # error.stream      -> 'data' | 'user'
+                # error.phase       -> 'resubscribe' | 'logon'
+                # error.exception   -> the underlying exception
+                # error.recovering  -> bool
+                await alert_ops_team(error)
+
+        client.handler(MyStreamErrors())
+    """
+
+    def receive(self, error: StreamError):
+        """Called when a stream-control error occurs.
+
+        Args:
+            error (StreamError): structured error describing what failed.
+        """
 
 
 class HandlerExceptionHandlerBase(Handler):

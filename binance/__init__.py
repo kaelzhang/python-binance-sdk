@@ -45,7 +45,10 @@ from binance.rate_limit import (
     RateLimitWindow
 )
 
+from binance.common.types import StreamError
+
 from binance.handlers.handlers import (
+    StreamErrorHandlerBase,
     HandlerExceptionHandlerBase,
     TradeHandlerBase,
     AggTradeHandlerBase,

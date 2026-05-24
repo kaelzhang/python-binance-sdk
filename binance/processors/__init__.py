@@ -12,7 +12,8 @@ from .processors import (
     TickerProcessor,
     AllMarketMiniTickersProcessor,
     AllMarketWindowTickersProcessor,
-    ExceptionProcessor
+    ExceptionProcessor,
+    StreamErrorProcessor
 )
 
 from .user_processor import UserProcessor

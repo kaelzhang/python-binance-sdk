@@ -1,3 +1,4 @@
+import asyncio
 import time
 from typing import (
     Any,
@@ -33,7 +34,10 @@ from binance.common.exceptions import (
     InvalidHandlerException,
     StreamSubscribeException
 )
-from binance.common.types import Timeout
+from binance.common.types import (
+    StreamError,
+    Timeout
+)
 from binance.common.utils import (
     format_msg,
     repr_exception
@@ -241,9 +245,32 @@ class SubscriptionManager:
         persistent across reconnects, so the authenticated flag is reset first;
         an Ed25519 key then re-logs on. Finally the user-data stream
         subscription is replayed.
+
+        Both the logon and resubscribe phases are guarded: a failure in either
+        is ERROR-logged, delivered to registered ``StreamErrorHandlerBase``
+        instances, and triggers a ``recycle()`` so aioretry starts a fresh
+        reconnect cycle.
         """
         self._ws_api_authenticated = False
-        await self._ws_api_session_logon_if_needed()
+        try:
+            await self._ws_api_session_logon_if_needed()
+        except Exception as e:
+            self._logger.error(format_msg(
+                'WS-API session.logon failed after reconnect: %s',
+                repr_exception(e)))
+            error = StreamError(
+                stream='user',
+                phase='logon',
+                exception=e,
+                recovering=True
+            )
+            if self._handler_ctx is not None:
+                await self._handler_ctx.dispatch_stream_error(error)
+            if self._user_stream is not None:
+                asyncio.get_running_loop().create_task(
+                    self._user_stream.recycle()
+                )
+            return
         await self._resubscribe_user()
 
     async def _ws_api_session_logon_if_needed(self) -> None:
@@ -511,13 +538,49 @@ class SubscriptionManager:
 
     async def _resubscribe(self) -> None:
         market_subscriptions, _ = self._split_subscriptions(self._subscribed)
-        if len(market_subscriptions) > 0:
+        if len(market_subscriptions) == 0:
+            return
+        try:
             await self._subscribe_only(True, market_subscriptions)
+        except Exception as e:
+            self._logger.error(format_msg(
+                'data stream resubscribe failed after reconnect: %s',
+                repr_exception(e)))
+            error = StreamError(
+                stream='data',
+                phase='resubscribe',
+                exception=e,
+                recovering=True
+            )
+            if self._handler_ctx is not None:
+                await self._handler_ctx.dispatch_stream_error(error)
+            if self._data_stream is not None:
+                asyncio.get_running_loop().create_task(
+                    self._data_stream.recycle()
+                )
 
     async def _resubscribe_user(self) -> None:
         _, user_subscriptions = self._split_subscriptions(self._subscribed)
-        if len(user_subscriptions) > 0:
+        if len(user_subscriptions) == 0:
+            return
+        try:
             await self._subscribe_user_only(True, user_subscriptions)
+        except Exception as e:
+            self._logger.error(format_msg(
+                'user stream resubscribe failed after reconnect: %s',
+                repr_exception(e)))
+            error = StreamError(
+                stream='user',
+                phase='resubscribe',
+                exception=e,
+                recovering=True
+            )
+            if self._handler_ctx is not None:
+                await self._handler_ctx.dispatch_stream_error(error)
+            if self._user_stream is not None:
+                asyncio.get_running_loop().create_task(
+                    self._user_stream.recycle()
+                )
 
     async def _recover_user_stream_if_needed(self) -> bool:
         if (

@@ -11,7 +11,8 @@ from typing import (
 
 from binance.processors import (
     PROCESSORS,
-    ExceptionProcessor
+    ExceptionProcessor,
+    StreamErrorProcessor
 )
 
 from binance.processors.base import Processor
@@ -23,6 +24,8 @@ from binance.common.exceptions import (
     InvalidSubParamsException,
     UnsupportedSubTypeException
 )
+
+from binance.common.types import StreamError
 
 from binance.common.utils import (
     make_list,
@@ -50,11 +53,16 @@ class HandlerContext:
         self._processors = set()
         self._processor_cache = {}
         self._exception_processor = ExceptionProcessor(client)
+        self._stream_error_processor = StreamErrorProcessor(client)
 
     def set_handler(self, handler) -> bool:
         """Register a handler with the first processor that claims it; return False if none does."""
         if self._exception_processor.supports_handler(handler):
             self._exception_processor.add_handler(handler)
+            return True
+
+        if self._stream_error_processor.supports_handler(handler):
+            self._stream_error_processor.add_handler(handler)
             return True
 
         for processor in self._all_processors:
@@ -64,6 +72,16 @@ class HandlerContext:
                 return True
 
         return False
+
+    async def dispatch_stream_error(self, error: StreamError) -> None:
+        """Deliver a ``StreamError`` to all registered ``StreamErrorHandlerBase`` instances.
+
+        No-op when no ``StreamErrorHandlerBase`` has been registered.
+
+        Args:
+            error: the structured stream-control error to dispatch.
+        """
+        await self._stream_error_processor.dispatch(error)
 
     # client.subscribe(subtype_needs_no_param_or_has_default_param)
     # -> client.subscribe(SubType.ALL_MARKET_MINI_TICKERS)

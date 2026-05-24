@@ -5,6 +5,7 @@ Ref: https://developers.binance.com/docs/binance-spot-api-docs/web-socket-stream
 from stock_pandas import TimeFrame
 
 from binance.handlers.handlers import (
+    StreamErrorHandlerBase,
     HandlerExceptionHandlerBase,
     KlineHandlerBase,
     TradeHandlerBase,
@@ -129,6 +130,11 @@ def _get_partial_depth_level(t, args, default=20):
         )
 
     return level
+
+
+class StreamErrorProcessor(Processor):
+    """Processor that routes stream-control errors to registered StreamErrorHandlerBase handlers."""
+    HANDLER = StreamErrorHandlerBase
 
 
 class ExceptionProcessor(Processor):
