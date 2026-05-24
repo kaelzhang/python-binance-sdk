@@ -234,6 +234,17 @@ await client.create_order(
 )
 ```
 
+### await client.sync_time() -> int
+
+Syncs the local clock offset against Binance server time by calling `GET /api/v3/time` and storing `server_time - local_time` (ms). This offset is added to the `timestamp` of every signed request, preventing `-1021` ("Timestamp for this request is outside of the recvWindow") rejections caused by clock drift.
+
+You do not need to call this manually under normal conditions:
+
+- The offset is applied automatically before the **first** signed request.
+- Whenever a `-1021` error is received, the client re-arms and re-syncs before the **next** signed request.
+
+Call `await client.sync_time()` explicitly if you want to warm up the offset before trading begins or if you run a periodic resync loop. Returns the new offset in milliseconds.
+
 ### client.key(api_key) -> self
 
 Define or change api key. This method is unnecessary if we only request APIs of [`SecurityType.NONE`](https://github.com/binance-exchange/binance-official-api-docs/blob/master/rest-api.md#endpoint-security-type)

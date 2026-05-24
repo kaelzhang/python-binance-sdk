@@ -121,6 +121,9 @@ async def test_order_endpoint_consumes_orders_pool():
     # request reaches the rate-limiter core instead of raising on missing keys.
     client = Client(api_key='k', api_secret='s')
     with aioresponses() as m:
+        # The first signed request triggers a lazy sync_time() call.
+        m.get('https://api.binance.com/api/v3/time',
+              payload={'serverTime': 1_700_000_000_000})
         # The order body (incl. signature) is POSTed as form data, so the URL
         # is just `.../api/v3/order`; match it with a regex.
         # No X-MBX-ORDER-COUNT header: usage can only come from the proactive

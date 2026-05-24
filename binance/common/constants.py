@@ -340,4 +340,5 @@ WS_MAX_STREAMS_PER_CONNECTION = 1024
 
 # WS-API / stream rate-limit signalling (web-socket-api.md)
 ERROR_CODE_TOO_MANY_REQUESTS = -1003
+ERROR_CODE_INVALID_TIMESTAMP = -1021
 EVENT_SERVER_SHUTDOWN = 'serverShutdown'

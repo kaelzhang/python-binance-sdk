@@ -35,7 +35,8 @@ from binance.common.constants import (
     HEADER_USED_WEIGHT_PREFIX,
     HEADER_ORDER_COUNT_PREFIX,
     HTTP_TOO_MANY_REQUESTS,
-    HTTP_IP_BANNED
+    HTTP_IP_BANNED,
+    ERROR_CODE_INVALID_TIMESTAMP
 )
 
 from binance.rate_limit import RateLimiter, parse_retry_after
@@ -145,7 +146,7 @@ class ClientBase:
 
         if need_signed:
             # generate signature
-            data['timestamp'] = int(time.time() * 1000)
+            data['timestamp'] = int(time.time() * 1000) + self._time_offset
             data['signature'] = self._generate_signature(data)
 
         sorted_data = sort_params(data)
@@ -187,7 +188,7 @@ class ClientBase:
         signed = {
             **params,
             'apiKey': self._api_key,
-            'timestamp': int(time.time() * 1000)
+            'timestamp': int(time.time() * 1000) + self._time_offset
         }
         signed['signature'] = self._generate_signature(signed)
 
@@ -219,6 +220,21 @@ class ClientBase:
         """Latest X-MBX-ORDER-COUNT-* values keyed by interval, e.g. {'10s': 3}."""
         return dict(self._order_count)
 
+    async def sync_time(self) -> int:
+        """Sync the local clock offset against Binance server time.
+
+        Calls ``GET /api/v3/time`` and stores ``server_time - local_time`` (ms)
+        as an offset that is added to the ``timestamp`` of every signed request,
+        preventing ``-1021`` (timestamp outside recvWindow) rejections from a
+        drifting local clock. Called automatically before the first signed
+        request and re-armed whenever a ``-1021`` is seen; you may also call it
+        manually (e.g. periodically). Returns the new offset in milliseconds.
+        """
+        res = await self.get_server_time()
+        self._time_offset = int(res['serverTime']) - int(time.time() * 1000)
+        self._time_synced = True
+        return self._time_offset
+
     async def _handle_response(
         self,
         response: ClientResponse
@@ -238,7 +254,10 @@ class ClientBase:
             raise IPBannedException(
                 response, await response.text(), parse_retry_after(response))
         if not str(status).startswith('2'):
-            raise StatusException(response, await response.text())
+            exc = StatusException(response, await response.text())
+            if exc.code == ERROR_CODE_INVALID_TIMESTAMP:
+                self._time_synced = False
+            raise exc
         try:
             data = await response.json()
         except ValueError:
@@ -271,6 +290,9 @@ class ClientBase:
 
         if need_signed and self._api_secret is None:
             raise APISecretNotDefinedException(uri)
+
+        if need_signed and not self._time_synced:
+            await self.sync_time()
 
         await self._rate_limiter.acquire_rest(weight=weight, is_order=is_order)
 

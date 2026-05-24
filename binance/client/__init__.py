@@ -80,6 +80,8 @@ class Client(
         self._used_weight = {}
         self._order_count = {}
         self._rate_limiter = RateLimiter(enabled=bool(rate_limit_guard))
+        self._time_offset = 0
+        self._time_synced = False
 
         self.key(api_key)
         self.secret(api_secret)
