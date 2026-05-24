@@ -1,12 +1,31 @@
 # coding=utf-8
 
 import json
+import re
 from typing import Any, Optional
 
 from aiohttp import ClientResponse
 
 from .utils import format_msg
 from .constants import SubType
+
+_SENSITIVE_PARAMS = re.compile(
+    r'(?<=[?&])(?:signature|apiKey)=([^&]*)',
+    re.IGNORECASE
+)
+
+
+def _redact_url(url) -> str:
+    """Return `url` as a string with `signature` and `apiKey` query values replaced by ``***``.
+
+    Handles both ``yarl.URL`` objects and plain strings.  When there is no
+    query string the URL is returned unchanged.
+    """
+    url_str = str(url)
+    return _SENSITIVE_PARAMS.sub(
+        lambda m: m.group(0)[: m.start(1) - m.start()] + '***',
+        url_str
+    )
 
 
 class UserStreamNotSubscribedException(Exception):
@@ -165,10 +184,10 @@ class StatusException(Exception):
         self.response = response
         self.request = getattr(response, 'request', None)
 
-    def __str__(self) -> str:  # pragma: no cover
+    def __str__(self) -> str:
         return format_msg(
             'response error for "%s", status %s, code %s: %s',
-            self.response.url,
+            _redact_url(self.response.url),
             self.status,
             self.code,
             self.message
@@ -194,7 +213,7 @@ class RateLimitException(StatusException):
     def __str__(self) -> str:
         return format_msg(
             'rate limit exceeded (HTTP 429) for "%s", retry after %s second(s)',
-            self.response.url,
+            _redact_url(self.response.url),
             self.retry_after
         )
 
@@ -245,7 +264,7 @@ class IPBannedException(StatusException):
     def __str__(self) -> str:
         return format_msg(
             'IP banned (HTTP 418) for "%s", banned for %s more second(s)',
-            self.response.url,
+            _redact_url(self.response.url),
             self.retry_after
         )
 

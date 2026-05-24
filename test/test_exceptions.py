@@ -129,3 +129,80 @@ def test_rate_limit_reached_exception_message():
     assert exc.interval == '10s'
     assert exc.retry_after == 7
     assert '10s' in str(exc) and 'orders' in str(exc)
+
+
+def test_status_exception_redacts_signature_and_api_key():
+    """StatusException.__str__ must not expose signature/apiKey values."""
+    import yarl
+    from binance.common.exceptions import StatusException
+
+    class _Resp:
+        url = yarl.URL(
+            'https://api.binance.com/api/v3/order'
+            '?symbol=BTCUSDT&signature=supersecrethmac&apiKey=myapikey'
+        )
+        status = 400
+
+    exc = StatusException(_Resp(), '{"code":-1121,"msg":"Invalid symbol"}')
+    s = str(exc)
+    assert 'supersecrethmac' not in s
+    assert 'myapikey' not in s
+    assert 'BTCUSDT' in s
+    assert '400' in s
+
+
+def test_rate_limit_exception_redacts_signature_and_api_key():
+    """RateLimitException.__str__ must not expose signature/apiKey values."""
+    import yarl
+    from binance.common.exceptions import RateLimitException
+
+    class _Resp:
+        url = yarl.URL(
+            'https://api.binance.com/api/v3/order'
+            '?symbol=BTCUSDT&signature=supersecrethmac&apiKey=myapikey'
+        )
+        status = 429
+
+    exc = RateLimitException(_Resp(), '{"code":-1003,"msg":"Too many requests"}', retry_after=60)
+    s = str(exc)
+    assert 'supersecrethmac' not in s
+    assert 'myapikey' not in s
+    assert '429' in s
+
+
+def test_ip_banned_exception_redacts_signature_and_api_key():
+    """IPBannedException.__str__ must not expose signature/apiKey values."""
+    import yarl
+    from binance.common.exceptions import IPBannedException
+
+    class _Resp:
+        url = yarl.URL(
+            'https://api.binance.com/api/v3/order'
+            '?symbol=BTCUSDT&signature=supersecrethmac&apiKey=myapikey'
+        )
+        status = 418
+
+    exc = IPBannedException(_Resp(), '{"code":-1003,"msg":"banned"}', retry_after=900)
+    s = str(exc)
+    assert 'supersecrethmac' not in s
+    assert 'myapikey' not in s
+    assert '418' in s or 'banned' in s.lower()
+
+
+def test_redact_url_no_sensitive_params():
+    """_redact_url returns the URL unchanged when no sensitive params are present."""
+    from binance.common.exceptions import _redact_url
+    url = 'https://api.binance.com/api/v3/time'
+    assert _redact_url(url) == url
+
+
+def test_redact_url_replaces_both_params():
+    """_redact_url replaces both signature and apiKey values with ***."""
+    from binance.common.exceptions import _redact_url
+    url = 'https://api.binance.com/api/v3/order?symbol=X&signature=HMAC123&apiKey=KEY456'
+    result = _redact_url(url)
+    assert 'HMAC123' not in result
+    assert 'KEY456' not in result
+    assert 'symbol=X' in result
+    assert 'signature=***' in result
+    assert 'apiKey=***' in result
