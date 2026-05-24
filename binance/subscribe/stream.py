@@ -91,6 +91,7 @@ class Stream:
         logger: Logger,
         on_connected: Optional[EventCallback] = None,
         on_reconnected: Optional[EventCallback] = None,
+        on_response: Optional[EventCallback] = None,
         # We redundant the default value here,
         #   because `binance.Stream` is also a public class
         retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
@@ -113,6 +114,11 @@ class Stream:
             ON_RECONNECTED,
             False
         )
+
+        # Optional hook handed the FULL id-correlated response message (incl.
+        # the WS-API `rateLimits` array) before the awaiting future resolves.
+        # The market-data stream passes none -> behaviour is unchanged.
+        self._on_response = on_response
 
         self._retry_policy = retry_policy
         self._timeout = timeout
@@ -196,6 +202,16 @@ class Stream:
 
         message_id = msg[STREAM_KEY_ID]
         future = self._message_futures[message_id]
+
+        # Hand the full message to the reconcile hook (WS-API `rateLimits`)
+        # before resolving. A buggy hook must not break response delivery or
+        # kill the connection, so its errors are caught and logged.
+        if self._on_response is not None:
+            try:
+                self._on_response(msg)
+            except Exception as e:
+                self._logger.error(
+                    format_msg('on_response hook error: %s', repr_exception(e)))
 
         if STREAM_KEY_RESULT in msg:
             future.set_result(msg[STREAM_KEY_RESULT])

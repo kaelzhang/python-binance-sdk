@@ -114,6 +114,10 @@ class Client(
         self._want_user_stream = False
         self._user_unsubscribe_inflight = False
         self._user_recovering = False
+        # Whether the shared WS-API connection has an authenticated session
+        # (after a successful Ed25519 `session.logon`). Reset on every
+        # (re)connect since the session is not persistent across reconnects.
+        self._ws_api_authenticated = False
         self._logger = logger
 
     @property

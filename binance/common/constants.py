@@ -305,8 +305,13 @@ REST_API_HOST = 'https://api.binance.com'
 STREAM_KEY_ID = 'id'
 STREAM_KEY_RESULT = 'result'
 STREAM_KEY_ERROR = 'error'
+STREAM_KEY_RATE_LIMITS = 'rateLimits'
 ERROR_KEY_CODE = 'code'
 ERROR_KEY_MESSAGE = 'msg'
+
+# WS-API session.logon (web-socket-api.md "Authenticate after connection")
+WS_API_METHOD_SESSION_LOGON = 'session.logon'
+ERROR_CODE_UNAUTHORIZED = -2015   # API-key revoked / session invalid/expired
 
 # Rate limits — verified 2026-05-23 against Binance Spot API docs
 # ==================================================

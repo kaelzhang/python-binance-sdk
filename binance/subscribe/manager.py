@@ -1,4 +1,6 @@
+import time
 from typing import (
+    Any,
     List,
     Iterable,
     Set,
@@ -9,12 +11,24 @@ from logging import Logger
 
 from aioretry import RetryPolicy
 
+# Ed25519 is the only key type that supports WS-API `session.logon`.
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from binance.common.constants import (
     DEFAULT_STREAM_CLOSE_CODE,
     EVENT_SERVER_SHUTDOWN,
-    SubType
+    SecurityType,
+    SubType,
+    STREAM_KEY_RATE_LIMITS,
+    WS_API_METHOD_SESSION_LOGON,
+    ERROR_CODE_UNAUTHORIZED
 )
-from binance.common.exceptions import InvalidHandlerException
+from binance.common.exceptions import (
+    APIKeyNotDefinedException,
+    APISecretNotDefinedException,
+    InvalidHandlerException,
+    StreamSubscribeException
+)
 from binance.common.types import Timeout
 from binance.common.utils import (
     format_msg,
@@ -43,6 +57,9 @@ class SubscriptionManager:
     """Internal mixin merged into ``Client`` that manages data and user WebSocket stream lifecycles."""
 
     _data_stream: Optional[Stream]
+    # The shared WS-API request/response connection (wss://ws-api...). It
+    # carries BOTH the user-data stream subscription and every `_ws_api_request`
+    # (former REST) call -- one connection, lazily opened.
     _user_stream: Optional[Stream]
     _subscribed: Set[tuple]
     _stream_names: Set[str]
@@ -55,6 +72,13 @@ class SubscriptionManager:
     _want_user_stream: bool
     _user_unsubscribe_inflight: bool
     _user_recovering: bool
+    _ws_api_authenticated: bool
+    # Credentials / signing live on ClientBase; declared here for the WS-API
+    # request path that runs on the merged Client via these mixin attributes.
+    _api_key: Optional[str]
+    _api_secret: Optional[str]
+    _private_key: Optional[object]
+    _time_offset: int
 
     def start(self):
         """Starts receiving messages.
@@ -94,6 +118,7 @@ class SubscriptionManager:
         self._want_user_stream = False
         self._user_unsubscribe_inflight = False
         self._user_recovering = False
+        self._ws_api_authenticated = False
 
         if self._data_stream:
             await self._data_stream.close(code)
@@ -151,12 +176,22 @@ class SubscriptionManager:
 
         return self._data_stream
 
-    def _get_user_stream(self) -> Stream:
+    def _get_ws_api_stream(self) -> Stream:
+        """Return the shared WS-API connection, opening it lazily.
+
+        ONE connection to ``wss://ws-api...`` is shared by the user-data stream
+        subscription and every :meth:`_ws_api_request` (former REST) call. On
+        each (re)connect, ``on_connected`` runs the Ed25519 ``session.logon``
+        (when applicable) and replays the user-stream subscription;
+        ``on_response`` reconciles the authoritative ``rateLimits`` array of
+        every response into the shared rate-limit core.
+        """
         if self._user_stream is None:
             self._user_stream = Stream(
                 self._ws_api_host,
                 on_message=self._receive,
-                on_connected=self._resubscribe_user,
+                on_connected=self._on_ws_api_connected,
+                on_response=self._reconcile_ws_api_rate_limits,
                 retry_policy=self._stream_retry_policy,
                 timeout=self._stream_timeout,
                 logger=self._logger,
@@ -165,6 +200,157 @@ class SubscriptionManager:
             ).connect()
 
         return self._user_stream
+
+    def _reconcile_ws_api_rate_limits(self, msg) -> None:
+        """``on_response`` hook: reconcile a WS-API response's ``rateLimits``.
+
+        Called by the shared WS-API :class:`Stream` with the full id-correlated
+        response message. The authoritative ``rateLimits`` array (present on
+        every WS-API response) is folded into the shared rate-limit core,
+        keeping the local weight/orders/raw pools exact.
+        """
+        if isinstance(msg, dict):
+            self._rate_limiter.sync_from_ws_rate_limits(
+                msg.get(STREAM_KEY_RATE_LIMITS))
+
+    async def _on_ws_api_connected(self) -> None:
+        """``on_connected`` hook for the shared WS-API connection.
+
+        Runs on every (re)connect. The session.logon optimization is NOT
+        persistent across reconnects, so the authenticated flag is reset first;
+        an Ed25519 key then re-logs on. Finally the user-data stream
+        subscription is replayed.
+        """
+        self._ws_api_authenticated = False
+        await self._ws_api_session_logon_if_needed()
+        await self._resubscribe_user()
+
+    async def _ws_api_session_logon_if_needed(self) -> None:
+        """Authenticate the WS-API session via ``session.logon`` (Ed25519 only).
+
+        When the client holds an Ed25519 private key, sends a signed
+        ``session.logon`` so subsequent SIGNED requests on this connection may
+        omit ``apiKey``+``signature`` (still sending ``timestamp``). HMAC/RSA/
+        no-key clients sign every request per-request and skip logon. A failed
+        logon (e.g. ``-2015`` revoked key) leaves the session unauthenticated
+        and is surfaced to the caller.
+        """
+        if not isinstance(self._private_key, Ed25519PrivateKey):
+            return
+
+        params = self._ws_api_signature_params()
+        await self._user_stream.send({
+            'method': WS_API_METHOD_SESSION_LOGON,
+            'params': params
+        })
+        self._ws_api_authenticated = True
+        self._logger.info(
+            format_msg('WS-API session authenticated via session.logon'))
+
+    def _ws_api_auth_params(
+        self,
+        method: str,
+        params: dict,
+        security: SecurityType
+    ) -> dict:
+        """Attach the auth fields a WS-API ``security`` level requires.
+
+        - ``NONE``: returns ``params`` unchanged (public endpoint).
+        - ``TRADE``/``USER_DATA`` (SIGNED): when the connection already holds an
+          authenticated session (Ed25519 ``session.logon``), only a
+          ``timestamp`` (+offset) is added -- ``apiKey``/``signature`` are
+          omitted; otherwise the full raw-value signed payload
+          (``apiKey``+``timestamp``+``signature``) is built.
+        - ``USER_STREAM``: always the full signed payload.
+
+        Raises the same credential guards as the REST path before any send.
+        """
+        need_api_key, need_signed = security.value
+
+        if not need_api_key:
+            # SecurityType.NONE -> public, no credentials.
+            return params
+
+        if self._api_key is None:
+            raise APIKeyNotDefinedException(method)
+
+        if need_signed:
+            if self._api_secret is None and self._private_key is None:
+                raise APISecretNotDefinedException(method)
+
+            if self._ws_api_authenticated:
+                # Session is logged on: omit apiKey + signature, keep timestamp.
+                return {
+                    **params,
+                    'timestamp': int(time.time() * 1000) + self._time_offset
+                }
+
+            return self._ws_api_signature_params(**params)
+
+        # USER_STREAM: api key + timestamp + signature (no session shortcut).
+        return self._ws_api_signature_params(**params)
+
+    async def _ws_api_request(
+        self,
+        method: str,
+        params: Optional[dict] = None,
+        *,
+        security: SecurityType,
+        weight: int,
+        is_order: bool = False
+    ) -> Any:
+        """Issue a request over the shared WS-API connection and return its result.
+
+        The single entry point for every former-REST operation now served by
+        the WebSocket API. It drops ``None`` params, attaches the auth fields
+        the ``security`` level requires (per-request signing, or none when an
+        Ed25519 session is logged on -- see :meth:`_ws_api_auth_params`),
+        proactively accounts the request weight against the shared rate-limit
+        core, lazily opens the WS-API connection, sends the
+        ``{method, params}`` frame, and returns the ``result``. The response's
+        authoritative ``rateLimits`` array is reconciled by the connection's
+        ``on_response`` hook (:meth:`_reconcile_ws_api_rate_limits`).
+
+        Args:
+            method: WS-API method name (e.g. ``'depth'``, ``'order.place'``).
+            params: Request params; ``None`` values are dropped.
+            security: The endpoint's :class:`SecurityType` (keyword-only).
+            weight: The endpoint's request weight (keyword-only).
+            is_order: ``True`` for order-placing endpoints (keyword-only).
+
+        Returns:
+            The ``result`` field of the WS-API response.
+
+        Raises:
+            APIKeyNotDefinedException / APISecretNotDefinedException: missing
+                credentials for the security level.
+            StreamSubscribeException / StreamRateLimitException: server error.
+        """
+        request_params = {
+            key: value
+            for key, value in (params or {}).items()
+            if value is not None
+        }
+
+        request_params = self._ws_api_auth_params(method, request_params, security)
+
+        await self._rate_limiter.acquire_request(weight=weight, is_order=is_order)
+
+        stream = self._get_ws_api_stream()
+
+        request: dict = {'method': method}
+        if request_params:
+            request['params'] = request_params
+
+        try:
+            return await stream.send(request)
+        except StreamSubscribeException as e:
+            if e.code == ERROR_CODE_UNAUTHORIZED:
+                # The session was revoked/expired server-side (-2015). Drop the
+                # authenticated flag so the next request re-signs per-request
+                # and the next (re)connect re-runs session.logon.
+                self._ws_api_authenticated = False
+            raise
 
     def _split_subscriptions(
         self,
@@ -226,7 +412,7 @@ class SubscriptionManager:
             subscriptions
         )
 
-        stream = self._get_user_stream()
+        stream = self._get_ws_api_stream()
 
         for param in params:
             method = (

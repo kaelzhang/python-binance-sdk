@@ -176,6 +176,59 @@ def test_stream_handle_task_exception():
         exception=lambda: RuntimeError('boom')))
 
 
+# --- subscribe/stream.py: on_response reconcile hook ----------------------
+
+@pytest.mark.asyncio
+async def test_stream_on_response_hook_receives_full_message():
+    # The on_response hook gets the FULL id-correlated message (incl.
+    # rateLimits) before the awaiting future resolves with just `result`.
+    seen = []
+    stream = Stream.__new__(Stream)
+    stream._logger = logger
+    stream._on_response = lambda msg: seen.append(msg)
+
+    future = asyncio.get_running_loop().create_future()
+    stream._message_futures = {7: future}
+
+    msg = {'id': 7, 'status': 200, 'result': {'ok': 1},
+           'rateLimits': [{'count': 3}]}
+    await stream._handle_message(msg)
+
+    assert seen == [msg]                 # full message handed to the hook
+    assert future.result() == {'ok': 1}  # future still resolves to result
+
+
+@pytest.mark.asyncio
+async def test_stream_on_response_hook_error_is_swallowed():
+    # A buggy hook must not break response delivery.
+    stream = Stream.__new__(Stream)
+    stream._logger = logger
+
+    def boom(_msg):
+        raise RuntimeError('hook boom')
+
+    stream._on_response = boom
+    future = asyncio.get_running_loop().create_future()
+    stream._message_futures = {1: future}
+
+    await stream._handle_message({'id': 1, 'result': None})
+    # The future still resolves despite the hook raising.
+    assert future.result() is None
+
+
+@pytest.mark.asyncio
+async def test_stream_no_on_response_hook_is_noop():
+    # The market-data stream passes no hook -> behaviour unchanged.
+    stream = Stream.__new__(Stream)
+    stream._logger = logger
+    stream._on_response = None
+
+    future = asyncio.get_running_loop().create_future()
+    stream._message_futures = {2: future}
+    await stream._handle_message({'id': 2, 'result': 'r'})
+    assert future.result() == 'r'
+
+
 @pytest.mark.asyncio
 async def test_stream_receive_pings_on_recv_timeout():
     stream = Stream.__new__(Stream)
@@ -332,7 +385,7 @@ async def test_user_stream_subscribe_unsubscribe_close_mocked(monkeypatch):
         async def close(self, code=4999):
             sent.append({'method': 'close'})
 
-    # Patch the Stream class the manager builds so the real _get_user_stream
+    # Patch the Stream class the manager builds so the real _get_ws_api_stream
     # body runs (no network) and send() returns instantly.
     monkeypatch.setattr('binance.subscribe.manager.Stream', FakeUserStream)
 
