@@ -197,7 +197,8 @@ All arguments of the constructor Client are keyworded arguments and all optional
 - **rate_limit_guard?** `bool=True` when `True`, the client proactively throttles REST requests with a client-side weight/raw/order budget to stay under Binance's per-IP and per-account caps. When `False`, usage is still tracked (so monitoring works) but requests are never delayed. On by default. See [Rate Limits](#rate-limits).
 - **api_host?** `str='https://api.binance.com'` to specify another API host for rest API requests. 这个参数的存在意义，使用方法，不累述，你懂的。
 - **stream_host?** `str='wss://stream.binance.com'` to specify another stream host for websocket connections.
-- **ws_api_host?** `str='wss://ws-api.binance.com/ws-api/v3'` to specify WebSocket API host for user stream subscription.
+- **ws_api_host?** `str='wss://ws-api.binance.com/ws-api/v3'` to specify the WebSocket API host. Every request/response call (general, market-data, account and trading) and the user-stream subscription share this single connection.
+- **time_unit?** `str=None` WebSocket-API timestamp unit. `None` (default) or `'millisecond'` keeps Binance's millisecond default; `'microsecond'` (case-insensitive) opts the whole WS-API connection into microsecond-precision timestamps (appends `?timeUnit=MICROSECOND` to the connection URL).
 
 Create a binance client.
 
@@ -236,9 +237,27 @@ await client.create_order(
 )
 ```
 
-Trading requests are sent over Binance's **WebSocket API** (a single shared
-connection, opened lazily) rather than REST, while keeping the same method
-names and keyword arguments. The available trading methods are:
+Every request/response call is sent over Binance's **WebSocket API** (a single
+shared connection, opened lazily) rather than REST, while keeping the same
+method names and keyword arguments. The public market-data **streams**
+(`subscribe(...)`) are a separate push mechanism and are unchanged.
+
+General / market-data (public, no credentials):
+
+- `ping()` / `get_server_time()` / `get_exchange_info()`
+- `get_orderbook(**kwargs)` / `get_klines(**kwargs)` / `get_average_price(**kwargs)`
+- `get_recent_trades(**kwargs)` / `get_historical_trades(**kwargs)` / `get_aggregate_trades(**kwargs)`
+- `get_ticker(**kwargs)` / `get_ticker_price(**kwargs)` / `get_orderbook_ticker(**kwargs)`
+
+Account (signed):
+
+- `get_account(**kwargs)` / `get_trades(**kwargs)`
+- `get_commission(**kwargs)` — current account commission rates
+- `get_order_rate_limit(**kwargs)` — current unfilled order count per order rate limit
+- `get_prevented_matches(**kwargs)` — orders expired by self-trade prevention
+- `get_allocations(**kwargs)` — allocations resulting from SOR order placement
+
+Trading (signed):
 
 - `create_order(**kwargs)` / `create_test_order(**kwargs)`
 - `get_order(**kwargs)` / `get_open_orders(**kwargs)` / `get_all_orders(**kwargs)`
@@ -253,7 +272,7 @@ All take keyword arguments matching the [Binance WebSocket API](https://develope
 
 ### await client.sync_time() -> int
 
-Syncs the local clock offset against Binance server time by calling `GET /api/v3/time` and storing `server_time - local_time` (ms). This offset is added to the `timestamp` of every signed request, preventing `-1021` ("Timestamp for this request is outside of the recvWindow") rejections caused by clock drift.
+Syncs the local clock offset against Binance server time by issuing the WebSocket-API `time` request (`get_server_time()`) and storing `server_time - local_time` (ms). This offset is added to the `timestamp` of every signed request, preventing `-1021` ("Timestamp for this request is outside of the recvWindow") rejections caused by clock drift.
 
 You do not need to call this manually under normal conditions:
 
@@ -612,7 +631,7 @@ Set the client. If `client` is not specified in the constructor, then executing 
 
 - **limit** `int`
 
-Set depth limit which is used by [binance reset api](https://github.com/binance-exchange/binance-official-api-docs/blob/master/rest-api.md#order-book).
+Set depth limit which is used by the [Binance WebSocket API `depth` request](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-api/market-data-requests#order-book).
 
 ### orderbook.set_retry_policy(retry_policy) -> None
 

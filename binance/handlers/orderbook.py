@@ -45,9 +45,9 @@ class OrderBook:
     Maintains two ``SequencedList`` objects — ``bids`` and ``asks`` — that
     reflect the current state of the Binance order book for the configured
     symbol.  On initialisation (or whenever synchronisation is lost) the book
-    automatically fetches a fresh depth snapshot from the REST API via the
-    associated ``Client``, then applies any buffered ``depthUpdate`` WebSocket
-    events to catch up to the live state.
+    automatically fetches a fresh depth snapshot over the Binance WebSocket API
+    (``depth``) via the associated ``Client``, then applies any buffered
+    ``depthUpdate`` WebSocket events to catch up to the live state.
 
     You normally create an ``OrderBook`` indirectly through
     ``OrderBookHandlerBase.orderbook(symbol)`` rather than instantiating it
@@ -159,10 +159,10 @@ class OrderBook:
     ) -> None:
         """Set the depth-snapshot limit (number of price levels to fetch).
 
-        This controls how many price levels are requested from the REST
-        ``GET /api/v3/depth`` endpoint when (re-)initialising the order book.
-        Binance accepts ``5``, ``10``, ``20``, ``50``, ``100``, ``500``, or
-        ``1000``; values outside these tiers are rounded up by the exchange.
+        This controls how many price levels are requested via the WebSocket-API
+        ``depth`` request when (re-)initialising the order book. Binance accepts
+        ``5``, ``10``, ``20``, ``50``, ``100``, ``500``, or ``1000``; values
+        outside these tiers are rounded up by the exchange.
 
         Args:
             limit (int): Number of price levels per side to include in each
@@ -182,8 +182,9 @@ class OrderBook:
         Passing ``None`` or a falsy value is a no-op.
 
         Args:
-            client: A connected ``binance.Client`` instance used to make REST
-                calls (specifically ``get_orderbook``).
+            client: A connected ``binance.Client`` instance used to fetch the
+                depth snapshot (specifically ``get_orderbook``, served over the
+                WebSocket API).
         """
         if not client:
             return
