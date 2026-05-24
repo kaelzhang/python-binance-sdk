@@ -24,21 +24,6 @@ class SimpleHandler(Handler):
         return msg
 
 
-class AccountInfoHandlerBase(SimpleHandler):
-    """Base handler for the ``outboundAccountInfo`` user-data-stream event.
-
-    Receives the full account information payload (balances, permissions,
-    allowed order types, etc.) whenever the account state changes.  This event
-    type is considered legacy by Binance; ``AccountPositionHandlerBase`` is
-    preferred for balance tracking.
-
-    Subclass this and override ``receive(payload)`` to process the event.
-    The raw Binance payload dict is passed to ``receive`` unchanged.
-    """
-
-    pass
-
-
 class AccountPositionHandlerBase(SimpleHandler):
     """Base handler for the ``outboundAccountPosition`` user-data-stream event.
 

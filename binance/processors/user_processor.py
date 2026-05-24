@@ -12,7 +12,6 @@ from binance.common.constants import (
 from binance.common.exceptions import UserStreamNotSubscribedException
 
 from binance.handlers.user_handlers import (
-    AccountInfoHandlerBase,
     AccountPositionHandlerBase,
     BalanceUpdateHandlerBase,
     OrderUpdateHandlerBase,
@@ -32,7 +31,6 @@ class UserProcessor(Processor):
     SUB_TYPE = SubType.USER
 
     PAYLOAD_TYPES = (
-        'outboundAccountInfo',
         'outboundAccountPosition',
         'balanceUpdate',
         'executionReport',
@@ -42,7 +40,6 @@ class UserProcessor(Processor):
     )
 
     HANDLERS = (
-        AccountInfoHandlerBase,
         AccountPositionHandlerBase,
         BalanceUpdateHandlerBase,
         OrderUpdateHandlerBase,

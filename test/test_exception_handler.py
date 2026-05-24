@@ -3,12 +3,17 @@ import pytest
 from binance import (
     Client,
     HandlerExceptionHandlerBase,
-    AccountInfoHandlerBase
+    AccountPositionHandlerBase
 )
 
-from .common import ACCOUNT_INFO
-
 from binance.common.utils import create_future
+
+ACCOUNT_POSITION = {
+    'e': 'outboundAccountPosition',
+    'E': 1499405658849,
+    'u': 1499405658073,
+    'B': []
+}
 
 
 @pytest.mark.asyncio
@@ -24,16 +29,16 @@ async def test_handler_exception_handler(capsys):
             e = super().receive(e)
             future.set_exception(e)
 
-    class AccountInfoHandler(AccountInfoHandlerBase):
+    class AccountPositionHandler(AccountPositionHandlerBase):
         def receive(self, payload):
             raise e
 
     client.start()
     client.handler(ExceptionHandler())
-    client.handler(AccountInfoHandler())
+    client.handler(AccountPositionHandler())
 
     await client._receive({
-        'data': ACCOUNT_INFO
+        'data': ACCOUNT_POSITION
     })
 
     try:

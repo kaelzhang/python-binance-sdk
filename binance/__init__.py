@@ -63,7 +63,6 @@ from binance.handlers.handlers import (
 from binance.handlers.orderbook_handler import OrderBookHandlerBase
 
 from binance.handlers.user_handlers import (
-    AccountInfoHandlerBase,
     AccountPositionHandlerBase,
     BalanceUpdateHandlerBase,
     OrderUpdateHandlerBase,
