@@ -241,3 +241,13 @@ async def test_signed_request_raises_without_any_credentials():
     client = Client(api_key='k')  # no api_secret, no private_key
     with pytest.raises(APISecretNotDefinedException):
         await client.get_account()
+
+
+def test_unsupported_private_key_type_rejected():
+    from cryptography.hazmat.primitives.asymmetric import ec
+    ec_pem = ec.generate_private_key(ec.SECP256R1()).private_bytes(
+        Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
+    ).decode('utf-8')
+    # Only Ed25519 and RSA are supported for Binance signing.
+    with pytest.raises(ValueError, match='Ed25519 or RSA'):
+        Client(api_key='k', private_key=ec_pem)

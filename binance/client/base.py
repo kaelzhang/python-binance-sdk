@@ -10,6 +10,7 @@ from urllib.parse import quote
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 from typing import (
@@ -18,6 +19,7 @@ from typing import (
     Dict,
     Awaitable,
     Optional,
+    Union,
     Any
 )
 
@@ -168,6 +170,8 @@ class ClientBase:
 
         return kwargs
 
+    _private_key: Optional[Union[Ed25519PrivateKey, RSAPrivateKey]]
+
     def _load_private_key(self, private_key, private_key_pass) -> None:
         """Load an Ed25519/RSA PEM private key (path or PEM content) for signing."""
         if private_key is None:
@@ -184,24 +188,32 @@ class ClientBase:
             private_key_pass.encode('utf-8')
             if isinstance(private_key_pass, str) else private_key_pass
         )
-        self._private_key = load_pem_private_key(pem, password)
+        key = load_pem_private_key(pem, password)
+        if not isinstance(key, (Ed25519PrivateKey, RSAPrivateKey)):
+            raise ValueError(
+                'private_key must be an Ed25519 or RSA private key')
+        self._private_key = key
 
     def _generate_signature(
         self,
         data: dict
     ) -> str:
         query_string = encode_params(data)
-        if self._private_key is not None:
-            return self._sign_asymmetric(query_string)
+        key = self._private_key
+        if key is not None:
+            return self._sign_asymmetric(key, query_string)
         m = hmac.new(
             self._api_secret.encode('utf-8'),
             query_string.encode('utf-8'),
             hashlib.sha256)
         return m.hexdigest()
 
-    def _sign_asymmetric(self, query_string: str) -> str:
+    def _sign_asymmetric(
+        self,
+        key: Union[Ed25519PrivateKey, RSAPrivateKey],
+        query_string: str
+    ) -> str:
         message = query_string.encode('utf-8')
-        key = self._private_key
         if isinstance(key, Ed25519PrivateKey):
             signature = key.sign(message)
         else:  # RSA
@@ -264,7 +276,8 @@ class ClientBase:
         request and re-armed whenever a ``-1021`` is seen; you may also call it
         manually (e.g. periodically). Returns the new offset in milliseconds.
         """
-        res = await self.get_server_time()
+        # get_server_time is provided by the RestAPIGetters mixin on Client
+        res = await self.get_server_time()  # type: ignore[attr-defined]
         self._time_offset = int(res['serverTime']) - int(time.time() * 1000)
         self._time_synced = True
         return self._time_offset
