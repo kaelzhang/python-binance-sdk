@@ -1,6 +1,6 @@
 from logging import getLogger, Logger
 
-from binance.apis import RestAPIGetters
+from binance.apis import RestAPIGetters, WsApiGetters
 
 from aioretry import RetryPolicy
 
@@ -20,18 +20,25 @@ from .base import ClientBase
 class Client(
     ClientBase,
     RestAPIGetters,
+    WsApiGetters,
     SubscriptionManager
 ):
     """Async Binance REST + WebSocket client — the primary public entry point.
 
-    Combines three building blocks via multiple inheritance:
+    Combines four building blocks via multiple inheritance:
 
     - ``ClientBase``: holds API credentials, signs and sends aiohttp requests,
       captures rate-limit response headers, and drives the ``RateLimiter``.
-    - ``RestAPIGetters``: generated async methods for every ``/api/`` REST
-      endpoint (e.g. ``ping``, ``get_orderbook``, ``create_order``).
+    - ``RestAPIGetters``: generated async methods for the ``/api/`` REST
+      endpoints still served over REST (e.g. ``ping``, ``get_orderbook``,
+      ``get_account``).
+    - ``WsApiGetters``: generated async methods for the trading endpoints now
+      served over the WebSocket API (e.g. ``create_order``, ``cancel_order``,
+      ``create_oco``), each an id-correlated request on the shared WS-API
+      connection.
     - ``SubscriptionManager``: manages WebSocket market-data and user-data
-      stream connections via ``subscribe()`` / ``unsubscribe()``.
+      stream connections via ``subscribe()`` / ``unsubscribe()``, and owns the
+      shared WS-API request connection used by ``WsApiGetters``.
 
     Typical usage::
 

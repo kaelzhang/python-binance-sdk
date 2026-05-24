@@ -115,26 +115,26 @@ async def test_429_sets_snapshot_retry_after():
 
 @pytest.mark.asyncio
 async def test_order_endpoint_consumes_orders_pool():
-    import re
     from binance import Client
-    # create_order is a TRADE (signed) endpoint; supply credentials so the
-    # request reaches the rate-limiter core instead of raising on missing keys.
-    client = Client(api_key='k', api_secret='s')
-    with aioresponses() as m:
-        # The first signed request triggers a lazy sync_time() call.
-        m.get('https://api.binance.com/api/v3/time',
-              payload={'serverTime': 1_700_000_000_000})
-        # The order body (incl. signature) is POSTed as form data, so the URL
-        # is just `.../api/v3/order`; match it with a regex.
-        # No X-MBX-ORDER-COUNT header: usage can only come from the proactive
-        # is_order=True consumption, so this isolates the tagging path.
-        m.post(re.compile(r'.*/api/v3/order(\?.*)?$'),
-               payload={'orderId': 1, 'status': 'NEW'}, status=200)
+    from test.test_ws_api import WSAPIServer
+    # create_order is a TRADE (signed) endpoint now served over the WebSocket
+    # API (order.place); supply credentials so the request reaches the
+    # rate-limiter core instead of raising on missing keys. The canned response
+    # carries NO `rateLimits` array, so the ORDERS-pool usage can only come from
+    # the proactive is_order=True consumption -- isolating the tagging path.
+    server = WSAPIServer(port=9086)
+    server.on('order.place', result={'orderId': 1, 'status': 'NEW'})
+    await server.run()
+    try:
+        client = Client(ws_api_host=server.uri, api_key='k', api_secret='s')
         await client.create_order(symbol='BTCUSDT', side='BUY', type='MARKET',
                                   quantity=1)
-    snap = client.rate_limit_snapshot()
-    orders = [w for w in snap.windows if w.type == 'orders']
-    assert orders and all(w.used == 1 for w in orders)   # proactively consumed
+        snap = client.rate_limit_snapshot()
+        orders = [w for w in snap.windows if w.type == 'orders']
+        assert orders and all(w.used == 1 for w in orders)  # proactively consumed
+    finally:
+        await client.close()
+        await server.shutdown()
 
 
 @pytest.mark.asyncio

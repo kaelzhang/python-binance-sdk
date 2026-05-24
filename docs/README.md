@@ -236,6 +236,21 @@ await client.create_order(
 )
 ```
 
+Trading requests are sent over Binance's **WebSocket API** (a single shared
+connection, opened lazily) rather than REST, while keeping the same method
+names and keyword arguments. The available trading methods are:
+
+- `create_order(**kwargs)` / `create_test_order(**kwargs)`
+- `get_order(**kwargs)` / `get_open_orders(**kwargs)` / `get_all_orders(**kwargs)`
+- `cancel_order(**kwargs)` / `cancel_all_orders(**kwargs)`
+- `cancel_replace_order(**kwargs)` — cancel an order and place a new one atomically
+- `amend_order(**kwargs)` — reduce an open order's quantity, keeping its priority
+- `create_sor_order(**kwargs)` — place an order using Smart Order Routing
+- `create_oco(**kwargs)` / `create_oto(**kwargs)` / `create_otoco(**kwargs)`
+- `cancel_oco(**kwargs)` / `get_oco(**kwargs)` / `get_all_oco(**kwargs)` / `get_open_oco(**kwargs)`
+
+All take keyword arguments matching the [Binance WebSocket API](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-api) parameters and return the parsed `result`.
+
 ### await client.sync_time() -> int
 
 Syncs the local clock offset against Binance server time by calling `GET /api/v3/time` and storing `server_time - local_time` (ms). This offset is added to the `timestamp` of every signed request, preventing `-1021` ("Timestamp for this request is outside of the recvWindow") rejections caused by clock drift.
