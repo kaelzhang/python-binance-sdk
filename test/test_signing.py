@@ -29,6 +29,42 @@ from binance.common.exceptions import APISecretNotDefinedException
 
 
 # ---------------------------------------------------------------------------
+# _ws_api_query — exact RAW sorted `key=value&...` contract (F-47)
+# ---------------------------------------------------------------------------
+
+def test_ws_api_query_is_sorted_raw_key_value_no_encoding():
+    client = Client(api_key='k', api_secret='s')
+
+    # A value with a space and a '+' — chars that percent-encoding WOULD
+    # change. The WS-API payload MUST keep them raw ("no percent encoding").
+    params = {
+        'symbol': 'BTCUSDT',
+        'newClientOrderId': 'a b+c',   # space -> %20, '+' -> %2B if encoded
+        'apiKey': 'k',
+        'timestamp': 1700000000000,
+        # `signature` must be excluded from the payload entirely
+        'signature': 'SHOULD_BE_DROPPED',
+    }
+    query = client._ws_api_query(params)
+
+    # Exact sorted, raw, &-joined `key=value` (alphabetical by key).
+    assert query == (
+        'apiKey=k'
+        '&newClientOrderId=a b+c'
+        '&symbol=BTCUSDT'
+        '&timestamp=1700000000000'
+    )
+    # Proof it is RAW, not percent-encoded:
+    assert 'a b+c' in query
+    assert '%20' not in query and '%2B' not in query
+    # Proof `signature` is excluded:
+    assert 'signature' not in query
+    # And it diverges from the REST percent-encoded encoding for this payload.
+    assert query != encode_params({k: v for k, v in params.items()
+                                   if k != 'signature'})
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -210,9 +246,43 @@ def test_ws_api_signature_params_with_private_key():
     sig_bytes = base64.b64decode(sig_b64)
 
     # Reconstruct the signed payload (without the signature itself) and verify
+    # against the RAW WS-API query (the spec's signing input).
     payload = {k: v for k, v in signed.items() if k != 'signature'}
-    message = encode_params(payload).encode('utf-8')
+    message = client._ws_api_query(payload).encode('utf-8')
     pub.verify(sig_bytes, message)  # Ed25519: no exception == valid
+
+
+def test_ws_api_signature_params_signs_raw_values_not_encoded():
+    # F-35: the WS-API signature MUST be over the RAW value payload, so a value
+    # with a percent-encoding-sensitive char verifies against `_ws_api_query`
+    # and FAILS against the percent-encoded `encode_params`.
+    _priv, pem_str, pub = _ed25519_pem_str()
+    client = Client(api_key='k', private_key=pem_str)
+
+    signed = client._ws_api_signature_params(newClientOrderId='a b+c')
+    sig_bytes = base64.b64decode(signed['signature'])
+    payload = {k: v for k, v in signed.items() if k != 'signature'}
+
+    # Verifies against the RAW query.
+    pub.verify(sig_bytes, client._ws_api_query(payload).encode('utf-8'))
+
+    # And does NOT verify against the percent-encoded REST encoding.
+    from cryptography.exceptions import InvalidSignature
+    with pytest.raises(InvalidSignature):
+        pub.verify(sig_bytes, encode_params(payload).encode('utf-8'))
+
+
+def test_ws_api_signature_params_hmac_signs_raw_query():
+    client = Client(api_key='k', api_secret='s')
+    signed = client._ws_api_signature_params(newClientOrderId='a b+c')
+
+    payload = {k: v for k, v in signed.items() if k != 'signature'}
+    expected = hmac.new(
+        b's',
+        client._ws_api_query(payload).encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+    assert signed['signature'] == expected
 
 
 # ---------------------------------------------------------------------------

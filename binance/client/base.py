@@ -194,11 +194,17 @@ class ClientBase:
                 'private_key must be an Ed25519 or RSA private key')
         self._private_key = key
 
-    def _generate_signature(
-        self,
-        data: dict
-    ) -> str:
-        query_string = encode_params(data)
+    def _sign(self, query_string: str) -> str:
+        """Sign an already-assembled query string with the active credential.
+
+        The single crypto primitive shared by both signing paths: it does NOT
+        build or encode the payload, it only signs the exact UTF-8 string it is
+        given. Uses the asymmetric private key when one is loaded
+        (Ed25519/RSA -> base64), otherwise HMAC-SHA256 with ``api_secret`` ->
+        lowercase hex. Callers are responsible for assembling the payload in
+        the form Binance expects for the transport (percent-encoded for REST,
+        raw values for the WS-API).
+        """
         key = self._private_key
         if key is not None:
             return self._sign_asymmetric(key, query_string)
@@ -207,6 +213,36 @@ class ClientBase:
             query_string.encode('utf-8'),
             hashlib.sha256)
         return m.hexdigest()
+
+    def _generate_signature(
+        self,
+        data: dict
+    ) -> str:
+        """Sign REST params: percent-encoded sorted ``key=value&...`` payload."""
+        return self._sign(encode_params(data))
+
+    def _ws_api_query(self, params: dict) -> str:
+        """Build the WS-API signature payload: sorted RAW ``key=value&...``.
+
+        Per the Binance WebSocket-API spec ("no percent encoding here!"), the
+        signature is computed over the params (excluding ``signature``) sorted
+        alphabetically by key and joined as ``key=value&key=value`` using the
+        **raw** UTF-8 string value of each param -- NO URL/percent-encoding,
+        unlike the REST path (:func:`encode_params`). The JSON ``params`` sent
+        on the wire carry the same raw values, so what Binance reconstructs
+        matches what was signed.
+        """
+        return '&'.join(
+            f'{key}={value}'
+            for key, value in sorted(
+                (
+                    (k, str(v))
+                    for k, v in params.items()
+                    if k != 'signature'
+                ),
+                key=itemgetter(0)
+            )
+        )
 
     def _sign_asymmetric(
         self,
@@ -224,7 +260,15 @@ class ClientBase:
         self,
         **params
     ) -> dict:
-        """Build signed params for WebSocket API requests."""
+        """Build signed params for a WebSocket-API request (raw-value payload).
+
+        Assembles the caller's ``params`` with ``apiKey`` and a
+        ``timestamp`` (local clock + ``_time_offset``), signs the
+        :meth:`_ws_api_query` raw sorted ``key=value&...`` payload via
+        :meth:`_sign`, and attaches the resulting ``signature``. The raw-value
+        payload (NOT percent-encoded) is what the WS-API spec requires and what
+        is sent on the wire, so the signature always reconciles.
+        """
         if self._api_key is None:
             raise APIKeyNotDefinedException('userDataStream.subscribe.signature')
 
@@ -236,7 +280,7 @@ class ClientBase:
             'apiKey': self._api_key,
             'timestamp': int(time.time() * 1000) + self._time_offset
         }
-        signed['signature'] = self._generate_signature(signed)
+        signed['signature'] = self._sign(self._ws_api_query(signed))
 
         return signed
 
