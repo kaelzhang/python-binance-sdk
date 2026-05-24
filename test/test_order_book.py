@@ -48,7 +48,7 @@ async def test_order_book():
         client = Client('api_key')
 
         def preset_10():
-            m.get('https://api.binance.com/api/v3/depth?limit=100&symbol=BTCUSDT', payload=dict(
+            m.get('https://api.binance.com/api/v3/depth?limit=1000&symbol=BTCUSDT', payload=dict(
                 lastUpdateId=10,
                 asks=asks,
                 bids=bids
@@ -60,7 +60,7 @@ async def test_order_book():
 
         def preset_13():
             m.get(
-                'https://api.binance.com/api/v3/depth?limit=100&symbol=BTCUSDT', payload=dict(
+                'https://api.binance.com/api/v3/depth?limit=1000&symbol=BTCUSDT', payload=dict(
                     lastUpdateId=13,
                     asks=asks1,
                     bids=bids
@@ -262,7 +262,7 @@ async def test_order_book():
 
         def preset_error():
             m.get(
-                'https://api.binance.com/api/v3/depth?limit=100&symbol=BTCUSDT', payload=dict(
+                'https://api.binance.com/api/v3/depth?limit=1000&symbol=BTCUSDT', payload=dict(
                     lastUpdateId=13,
                     asks=asks1,
                     bids=bids

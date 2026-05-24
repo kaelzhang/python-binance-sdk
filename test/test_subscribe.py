@@ -11,7 +11,7 @@ from binance import (
 
     TickerHandlerBase,
     KlineHandlerBase,
-    AccountInfoHandlerBase,
+    AccountPositionHandlerBase,
     ExternalLockUpdateHandlerBase,
     EventStreamTerminatedHandlerBase,
 
@@ -205,23 +205,23 @@ async def test_client_kline_handler(client, monkeypatch):
 async def test_user_handler_ws_api_event(client):
     f = create_future()
 
-    class AccountInfoHandler(AccountInfoHandlerBase):
+    class AccountPositionHandler(AccountPositionHandlerBase):
         def receive(self, payload):
             f.set_result(payload)
 
-    client.handler(AccountInfoHandler())
+    client.handler(AccountPositionHandler())
 
     await client._receive({
         'subscriptionId': 0,
         'event': {
-            'e': 'outboundAccountInfo',
+            'e': 'outboundAccountPosition',
             'foo': 'bar'
         }
     })
 
     payload = await f
 
-    assert payload['e'] == 'outboundAccountInfo'
+    assert payload['e'] == 'outboundAccountPosition'
     assert payload['foo'] == 'bar'
 
     await client.close()
@@ -336,7 +336,7 @@ async def test_user_stream_auto_recover_without_user_handler(client):
 
 # Canned depth snapshot served instead of the live REST endpoint.
 _SNAPSHOT_URL = (
-    'https://api.binance.com/api/v3/depth?limit=100&symbol=BTCUSDT'
+    'https://api.binance.com/api/v3/depth?limit=1000&symbol=BTCUSDT'
 )
 _SNAPSHOT_ASKS = [[100, 10]]
 _SNAPSHOT_BIDS = [[99, 5]]
