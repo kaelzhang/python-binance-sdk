@@ -6,7 +6,6 @@ package at 100% statement coverage.
 """
 
 import asyncio
-import re
 from types import SimpleNamespace
 from logging import getLogger
 
@@ -298,18 +297,6 @@ async def test_close_logs_task_errors():
     # the failing socket.close is caught and logged, close() completes
     await stream.close()
     assert stream._socket is None
-
-
-# --- apis/wapi.py: deprecated wapi getter + uri builder -------------------
-
-@pytest.mark.asyncio
-async def test_wapi_getter_builds_url_and_requests():
-    client = Client('api_key', 'api_secret')
-    with aioresponses() as m:
-        m.get(re.compile(r'.*/wapi/v3/depositHistory\.html.*'),
-              payload={'ok': True})
-        res = await client.get_deposit_history()
-    assert res == {'ok': True}
 
 
 # --- user-stream flow (mocked; replaces the live test_user_stream) ---------
