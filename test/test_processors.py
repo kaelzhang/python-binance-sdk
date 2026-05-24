@@ -174,3 +174,11 @@ def test_partial_order_book_rejects_diff_depth_stream():
         'data': {'bids': [], 'asks': []}
     })
     assert not is_partial
+
+    # A @depth<n> stream that passes the regex but lacks a valid payload
+    # (exercises the second gate: bids/asks check returns False, None).
+    is_partial, _ = processor.is_message_type({
+        'stream': 'btcusdt@depth5',
+        'data': {'e': 'snapshot'}
+    })
+    assert not is_partial
