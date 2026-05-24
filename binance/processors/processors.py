@@ -10,6 +10,7 @@ from binance.handlers.handlers import (
     KlineHandlerBase,
     TradeHandlerBase,
     AggTradeHandlerBase,
+    BlockTradeHandlerBase,
     BookTickerHandlerBase,
     PartialOrderBookHandlerBase,
     AvgPriceHandlerBase,
@@ -193,6 +194,12 @@ class AggTradeProcessor(Processor):
     """Processor for the aggTrade stream."""
     HANDLER = AggTradeHandlerBase
     SUB_TYPE = SubType.AGG_TRADE
+
+
+class BlockTradeProcessor(Processor):
+    """Processor for the blockTrade stream."""
+    HANDLER = BlockTradeHandlerBase
+    SUB_TYPE = SubType.BLOCK_TRADE
 
 
 class BookTickerProcessor(Processor):

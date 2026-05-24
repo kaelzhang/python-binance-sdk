@@ -6,11 +6,19 @@ from binance.processors import (
     PartialOrderBookProcessor,
     AllMarketMiniTickersProcessor,
     AllMarketWindowTickersProcessor,
-    WindowTickerProcessor
+    WindowTickerProcessor,
+    BlockTradeProcessor,
 )
 from binance.common.constants import SubType
 from binance.common.exceptions import InvalidSubTypeParamException
 from stock_pandas import TimeFrame
+
+
+def test_block_trade_processor():
+    processor = BlockTradeProcessor(None)
+    assert processor.subscribe_param(
+        None, SubType.BLOCK_TRADE, 'BTCUSDT'
+    ) == 'btcusdt@blockTrade'
 
 
 def test_mini_ticker_processor():

@@ -17,7 +17,8 @@ from binance import (
     ExternalLockUpdateHandlerBase,
     EventStreamTerminatedHandlerBase,
     AllMarketMiniTickersHandlerBase,
-    AllMarketWindowTickersHandlerBase
+    AllMarketWindowTickersHandlerBase,
+    BlockTradeHandlerBase,
 )
 from binance.common.utils import create_future
 
@@ -307,6 +308,20 @@ async def test_all_market_window_ticker(client):
     await run_handler(client, AllMarketWindowTickersHandlerBase, [
         ticker
     ], expect_ticker, '!ticker_1h@arr')
+
+
+@pytest.mark.asyncio
+async def test_block_trade_handler(client):
+    await run_handler(client, BlockTradeHandlerBase, {
+        'e': 'blockTrade',
+        'E': 1772506983582,
+        's': 'BNBBTC',
+        't': 582,
+        'p': '0.052',
+        'q': '5838',
+        'T': 1772506983321,
+        'm': True
+    }, expect_symbol)
 
 
 def test_handler_reuse():

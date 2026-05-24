@@ -154,6 +154,32 @@ class AggTradeHandlerBase(Handler):
     COLUMNS = AGG_TRADE_COLUMNS
 
 
+BLOCK_TRADE_COLUMNS_MAP = {
+    **BASE_TRADE_COLUMNS_MAP,
+    't': 'trade_id'
+}
+
+BLOCK_TRADE_COLUMNS = BLOCK_TRADE_COLUMNS_MAP.keys()
+
+
+class BlockTradeHandlerBase(Handler):
+    """Base handler for the ``SubType.BLOCK_TRADE`` (block trade) stream.
+
+    Receives one message per block trade reported for the subscribed symbol.
+    A block trade is a single large trade reported as a block; each payload
+    carries the block trade ID, price, quantity, trade time, and whether the
+    buyer is the market maker.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    human-readable column names (e.g. ``trade_id``, ``price``, ``quantity``,
+    ``is_maker``).
+    """
+
+    COLUMNS_MAP = BLOCK_TRADE_COLUMNS_MAP
+    COLUMNS = BLOCK_TRADE_COLUMNS
+
+
 BOOK_TICKER_COLUMNS_MAP = {
     'u': 'update_id',
     's': 'symbol',

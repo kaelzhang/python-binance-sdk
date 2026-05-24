@@ -111,6 +111,7 @@ await client.subscribe(
 And since we subscribe to **THREE** new types of messages, we need to set the handlers each of which should `isinstance()` of one of
 - `TradeHandlerBase`
 - `AggTradeHandlerBase`
+- `BlockTradeHandlerBase`
 - `BookTickerHandlerBase`
 - `PartialOrderBookHandlerBase`
 - `AvgPriceHandlerBase`
@@ -432,6 +433,7 @@ And `interval` should be one of the `TimeFrame` enumerables
 
 - `SubType.TRADE`
 - `SubType.AGG_TRADE`
+- `SubType.BLOCK_TRADE`
 - `SubType.BOOK_TICKER`
 - `SubType.AVG_PRICE`
 - `SubType.MINI_TICKER`
