@@ -96,6 +96,12 @@ class OrderBook:
 
     @property
     def _updated_future(self) -> Future:
+        """Internal: the pending future resolved on the next book update.
+
+        Lazily created and cached; ``updated()`` awaits it and ``_emit_updated``
+        resolves it then swaps in a fresh one. Private -- consumers should use
+        the public ``updated()`` coroutine instead.
+        """
         future = self.__updated_future
         if future is None:
             future = create_future()
