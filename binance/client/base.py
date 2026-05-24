@@ -97,21 +97,26 @@ def encode_params(data: dict) -> str:
     )
 
 
-def _reject_float_params(data: dict) -> None:
-    """Raise ``ValueError`` if any value in *data* is a ``float`` (F-07).
+def _reject_float_params(data: Union[dict, list, tuple]) -> None:
+    """Raise ``ValueError`` if any value (recursively) in *data* is a ``float`` (F-07).
 
     Floats must be rejected at the API boundary because Python's ``str(float)``
     can produce scientific notation (e.g. ``'1e-08'``) or imprecise decimal
     representations that silently corrupt price/quantity fields.  Pass a string
-    (e.g. ``price='0.00000001'``) or an int instead.
+    (e.g. ``price='0.00000001'``) or an int instead.  Nested ``dict``/``list``/
+    ``tuple`` values are checked recursively so a float buried inside a nested
+    param cannot slip through.
     """
-    for key, value in data.items():
+    items = data.items() if isinstance(data, dict) else enumerate(data)
+    for key, value in items:
         if isinstance(value, float):
             raise ValueError(
                 f"param {key!r} is a float ({value!r}); "
                 "pass a string for prices/quantities to avoid precision loss "
                 "or scientific notation"
             )
+        if isinstance(value, (dict, list, tuple)):
+            _reject_float_params(value)
 
 
 KEY_REQUEST_PARAMS = 'request_params'

@@ -203,6 +203,25 @@ async def test_rest_escape_hatch_1021_rearms_time_sync():
 # F-07 — float param rejection on REST path
 # ---------------------------------------------------------------------------
 
+def test_reject_float_params_rejects_nested_floats():
+    from binance.client.base import _reject_float_params
+
+    # top-level float
+    with pytest.raises(ValueError, match='float'):
+        _reject_float_params({'price': 1.0})
+
+    # float nested inside a list value
+    with pytest.raises(ValueError, match='float'):
+        _reject_float_params({'symbols': ['BTCUSDT', 2.0]})
+
+    # float nested inside a dict value
+    with pytest.raises(ValueError, match='float'):
+        _reject_float_params({'outer': {'inner': 3.0}})
+
+    # clean nested structures (str/int/bool/nested containers) must NOT raise
+    _reject_float_params({'a': '1', 'b': 2, 'c': True, 'd': ['x', {'e': 'y'}]})
+
+
 def test_reject_float_params_raises_with_message():
     """_reject_float_params raises ValueError naming the offending key."""
     with pytest.raises(ValueError, match="price.*float.*pass a string"):
