@@ -116,6 +116,7 @@ class Client(
         rate_limit_guard: bool = True,
         rate_limiter: Optional[RateLimiter] = None,
         request_timeout: float = 10,
+        recv_window: Optional[int] = None,
         logger: Logger = getLogger(__name__)
     ):
         """Binance API Client constructor
@@ -141,6 +142,11 @@ class Client(
                 When ``None`` (default) a private limiter is built from ``rate_limit_guard``.
             request_timeout (:obj:`float`, optional): total seconds before an aiohttp REST request
                 is abandoned. Defaults to 10.
+            recv_window (:obj:`int`, optional): default ``recvWindow`` (ms) included in every
+                signed WS-API request.  Clamped to at most 60000; injected automatically unless
+                the caller already passes ``recvWindow`` explicitly.  ``None`` (default) lets
+                Binance use its server-side default (5000 ms).  Override per-call by passing
+                ``recvWindow=<value>`` to any signed method.
         """
 
         self._api_key = None
@@ -165,6 +171,10 @@ class Client(
 
         self._request_params = request_params
         self._api_host = api_host
+        # F-48: client-level recvWindow default (None = use server default).
+        self._recv_window = (
+            min(int(recv_window), 60000) if recv_window is not None else None
+        )
 
         self._stream_host = stream_host
         self._ws_api_host = _apply_time_unit(ws_api_host, time_unit)

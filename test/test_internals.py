@@ -140,6 +140,30 @@ def test_overload_partial_order_book_four_tuple():
     assert params[0][0] == SubType.PARTIAL_ORDER_BOOK
 
 
+def test_overload_all_market_window_tickers_two_arg():
+    """F-33: the 2-arg flat form subscribe(ALL_MARKET_WINDOW_TICKERS, TimeFrame.H4)
+    must produce the same canonical tuple as the 1-tuple-of-pair form and be
+    consistent with the processor's subscribe_param signature."""
+    from stock_pandas import TimeFrame
+    ctx = Client()._get_handler_ctx()
+
+    # Flat 2-arg call: subscribe(SubType.ALL_MARKET_WINDOW_TICKERS, TimeFrame.H4)
+    params_flat = ctx.overload_subscriptions(
+        SubType.ALL_MARKET_WINDOW_TICKERS, TimeFrame.H4)
+    assert len(params_flat) == 1
+    assert params_flat[0] == (SubType.ALL_MARKET_WINDOW_TICKERS, TimeFrame.H4)
+
+    # Tuple-pair form: subscribe((SubType.ALL_MARKET_WINDOW_TICKERS, TimeFrame.H4),)
+    params_tuple = ctx.overload_subscriptions(
+        (SubType.ALL_MARKET_WINDOW_TICKERS, TimeFrame.H4))
+    assert params_flat == params_tuple
+
+    # No-window form defaults to H1 (length==1)
+    params_no_window = ctx.overload_subscriptions(
+        SubType.ALL_MARKET_WINDOW_TICKERS)
+    assert params_no_window == [(SubType.ALL_MARKET_WINDOW_TICKERS,)]
+
+
 # --- processors/processors.py: param validation ---------------------------
 
 def test_processor_param_validation_errors():

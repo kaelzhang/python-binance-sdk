@@ -74,9 +74,10 @@ class OrderBookHandlerBase(Handler):
 
     Args:
         limit (int): Depth snapshot size (number of price levels) to request
-            from the REST endpoint when (re-)initialising an ``OrderBook``.
-            Defaults to ``DEFAULT_DEPTH_LIMIT`` (100).
-        retry_policy (RetryPolicy): Retry strategy used when a REST snapshot
+            when (re-)initialising an ``OrderBook``. Default 1000, max 5000
+            (any value; Binance caps at 5000). Defaults to
+            ``DEFAULT_DEPTH_LIMIT`` (1000).
+        retry_policy (RetryPolicy): Retry strategy used when a snapshot
             fetch fails.  Defaults to ``DEFAULT_RETRY_POLICY`` (bounded
             exponential back-off with jitter).
     """
@@ -130,9 +131,9 @@ class OrderBookHandlerBase(Handler):
             limit (:obj:`int`, optional): REST depth-snapshot size for THIS
                 symbol's book, overriding the handler-level default. Only
                 applied when the book is first created — call this before
-                subscribing to choose a per-symbol depth (Binance accepts 5,
-                10, 20, 50, 100, 500, 1000, 5000). Defaults to the handler's
-                ``limit``.
+                subscribing to choose a per-symbol depth. Default 1000, max
+                5000 (any value; Binance caps at 5000). Defaults to the
+                handler's ``limit``.
 
         Returns:
             OrderBook: The orderbook for ``symbol``.

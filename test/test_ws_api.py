@@ -540,3 +540,87 @@ async def test_ws_api_int_and_str_params_accepted():
     finally:
         await client.close()
         await server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# F-48 — client-level recv_window injection on WS-API signed requests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_ws_api_recv_window_injected_when_not_supplied():
+    """F-48: Client(recv_window=5000) injects recvWindow into signed requests
+    that do not already carry one."""
+    server = WSAPIServer()
+    server.on('account.status', result={'canTrade': True})
+    await server.run()
+    try:
+        client = _make_client(server, api_key='K', api_secret='S',
+                              recv_window=5000)
+        client._time_synced = True
+        await client._ws_api_request(
+            'account.status', None,
+            security=SecurityType.USER_DATA, weight=20)
+        params = server.received[0]['params']
+        assert params.get('recvWindow') == 5000
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_ws_api_recv_window_clamped_to_60000():
+    """F-48: recv_window values above 60000 are clamped to 60000."""
+    server = WSAPIServer()
+    server.on('account.status', result={'canTrade': True})
+    await server.run()
+    try:
+        client = _make_client(server, api_key='K', api_secret='S',
+                              recv_window=999999)
+        client._time_synced = True
+        await client._ws_api_request(
+            'account.status', None,
+            security=SecurityType.USER_DATA, weight=20)
+        params = server.received[0]['params']
+        assert params.get('recvWindow') == 60000
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_ws_api_recv_window_not_overridden_when_caller_supplies():
+    """F-48: an explicit per-call recvWindow overrides the client-level default."""
+    server = WSAPIServer()
+    server.on('account.status', result={'canTrade': True})
+    await server.run()
+    try:
+        client = _make_client(server, api_key='K', api_secret='S',
+                              recv_window=5000)
+        client._time_synced = True
+        await client._ws_api_request(
+            'account.status', {'recvWindow': 1000},
+            security=SecurityType.USER_DATA, weight=20)
+        params = server.received[0]['params']
+        # Caller wins; the client-level default must not override.
+        assert params.get('recvWindow') == 1000
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_ws_api_recv_window_not_injected_on_none_security():
+    """F-48: recv_window must NOT be injected for NONE (public) endpoints."""
+    server = WSAPIServer()
+    server.on('depth', result={'lastUpdateId': 1, 'bids': [], 'asks': []})
+    await server.run()
+    try:
+        client = _make_client(server, recv_window=5000)
+        await client._ws_api_request(
+            'depth', {'symbol': 'BTCUSDT'},
+            security=SecurityType.NONE, weight=5)
+        params = server.received[0].get('params', {})
+        assert 'recvWindow' not in params
+    finally:
+        await client.close()
+        await server.shutdown()

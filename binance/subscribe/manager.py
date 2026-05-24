@@ -89,6 +89,7 @@ class SubscriptionManager:
     _private_key: Optional[object]
     _time_offset: int
     _time_synced: bool
+    _recv_window: Optional[int]
     sync_time: Callable[[], Awaitable]
 
     def start(self):
@@ -377,10 +378,18 @@ class SubscriptionManager:
         # F-07: reject float values before any network round-trip.
         _reject_float_params(request_params)
 
+        # F-48: inject the client-level recv_window when the caller did not
+        # supply one explicitly and the endpoint is signed.
+        need_api_key, need_signed = security.value
+        if need_signed and self._recv_window is not None:
+            if 'recvWindow' not in request_params:
+                request_params['recvWindow'] = min(
+                    int(self._recv_window), 60000
+                )
+
         # Validate credentials BEFORE any network round-trip (mirrors the REST
         # `_request` ordering), so a signed request lacking credentials raises
         # immediately rather than first issuing the lazy `time` sync.
-        need_api_key, need_signed = security.value
         if need_api_key and self._api_key is None:
             raise APIKeyNotDefinedException(method)
         if (

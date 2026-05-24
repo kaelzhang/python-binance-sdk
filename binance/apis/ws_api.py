@@ -483,7 +483,7 @@ class WsApiGetters:
 
         Args:
             symbol (str): The symbol of the orderbook.
-            limit (:obj:`int`, optional): Defaults to 100; max 5000. Valid limits: [5, 10, 20, 50, 100, 500, 1000, 5000].
+            limit (:obj:`int`, optional): Default 100, max 5000 (any value; Binance caps at 5000).
 
         Returns:
             dict: The orderbook. For example::

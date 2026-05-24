@@ -161,12 +161,13 @@ class OrderBook:
 
         This controls how many price levels are requested via the WebSocket-API
         ``depth`` request when (re-)initialising the order book. Binance accepts
-        ``5``, ``10``, ``20``, ``50``, ``100``, ``500``, or ``1000``; values
-        outside these tiers are rounded up by the exchange.
+        any integer value up to 5000 and caps it there server-side. The SDK
+        default is ``DEFAULT_DEPTH_LIMIT`` (1000).
 
         Args:
             limit (int): Number of price levels per side to include in each
-                depth snapshot request.
+                depth snapshot request. Default 1000, max 5000 (any value;
+                Binance caps at 5000).
         """
         self._limit = limit
 
