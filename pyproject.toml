@@ -87,7 +87,11 @@ warn_return_any = true
 ignore_missing_imports = true
 no_implicit_optional = true
 strict_optional = true
-disable_error_code = ['return-value', 'no-any-return']
+disable_error_code = ['return-value', 'no-any-return', 'empty-body']
+# `binance/no_track/` holds gitignored local drafts (intentionally not part of
+# the package) that contain incomplete/invalid syntax; without this exclude a
+# bare `mypy binance/` aborts on them and never type-checks the real code.
+exclude = ['(^|/)no_track/']
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
