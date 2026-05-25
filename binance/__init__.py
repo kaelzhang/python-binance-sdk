@@ -49,9 +49,12 @@ from binance.core.rate_limit import (
 
 from binance.core.common.types import StreamError, StreamName, StreamErrorPhase
 
-from binance.spot.handlers import (
+from binance.core.handlers.framework import (
     StreamErrorHandlerBase,
     HandlerExceptionHandlerBase,
+)
+
+from binance.spot.handlers import (
     TradeHandlerBase,
     AggTradeHandlerBase,
     BlockTradeHandlerBase,

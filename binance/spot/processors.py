@@ -7,8 +7,6 @@ from typing import ClassVar
 from stock_pandas import TimeFrame
 
 from binance.spot.handlers import (
-    StreamErrorHandlerBase,
-    HandlerExceptionHandlerBase,
     KlineHandlerBase,
     TradeHandlerBase,
     AggTradeHandlerBase,
@@ -22,6 +20,11 @@ from binance.spot.handlers import (
     TickerHandlerBase,
     AllMarketMiniTickersHandlerBase,
     AllMarketWindowTickersHandlerBase
+)
+
+from binance.core.processors.framework import (  # noqa: F401  re-exported for backward compatibility
+    StreamErrorProcessor,
+    ExceptionProcessor,
 )
 
 from binance.spot.orderbook_handler import OrderBookHandlerBase
@@ -134,16 +137,6 @@ def _get_partial_depth_level(t, args, default=20):
         )
 
     return level
-
-
-class StreamErrorProcessor(Processor):
-    """Processor that routes stream-control errors to registered StreamErrorHandlerBase handlers."""
-    HANDLER = StreamErrorHandlerBase
-
-
-class ExceptionProcessor(Processor):
-    """Processor that routes dispatch exceptions to registered exception handlers."""
-    HANDLER = HandlerExceptionHandlerBase
 
 
 class KlineProcessor(Processor):
