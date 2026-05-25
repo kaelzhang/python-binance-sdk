@@ -8,6 +8,7 @@ from aioretry import (
 from stock_pandas import TimeFrame
 
 from binance.spot import SpotClient
+from binance.futures.um import UMFuturesClient
 from binance.core.auth import Credentials
 from binance.core.common.constants import (
     SubType,
@@ -79,3 +80,8 @@ from binance.spot.user_handlers import (
 
 from binance.spot.orderbook import OrderBook
 from binance.core.transport.stream import Stream
+
+from binance.futures.um.streams import (
+    MarkPriceHandlerBase,
+    ForceOrderHandlerBase,
+)

@@ -71,7 +71,9 @@ packages = [
   'binance.core.processors',
   'binance.core.rate_limit',
   'binance.core.transport',
-  'binance.spot'
+  'binance.spot',
+  'binance.futures',
+  'binance.futures.um'
 ]
 
 [tool.setuptools.dynamic]
