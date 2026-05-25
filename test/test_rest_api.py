@@ -4,7 +4,7 @@ import pytest
 
 # pylint: disable=no-member
 
-from binance import Client, TimeFrame
+from binance import SpotClient, TimeFrame
 
 from .common import print_json
 
@@ -103,7 +103,7 @@ FREE_CASES = [
     reason='live Binance test; set BINANCE_LIVE_TEST=1')
 @pytest.mark.asyncio
 async def test_free_apis():
-    client = Client()
+    client = SpotClient()
 
     print('')
 

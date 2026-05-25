@@ -4,7 +4,8 @@ import asyncio
 from stock_pandas import StockDataFrame
 
 from binance import (
-    Client,
+    SpotClient,
+    Credentials,
     SubType,
     TimeFrame,
 
@@ -28,7 +29,7 @@ from binance.core.rate_limit.types import RateLimitType
 
 @pytest.fixture
 def client():
-    return Client('api_key').start()
+    return SpotClient(Credentials('api_key')).start()
 
 
 TICKER_RES = dict(
@@ -474,8 +475,7 @@ def _ws_streams_used(client):
 
 @pytest.mark.asyncio
 async def test_subscribe_tracks_stream_count_in_core(monkeypatch):
-    from binance import Client
-    client = Client()
+    client = SpotClient()
 
     async def fake_send(_msg):
         return None
@@ -508,8 +508,7 @@ async def test_subscribe_tracks_stream_count_in_core(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_subscribe_rolls_back_reservation_on_send_failure(monkeypatch):
-    from binance import Client
-    client = Client()
+    client = SpotClient()
 
     async def failing_send(_msg):
         raise RuntimeError('send failed')
@@ -532,8 +531,7 @@ async def test_subscribe_rolls_back_reservation_on_send_failure(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_subscribe_rejects_more_than_1024_streams(monkeypatch):
-    from binance import Client
-    client = Client()
+    client = SpotClient()
 
     async def fake_send(_msg):
         return None

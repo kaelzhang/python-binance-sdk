@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.serialization import (
     Encoding, PrivateFormat, NoEncryption,
 )
 
-from binance import Client
+from binance import SpotClient, Credentials
 from binance.core.common.constants import SecurityType
 from binance.core.common.exceptions import (
     APIKeyNotDefinedException,
@@ -134,8 +134,13 @@ class WSAPIServer:
         return ws
 
 
-def _make_client(server, **kwargs) -> Client:
-    return Client(ws_api_host=server.uri, **kwargs)
+def _make_client(server, **kwargs) -> SpotClient:
+    cred_kwargs = {
+        k: kwargs.pop(k)
+        for k in ('api_key', 'api_secret', 'private_key', 'private_key_pass')
+        if k in kwargs
+    }
+    return SpotClient(Credentials(**cred_kwargs), ws_api_host=server.uri, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -400,7 +405,7 @@ class _RaisingStream:
 async def test_ws_api_unauthorized_resets_session_auth_flag():
     # -2015 (session revoked/expired) must drop the authenticated flag so the
     # next request re-signs per-request (self-healing).
-    client = Client(api_key='K', api_secret='S')
+    client = SpotClient(Credentials(api_key='K', api_secret='S'))
     client._user_stream = _RaisingStream(
         StreamSubscribeException(-2015, 'Invalid API-key, IP, or permissions.'))
     client._ws_api_authenticated = True       # pretend a session existed
@@ -417,7 +422,7 @@ async def test_ws_api_unauthorized_resets_session_auth_flag():
 @pytest.mark.asyncio
 async def test_ws_api_non_unauthorized_error_keeps_session_auth_flag():
     # A non -2015 error must NOT touch the authenticated flag.
-    client = Client(api_key='K', api_secret='S')
+    client = SpotClient(Credentials(api_key='K', api_secret='S'))
     client._user_stream = _RaisingStream(
         StreamSubscribeException(-1100, 'Illegal characters.'))
     client._ws_api_authenticated = True
@@ -454,7 +459,7 @@ async def test_ws_api_rate_limit_error_raises_rate_limit_exception():
 
 @pytest.mark.asyncio
 async def test_ws_api_signed_request_without_api_key_raises():
-    client = Client()
+    client = SpotClient()
     with pytest.raises(APIKeyNotDefinedException):
         await client._ws_api_request(
             'account.status', None,
@@ -463,7 +468,7 @@ async def test_ws_api_signed_request_without_api_key_raises():
 
 @pytest.mark.asyncio
 async def test_ws_api_signed_request_without_secret_raises():
-    client = Client(api_key='K')   # key but no secret / private key
+    client = SpotClient(Credentials(api_key='K'))   # key but no secret / private key
     with pytest.raises(APISecretNotDefinedException):
         await client._ws_api_request(
             'account.status', None,
@@ -549,7 +554,7 @@ async def test_ws_api_int_and_str_params_accepted():
 
 @pytest.mark.asyncio
 async def test_ws_api_recv_window_injected_when_not_supplied():
-    """F-48: Client(recv_window=5000) injects recvWindow into signed requests
+    """F-48: SpotClient(recv_window=5000) injects recvWindow into signed requests
     that do not already carry one."""
     server = WSAPIServer()
     server.on('account.status', result={'canTrade': True})

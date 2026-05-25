@@ -8,7 +8,7 @@ clears the ``_ws_api_authenticated`` flag on the client.
 
 import pytest
 
-from binance import Client
+from binance import SpotClient
 from binance.core.rate_limit.types import RateLimitType
 from test.test_ws_api import WSAPIServer
 
@@ -16,8 +16,8 @@ from test.test_ws_api import WSAPIServer
 _PORT = 9091
 
 
-def _make_client(server) -> Client:
-    client = Client(ws_api_host=server.uri)
+def _make_client(server) -> SpotClient:
+    client = SpotClient(ws_api_host=server.uri)
     client._time_synced = True
     return client
 

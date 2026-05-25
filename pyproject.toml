@@ -65,7 +65,6 @@ dev = [
 [tool.setuptools]
 packages = [
   'binance',
-  'binance.client',
   'binance.core',
   'binance.core.common',
   'binance.core.handlers',

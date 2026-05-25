@@ -2,7 +2,8 @@ import pytest
 import asyncio
 
 from binance import (
-    Client,
+    SpotClient,
+    Credentials,
     OrderBook,
     OrderBookFetchAbandonedException
 )
@@ -49,7 +50,7 @@ async def test_order_book():
         asks1 = [a10, a00]
         asks1_sort = [a00, a10]
 
-        client = Client('api_key', ws_api_host=server.uri)
+        client = SpotClient(Credentials('api_key'), ws_api_host=server.uri)
 
         def preset_10():
             server.on('depth', result=dict(

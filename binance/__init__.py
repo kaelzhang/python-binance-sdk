@@ -7,7 +7,8 @@ from aioretry import (
 )
 from stock_pandas import TimeFrame
 
-from binance.client import Client
+from binance.spot import SpotClient
+from binance.core.auth import Credentials
 from binance.core.common.constants import (
     SubType,
     SecurityType,

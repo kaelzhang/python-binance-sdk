@@ -1,4 +1,4 @@
-"""Tests for the F-13 WS-API ``time_unit`` (microsecond) Client option.
+"""Tests for the F-13 WS-API ``time_unit`` (microsecond) SpotClient option.
 
 Opting into microseconds appends ``?timeUnit=MICROSECOND`` to the WS-API
 connection URL; the default (and an explicit millisecond) leaves it untouched.
@@ -6,8 +6,8 @@ connection URL; the default (and an explicit millisecond) leaves it untouched.
 
 import pytest
 
-from binance import Client
-from binance.client import _apply_time_unit
+from binance import SpotClient
+from binance.core.transport.ws_api import _apply_time_unit
 from binance.spot.constants import WS_API_HOST
 
 
@@ -49,17 +49,17 @@ def test_apply_time_unit_invalid_raises():
 # ---------------------------------------------------------------------------
 
 def test_client_default_time_unit_is_millisecond():
-    client = Client()
+    client = SpotClient()
     assert client._ws_api_host == WS_API_HOST
 
 
 def test_client_microsecond_time_unit_appends_query():
-    client = Client(time_unit='microsecond')
+    client = SpotClient(time_unit='microsecond')
     assert client._ws_api_host == WS_API_HOST + '?timeUnit=MICROSECOND'
 
 
 def test_client_microsecond_time_unit_with_custom_host():
-    client = Client(
+    client = SpotClient(
         ws_api_host='ws://localhost:1234/ws-api/v3', time_unit='MICROSECOND')
     assert client._ws_api_host == (
         'ws://localhost:1234/ws-api/v3?timeUnit=MICROSECOND')
@@ -67,4 +67,4 @@ def test_client_microsecond_time_unit_with_custom_host():
 
 def test_client_invalid_time_unit_raises():
     with pytest.raises(ValueError, match='time_unit'):
-        Client(time_unit='seconds')
+        SpotClient(time_unit='seconds')

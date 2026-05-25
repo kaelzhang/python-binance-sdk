@@ -2,7 +2,7 @@
 
 The trading surface (``order.*`` / ``orderList.*`` / ``sor.*`` /
 ``openOrders.*``) was migrated from REST to the WebSocket API. These drive the
-public ``Client`` trading methods against the local :class:`WSAPIServer`
+public ``SpotClient`` trading methods against the local :class:`WSAPIServer`
 request/response harness (reused from ``test_ws_api``) and assert:
 
 - each method sends the correct WS-API ``method`` and forwards its params;
@@ -15,7 +15,7 @@ request/response harness (reused from ``test_ws_api``) and assert:
 
 import pytest
 
-from binance import Client
+from binance import SpotClient, Credentials
 from binance.core.common.constants import SecurityType
 from binance.spot.endpoints import (
     WS_APIS,
@@ -33,8 +33,8 @@ from test.test_ws_api import WSAPIServer
 _PORT = 9087
 
 
-def _make_client(server) -> Client:
-    client = Client(ws_api_host=server.uri, api_key='K', api_secret='S')
+def _make_client(server) -> SpotClient:
+    client = SpotClient(Credentials(api_key='K', api_secret='S'), ws_api_host=server.uri)
     # Pre-mark the server-time offset as synced so the endpoint under test is
     # the FIRST frame sent (otherwise the lazy `time` sync would precede the
     # first signed request). The lazy-sync arming itself is covered in

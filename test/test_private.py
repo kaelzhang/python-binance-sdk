@@ -3,7 +3,8 @@ import os
 import pytest
 
 from binance import (
-    Client,
+    SpotClient,
+    Credentials,
     SubType,
     UserStreamNotSubscribedException
 )
@@ -33,7 +34,7 @@ live_only = pytest.mark.skipif(
 @live_only
 @pytest.mark.asyncio
 async def test_user_stream():
-    client = Client(API_KEY, API_SECRET)
+    client = SpotClient(Credentials(API_KEY, API_SECRET))
 
     with pytest.raises(
         UserStreamNotSubscribedException,
@@ -51,7 +52,7 @@ async def test_user_stream():
 @live_only
 @pytest.mark.asyncio
 async def test_user_trades():
-    client = Client(API_KEY, API_SECRET)
+    client = SpotClient(Credentials(API_KEY, API_SECRET))
 
     res = await client.get_trades(symbol='BTCUSDT')
 

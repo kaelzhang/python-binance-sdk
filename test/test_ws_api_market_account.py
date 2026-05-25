@@ -3,7 +3,7 @@
 The general (``ping``/``time``/``exchangeInfo``), market-data
 (``depth``/``klines``/``trades.*``/``ticker.*``/...) and account
 (``account.*``/``myTrades``/...) surface was migrated from REST to the
-WebSocket API. These drive the public ``Client`` methods against the local
+WebSocket API. These drive the public ``SpotClient`` methods against the local
 :class:`WSAPIServer` request/response harness (reused from ``test_ws_api``) and
 assert:
 
@@ -17,7 +17,7 @@ assert:
 
 import pytest
 
-from binance import Client
+from binance import SpotClient, Credentials
 from binance.core.common.constants import SecurityType
 from binance.spot.endpoints import (
     WS_APIS,
@@ -38,11 +38,9 @@ from test.test_ws_api import WSAPIServer
 _PORT = 9093
 
 
-def _make_client(server, signed: bool = False) -> Client:
-    kwargs = dict(ws_api_host=server.uri)
-    if signed:
-        kwargs.update(api_key='K', api_secret='S')
-    client = Client(**kwargs)
+def _make_client(server, signed: bool = False) -> SpotClient:
+    credentials = Credentials(api_key='K', api_secret='S') if signed else None
+    client = SpotClient(credentials, ws_api_host=server.uri)
     # The signed-endpoint tests isolate the endpoint under test from the lazy
     # `time` sync (covered in test_time_sync.py).
     client._time_synced = True

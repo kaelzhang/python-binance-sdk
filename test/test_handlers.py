@@ -1,7 +1,8 @@
 import pytest
 
 from binance import (
-    Client,
+    SpotClient,
+    Credentials,
     TickerHandlerBase,
     ReuseHandlerException,
 
@@ -25,7 +26,7 @@ from binance.core.common.utils import create_future
 
 @pytest.fixture
 def client():
-    return Client('api_key').start()
+    return SpotClient(Credentials('api_key')).start()
 
 
 ACCOUNT_POSITION = {
@@ -336,8 +337,8 @@ async def test_reference_price_handler(client):
 
 
 def test_handler_reuse():
-    client = Client('api_key')
-    client2 = Client('api_key')
+    client = SpotClient(Credentials('api_key'))
+    client2 = SpotClient(Credentials('api_key'))
 
     handler = TickerHandlerBase()
 

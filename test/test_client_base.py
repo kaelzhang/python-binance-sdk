@@ -5,11 +5,12 @@ import pytest
 from aioresponses import aioresponses
 
 from binance import (
-    Client,
+    SpotClient,
+    Credentials,
     StatusException
 )
 from binance.core.common.constants import SecurityType
-from binance.client.base import _reject_float_params, encode_params, sort_params
+from binance.core.transport.rest import _reject_float_params, encode_params, sort_params
 from binance.core.rate_limit import RateLimiter
 from binance.core.rate_limit.types import RateLimitType
 
@@ -32,7 +33,7 @@ def redirect(m):
 
 
 def test_generate_signature_url_encodes_params():
-    client = Client('api_key', 'api_secret')
+    client = SpotClient(Credentials('api_key', 'api_secret'))
 
     params = {
         'symbol': 'BTCUSDT',
@@ -59,7 +60,7 @@ async def test_global_request_params():
         'foo': 'bar'
     }
 
-    client = Client(
+    client = SpotClient(
         request_params={
             'allow_redirects': True
         }
@@ -81,7 +82,7 @@ async def test_global_request_params():
 
 @pytest.mark.asyncio
 async def test_request_params():
-    client = Client()
+    client = SpotClient()
 
     with aioresponses() as m:
         redirect(m)
@@ -104,7 +105,7 @@ async def test_force_params():
         'foo': 'bar'
     }
 
-    client = Client()
+    client = SpotClient()
 
     with aioresponses() as m:
         m.post(
@@ -140,7 +141,7 @@ _EXCHANGE_INFO_URL = 'https://api.binance.com/api/v3/exchangeInfo'
 async def test_signed_rest_escape_hatch_signs_and_lazy_syncs():
     """A signed REST GET signs the query (apiKey header + signature) and lazily
     syncs the server-time offset before the first signed request."""
-    client = Client(api_key='k', api_secret='s')
+    client = SpotClient(Credentials(api_key='k', api_secret='s'))
     assert client._time_synced is False
 
     with aioresponses() as m:
@@ -162,7 +163,7 @@ async def test_signed_rest_escape_hatch_signs_and_lazy_syncs():
 @pytest.mark.asyncio
 async def test_rest_escape_hatch_exchange_info_configures_pool_caps():
     """A REST response carrying a `rateLimits` array reconfigures pool caps."""
-    client = Client()
+    client = SpotClient()
     with aioresponses() as m:
         m.get(_EXCHANGE_INFO_URL, status=200, payload={
             'rateLimits': [
@@ -182,7 +183,7 @@ async def test_rest_escape_hatch_exchange_info_configures_pool_caps():
 @pytest.mark.asyncio
 async def test_rest_escape_hatch_1021_rearms_time_sync():
     """A -1021 REST response re-arms the lazy time-sync (sets _time_synced=False)."""
-    client = Client(api_key='k', api_secret='s')
+    client = SpotClient(Credentials(api_key='k', api_secret='s'))
     client._time_synced = True   # pretend we already synced
 
     with aioresponses() as m:
@@ -205,7 +206,7 @@ async def test_rest_escape_hatch_1021_rearms_time_sync():
 # ---------------------------------------------------------------------------
 
 def test_reject_float_params_rejects_nested_floats():
-    from binance.client.base import _reject_float_params
+    from binance.core.transport.rest import _reject_float_params
 
     # top-level float
     with pytest.raises(ValueError, match='float'):
@@ -237,7 +238,7 @@ def test_reject_float_params_allows_int_str_bool():
 @pytest.mark.asyncio
 async def test_rest_float_param_rejected():
     """A float param in a GET REST call raises ValueError before any network call."""
-    client = Client()
+    client = SpotClient()
     with pytest.raises(ValueError, match="float"):
         await client.get(URL, price=0.01)
 
@@ -245,7 +246,7 @@ async def test_rest_float_param_rejected():
 @pytest.mark.asyncio
 async def test_rest_post_float_param_rejected():
     """A float param in a POST REST call raises ValueError before any network call."""
-    client = Client()
+    client = SpotClient()
     with pytest.raises(ValueError, match="float"):
         await client.post(URL, qty=0.1)
 
@@ -259,7 +260,7 @@ async def test_f35_get_signed_equals_wire():
     """F-47: for a signed GET the query string on the wire is byte-identical to
     what was signed.  The param value contains '/' and a space to exercise
     percent-encoding paths that previously diverged between signing and sending."""
-    client = Client(api_key='k', api_secret='secret')
+    client = SpotClient(Credentials(api_key='k', api_secret='secret'))
     # Pre-arm time-sync so the request doesn't try to open a WS connection.
     client._time_synced = True
     client._time_offset = 0
@@ -321,7 +322,7 @@ async def test_f35_get_signed_equals_wire():
 async def test_f35_post_signed_body_equals_signed():
     """F-47: for a signed POST the body on the wire is byte-identical to what
     was signed.  The param value contains '/' and a space."""
-    client = Client(api_key='k', api_secret='secret')
+    client = SpotClient(Credentials(api_key='k', api_secret='secret'))
     client._time_synced = True
     client._time_offset = 0
 
@@ -379,7 +380,7 @@ async def test_f35_post_signed_body_equals_signed():
 @pytest.mark.asyncio
 async def test_single_session_reused_across_requests():
     """The same ClientSession instance is reused for multiple REST calls."""
-    client = Client(request_timeout=5)
+    client = SpotClient(request_timeout=5)
     session1_id = None
     session2_id = None
 
@@ -398,7 +399,7 @@ async def test_single_session_reused_across_requests():
 @pytest.mark.asyncio
 async def test_close_closes_rest_session():
     """client.close() closes the shared REST ClientSession."""
-    client = Client()
+    client = SpotClient()
     with aioresponses() as m:
         m.get(URL, payload={'ok': True})
         await client.get(URL)
@@ -411,14 +412,14 @@ async def test_close_closes_rest_session():
 @pytest.mark.asyncio
 async def test_close_when_session_never_opened():
     """client.close() is safe even if no REST request was ever made."""
-    client = Client()
+    client = SpotClient()
     assert client._rest_session is None
     await client.close()  # must not raise
 
 
 def test_request_timeout_stored():
-    """Client(request_timeout=...) stores the value for session creation."""
-    client = Client(request_timeout=42)
+    """SpotClient(request_timeout=...) stores the value for session creation."""
+    client = SpotClient(request_timeout=42)
     assert client._request_timeout == 42.0
 
 
@@ -427,15 +428,15 @@ def test_request_timeout_stored():
 # ---------------------------------------------------------------------------
 
 def test_shared_rate_limiter_injection():
-    """Client(rate_limiter=...) uses the injected limiter rather than building one."""
+    """SpotClient(rate_limiter=...) uses the injected limiter rather than building one."""
     shared = RateLimiter(enabled=False)
-    client = Client(rate_limiter=shared)
+    client = SpotClient(rate_limiter=shared)
     assert client._rate_limiter is shared
 
 
 def test_default_rate_limiter_created_without_injection():
     """Without rate_limiter=, a fresh RateLimiter is created."""
-    client = Client(rate_limit_guard=True)
+    client = SpotClient(rate_limit_guard=True)
     assert isinstance(client._rate_limiter, RateLimiter)
 
 
@@ -443,8 +444,8 @@ def test_default_rate_limiter_created_without_injection():
 async def test_shared_rate_limiter_shared_between_clients():
     """Two clients sharing a RateLimiter see each other's REST weight usage."""
     shared = RateLimiter(enabled=False)
-    client_a = Client(rate_limiter=shared)
-    client_b = Client(rate_limiter=shared)
+    client_a = SpotClient(rate_limiter=shared)
+    client_b = SpotClient(rate_limiter=shared)
     assert client_a._rate_limiter is client_b._rate_limiter
 
     with aioresponses() as m:
@@ -467,7 +468,7 @@ async def test_shared_rate_limiter_shared_between_clients():
 @pytest.mark.asyncio
 async def test_post_body_sends_encoded_form():
     """A POST with no force_params sends params as a url-encoded body."""
-    client = Client()
+    client = SpotClient()
     with aioresponses() as m:
         m.post(URL, payload={'ok': True})
         result = await client.post(URL, symbol='BTCUSDT', side='BUY')
@@ -477,7 +478,7 @@ async def test_post_body_sends_encoded_form():
 @pytest.mark.asyncio
 async def test_put_and_delete_methods():
     """PUT and DELETE methods are dispatched correctly."""
-    client = Client()
+    client = SpotClient()
     with aioresponses() as m:
         m.put(URL, payload={'updated': True})
         res = await client.put(URL)
@@ -522,7 +523,7 @@ def test_ws_api_query_bool_is_lowercase():
     the signature is over `_ws_api_query` output; the wire JSON serializes
     bool as JSON `true`/`false`. Both must agree.
     """
-    client = Client(api_key='k', api_secret='s')
+    client = SpotClient(Credentials(api_key='k', api_secret='s'))
     query = client._ws_api_query({'computeCommissionRates': True,
                                    'symbol': 'BTCUSDT'})
     assert 'computeCommissionRates=true' in query

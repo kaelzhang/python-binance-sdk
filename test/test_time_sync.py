@@ -11,7 +11,7 @@ import time
 
 import pytest
 
-from binance import Client
+from binance import SpotClient, Credentials
 from binance.core.common.exceptions import StreamSubscribeException
 
 from test.test_ws_api import WSAPIServer
@@ -20,8 +20,13 @@ from test.test_ws_api import WSAPIServer
 _PORT = 9088
 
 
-def _make_client(server, **kwargs) -> Client:
-    return Client(ws_api_host=server.uri, **kwargs)
+def _make_client(server, **kwargs) -> SpotClient:
+    cred_kwargs = {
+        k: kwargs.pop(k)
+        for k in ('api_key', 'api_secret', 'private_key', 'private_key_pass')
+        if k in kwargs
+    }
+    return SpotClient(Credentials(**cred_kwargs), ws_api_host=server.uri, **kwargs)
 
 
 @pytest.mark.asyncio

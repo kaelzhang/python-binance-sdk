@@ -2,7 +2,8 @@ import pytest
 from aioresponses import aioresponses
 
 from binance import (
-    Client,
+    SpotClient,
+    Credentials,
     SubType,
     SecurityType,
     UserStreamNotSubscribedException,
@@ -15,7 +16,7 @@ from binance import (
 
 @pytest.mark.asyncio
 async def test_no_secret():
-    client = Client('api_key')
+    client = SpotClient(Credentials('api_key'))
 
     for method in ['get', 'post', 'delete', 'put']:
         with pytest.raises(APISecretNotDefinedException, match='api_secret'):
@@ -24,7 +25,7 @@ async def test_no_secret():
 
 @pytest.mark.asyncio
 async def test_no_key():
-    client = Client()
+    client = SpotClient()
 
     with pytest.raises(APIKeyNotDefinedException, match='api_key'):
         await client.get('/foo', security_type=SecurityType.USER_DATA)
@@ -44,7 +45,7 @@ async def test_invalid_json():
         with aioresponses() as m:
             m.get(_TIME_URL, body='<head></html>')
 
-            client = Client('api_key')
+            client = SpotClient(Credentials('api_key'))
             await client.get(_TIME_URL)
 
 
@@ -56,7 +57,7 @@ async def test_api_exception():
             json_obj = {"code": 1002, "msg": "Invalid API call"}
             m.get(_TIME_URL, payload=json_obj, status=400)
 
-            client = Client('api_key')
+            client = SpotClient(Credentials('api_key'))
             await client.get(_TIME_URL)
 
 
@@ -67,7 +68,7 @@ async def test_api_exception_5xx_server_error():
         with aioresponses() as m:
             m.get(_TIME_URL, body='<html>502 Bad Gateway</html>', status=502)
 
-            client = Client('api_key')
+            client = SpotClient(Credentials('api_key'))
             await client.get(_TIME_URL)
 
 
@@ -82,20 +83,20 @@ async def test_api_exception_invalid_json():
             not_json_str = "<html><body>Error</body></html>"
             m.get(_TIME_URL, body=not_json_str, status=400)
 
-            client = Client('api_key')
+            client = SpotClient(Credentials('api_key'))
             await client.get(_TIME_URL)
 
 
 @pytest.mark.asyncio
 async def test_user_steam_not_subscribed():
     with pytest.raises(UserStreamNotSubscribedException):
-        client = Client()
+        client = SpotClient()
         await client.unsubscribe(SubType.USER)
 
 
 @pytest.mark.asyncio
 async def test_user_stream_no_secret():
-    client = Client('api_key')
+    client = SpotClient(Credentials('api_key'))
 
     with pytest.raises(APISecretNotDefinedException, match='api_secret'):
         await client.subscribe(SubType.USER)

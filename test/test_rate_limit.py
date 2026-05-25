@@ -2,7 +2,7 @@ import pytest
 
 from aioresponses import aioresponses
 
-from binance import Client, RateLimitException, IPBannedException
+from binance import SpotClient, Credentials, RateLimitException, IPBannedException
 from binance.core.rate_limit import parse_retry_after, depth_weight
 from binance.core.rate_limit.types import RateLimitType, RateLimitSource
 
@@ -34,7 +34,7 @@ _URL = 'https://api.binance.com/api/v3/depth'
 
 @pytest.mark.asyncio
 async def test_429_raises_rate_limit_with_retry_after():
-    client = Client()
+    client = SpotClient()
     with aioresponses() as m:
         m.get(_URL + '?symbol=BTCUSDT', status=429,
               headers={'Retry-After': '42', 'X-MBX-USED-WEIGHT-1M': '6001'},
@@ -47,7 +47,7 @@ async def test_429_raises_rate_limit_with_retry_after():
 
 @pytest.mark.asyncio
 async def test_418_raises_ip_banned_with_retry_after():
-    client = Client()
+    client = SpotClient()
     with aioresponses() as m:
         m.get(_URL + '?symbol=BTCUSDT', status=418,
               headers={'Retry-After': '120'},
@@ -59,7 +59,7 @@ async def test_418_raises_ip_banned_with_retry_after():
 
 @pytest.mark.asyncio
 async def test_success_captures_used_weight_and_order_count():
-    client = Client()
+    client = SpotClient()
     with aioresponses() as m:
         m.get(_URL + '?symbol=BTCUSDT', status=200,
               headers={'X-MBX-USED-WEIGHT-1M': '12', 'X-MBX-ORDER-COUNT-10S': '3'},
@@ -86,8 +86,7 @@ def test_default_retry_policy_has_floor_and_ceiling():
 
 @pytest.mark.asyncio
 async def test_rate_limit_snapshot_reflects_used_weight():
-    from binance import Client
-    client = Client()
+    client = SpotClient()
     with aioresponses() as m:
         m.get(_URL + '?symbol=BTCUSDT', status=200,
               headers={'X-MBX-USED-WEIGHT-1M': '4321'},
@@ -101,8 +100,8 @@ async def test_rate_limit_snapshot_reflects_used_weight():
 
 @pytest.mark.asyncio
 async def test_429_sets_snapshot_retry_after():
-    from binance import Client, RateLimitException
-    client = Client()
+    from binance import RateLimitException
+    client = SpotClient()
     with aioresponses() as m:
         m.get(_URL + '?symbol=BTCUSDT', status=429,
               headers={'Retry-After': '30'},
@@ -116,7 +115,6 @@ async def test_429_sets_snapshot_retry_after():
 
 @pytest.mark.asyncio
 async def test_order_endpoint_consumes_orders_pool():
-    from binance import Client
     from test.test_ws_api import WSAPIServer
     # create_order is a TRADE (signed) endpoint now served over the WebSocket
     # API (order.place); supply credentials so the request reaches the
@@ -127,7 +125,7 @@ async def test_order_endpoint_consumes_orders_pool():
     server.on('order.place', result={'orderId': 1, 'status': 'NEW'})
     await server.run()
     try:
-        client = Client(ws_api_host=server.uri, api_key='k', api_secret='s')
+        client = SpotClient(Credentials(api_key='k', api_secret='s'), ws_api_host=server.uri)
         await client.create_order(symbol='BTCUSDT', side='BUY', type='MARKET',
                                   quantity=1)
         snap = client.rate_limit_snapshot()
@@ -140,14 +138,13 @@ async def test_order_endpoint_consumes_orders_pool():
 
 @pytest.mark.asyncio
 async def test_non_order_endpoint_does_not_consume_orders_pool():
-    from binance import Client
     from test.test_ws_api import WSAPIServer
     # get_orderbook is now a public WS-API `depth` request.
     server = WSAPIServer(port=9091)
     server.on('depth', result={'lastUpdateId': 1, 'bids': [], 'asks': []})
     await server.run()
     try:
-        client = Client(ws_api_host=server.uri)
+        client = SpotClient(ws_api_host=server.uri)
         await client.get_orderbook(symbol='BTCUSDT', limit=100)
         snap = client.rate_limit_snapshot()
         orders = [w for w in snap.windows if w.type == RateLimitType.ORDERS]
@@ -160,7 +157,6 @@ async def test_non_order_endpoint_does_not_consume_orders_pool():
 
 @pytest.mark.asyncio
 async def test_exchange_info_autoconfigures_pool_limits():
-    from binance import Client
     from test.test_ws_api import WSAPIServer
     # exchangeInfo is now served over the WebSocket API; its `result` carries
     # the pool caps, which the on_response reconciler folds into the core.
@@ -174,7 +170,7 @@ async def test_exchange_info_autoconfigures_pool_limits():
     })
     await server.run()
     try:
-        client = Client(ws_api_host=server.uri)
+        client = SpotClient(ws_api_host=server.uri)
         await client.get_exchange_info()
         snap = client.rate_limit_snapshot()
         weight = [w for w in snap.windows if w.type == RateLimitType.REQUEST_WEIGHT][0]

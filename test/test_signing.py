@@ -21,8 +21,8 @@ from cryptography.hazmat.primitives.serialization import (
     BestAvailableEncryption,
 )
 
-from binance import Client
-from binance.client.base import encode_params
+from binance import SpotClient, Credentials
+from binance.core.transport.rest import encode_params
 from binance.core.common.exceptions import APISecretNotDefinedException
 
 from test.test_ws_api import WSAPIServer
@@ -33,7 +33,7 @@ from test.test_ws_api import WSAPIServer
 # ---------------------------------------------------------------------------
 
 def test_ws_api_query_is_sorted_raw_key_value_no_encoding():
-    client = Client(api_key='k', api_secret='s')
+    client = SpotClient(Credentials(api_key='k', api_secret='s'))
 
     # A value with a space and a '+' — chars that percent-encoding WOULD
     # change. The WS-API payload MUST keep them raw ("no percent encoding").
@@ -92,7 +92,7 @@ def _rsa_pem_str() -> tuple:
 
 def test_ed25519_signature_verifies():
     _priv, pem_str, pub = _ed25519_pem_str()
-    client = Client(api_key='k', private_key=pem_str)
+    client = SpotClient(Credentials(api_key='k', private_key=pem_str))
 
     data = {'symbol': 'BTCUSDT', 'timestamp': 1}
     sig_b64 = client._generate_signature(data)
@@ -114,7 +114,7 @@ def test_ed25519_signature_verifies():
 
 def test_rsa_signature_verifies():
     _priv, pem_str, pub = _rsa_pem_str()
-    client = Client(api_key='k', private_key=pem_str)
+    client = SpotClient(Credentials(api_key='k', private_key=pem_str))
 
     data = {'symbol': 'BTCUSDT', 'timestamp': 1}
     sig_b64 = client._generate_signature(data)
@@ -131,7 +131,7 @@ def test_rsa_signature_verifies():
 # ---------------------------------------------------------------------------
 
 def test_hmac_fallback_unchanged():
-    client = Client(api_key='k', api_secret='s')
+    client = SpotClient(Credentials(api_key='k', api_secret='s'))
     data = {'a': 1}
     result = client._generate_signature(data)
 
@@ -157,7 +157,7 @@ def test_ed25519_from_file_path(tmp_path):
     pem_file = tmp_path / 'ed25519.pem'
     pem_file.write_bytes(pem_bytes)
 
-    client = Client(api_key='k', private_key=str(pem_file))
+    client = SpotClient(Credentials(api_key='k', private_key=str(pem_file)))
 
     data = {'symbol': 'BTCUSDT', 'timestamp': 1}
     sig_b64 = client._generate_signature(data)
@@ -176,11 +176,11 @@ def test_ed25519_encrypted_pem():
     pem_bytes = key.private_bytes(
         Encoding.PEM, PrivateFormat.PKCS8, BestAvailableEncryption(b'pw')
     )
-    client = Client(
+    client = SpotClient(Credentials(
         api_key='k',
         private_key=pem_bytes.decode('utf-8'),
         private_key_pass='pw'
-    )
+    ))
 
     data = {'symbol': 'BTCUSDT', 'timestamp': 1}
     sig_b64 = client._generate_signature(data)
@@ -212,8 +212,9 @@ async def test_signed_ws_api_request_with_private_key_no_api_secret():
     })
     await server.run()
     try:
-        client = Client(
-            ws_api_host=server.uri, api_key='k', private_key=pem_str)
+        client = SpotClient(
+            Credentials(api_key='k', private_key=pem_str),
+            ws_api_host=server.uri)
         # Must not raise APISecretNotDefinedException (signs with the key).
         result = await client.get_account()
         assert result['canTrade'] is True
@@ -228,7 +229,7 @@ async def test_signed_ws_api_request_with_private_key_no_api_secret():
 
 def test_ws_api_signature_params_with_private_key():
     _priv, pem_str, pub = _ed25519_pem_str()
-    client = Client(api_key='k', private_key=pem_str)
+    client = SpotClient(Credentials(api_key='k', private_key=pem_str))
 
     signed = client._ws_api_signature_params(symbol='BTCUSDT')
 
@@ -251,7 +252,7 @@ def test_ws_api_signature_params_signs_raw_values_not_encoded():
     # with a percent-encoding-sensitive char verifies against `_ws_api_query`
     # and FAILS against the percent-encoded `encode_params`.
     _priv, pem_str, pub = _ed25519_pem_str()
-    client = Client(api_key='k', private_key=pem_str)
+    client = SpotClient(Credentials(api_key='k', private_key=pem_str))
 
     signed = client._ws_api_signature_params(newClientOrderId='a b+c')
     sig_bytes = base64.b64decode(signed['signature'])
@@ -267,7 +268,7 @@ def test_ws_api_signature_params_signs_raw_values_not_encoded():
 
 
 def test_ws_api_signature_params_hmac_signs_raw_query():
-    client = Client(api_key='k', api_secret='s')
+    client = SpotClient(Credentials(api_key='k', api_secret='s'))
     signed = client._ws_api_signature_params(newClientOrderId='a b+c')
 
     payload = {k: v for k, v in signed.items() if k != 'signature'}
@@ -288,7 +289,7 @@ def test_load_private_key_bytes_input():
     pem_bytes = key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
 
     # Pass raw bytes
-    client = Client(api_key='k', private_key=pem_bytes)
+    client = SpotClient(Credentials(api_key='k', private_key=pem_bytes))
 
     data = {'x': 1}
     sig_b64 = client._generate_signature(data)
@@ -302,7 +303,7 @@ def test_load_private_key_bytes_input():
 
 @pytest.mark.asyncio
 async def test_signed_request_raises_without_any_credentials():
-    client = Client(api_key='k')  # no api_secret, no private_key
+    client = SpotClient(Credentials(api_key='k'))  # no api_secret, no private_key
     with pytest.raises(APISecretNotDefinedException):
         await client.get_account()
 
@@ -314,4 +315,4 @@ def test_unsupported_private_key_type_rejected():
     ).decode('utf-8')
     # Only Ed25519 and RSA are supported for Binance signing.
     with pytest.raises(ValueError, match='Ed25519 or RSA'):
-        Client(api_key='k', private_key=ec_pem)
+        SpotClient(Credentials(api_key='k', private_key=ec_pem))

@@ -1,7 +1,8 @@
 import pytest
 
 from binance import (
-    Client,
+    SpotClient,
+    Credentials,
     HandlerExceptionHandlerBase,
     AccountPositionHandlerBase
 )
@@ -18,7 +19,7 @@ ACCOUNT_POSITION = {
 
 @pytest.mark.asyncio
 async def test_handler_exception_handler(capsys):
-    client = Client('api_key')
+    client = SpotClient(Credentials('api_key'))
 
     future = create_future()
 

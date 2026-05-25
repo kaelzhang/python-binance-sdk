@@ -14,7 +14,7 @@ import asyncio
 import logging
 import pytest
 
-from binance import Client, StreamErrorHandlerBase, SubType
+from binance import SpotClient, Credentials, StreamErrorHandlerBase, SubType
 from binance.core.common.types import StreamError, StreamName, StreamErrorPhase
 
 
@@ -45,7 +45,7 @@ def test_stream_error_is_frozen():
 # ---------------------------------------------------------------------------
 
 def test_stream_error_handler_registration():
-    client = Client('key')
+    client = SpotClient(Credentials('key'))
     handler = StreamErrorHandlerBase()
     client.handler(handler)
     ctx = client._get_handler_ctx()
@@ -55,7 +55,7 @@ def test_stream_error_handler_registration():
 
 @pytest.mark.asyncio
 async def test_dispatch_stream_error_delivers_to_handler():
-    client = Client('key')
+    client = SpotClient(Credentials('key'))
     received = []
 
     class MyHandler(StreamErrorHandlerBase):
@@ -73,7 +73,7 @@ async def test_dispatch_stream_error_delivers_to_handler():
 
 @pytest.mark.asyncio
 async def test_dispatch_stream_error_async_handler():
-    client = Client('key')
+    client = SpotClient(Credentials('key'))
     received = []
 
     class MyHandler(StreamErrorHandlerBase):
@@ -91,7 +91,7 @@ async def test_dispatch_stream_error_async_handler():
 
 @pytest.mark.asyncio
 async def test_dispatch_stream_error_noop_when_no_handler():
-    client = Client('key')
+    client = SpotClient(Credentials('key'))
     ctx = client._get_handler_ctx()
     # Must not raise; this is the no-op path.
     err = StreamError(stream=StreamName.DATA, phase=StreamErrorPhase.RESUBSCRIBE,
@@ -101,7 +101,7 @@ async def test_dispatch_stream_error_noop_when_no_handler():
 
 @pytest.mark.asyncio
 async def test_dispatch_stream_error_multiple_handlers():
-    client = Client('key')
+    client = SpotClient(Credentials('key'))
     results = []
 
     class HandlerA(StreamErrorHandlerBase):
@@ -128,7 +128,7 @@ async def test_dispatch_stream_error_multiple_handlers():
 @pytest.mark.asyncio
 async def test_resubscribe_data_failure_logs_and_dispatches(caplog):
     """_resubscribe raises -> ERROR logged + StreamError(stream='data', phase='resubscribe') delivered."""
-    client = Client('key')
+    client = SpotClient(Credentials('key'))
     client.start()
     received_errors = []
 
@@ -175,7 +175,7 @@ async def test_resubscribe_data_failure_logs_and_dispatches(caplog):
 @pytest.mark.asyncio
 async def test_resubscribe_data_no_op_when_no_market_subscriptions():
     """_resubscribe skips subscribe_only when there are no market subscriptions."""
-    client = Client('key')
+    client = SpotClient(Credentials('key'))
     called = []
 
     async def subscribe_only(subscribe, subs):
@@ -195,7 +195,7 @@ async def test_resubscribe_data_no_op_when_no_market_subscriptions():
 @pytest.mark.asyncio
 async def test_on_ws_api_connected_logon_failure_logs_and_dispatches(caplog):
     """session.logon failure -> ERROR logged + StreamError(stream='user', phase='logon')."""
-    client = Client('key')
+    client = SpotClient(Credentials('key'))
     client.start()
     received_errors = []
 
@@ -248,7 +248,7 @@ async def test_on_ws_api_connected_logon_failure_logs_and_dispatches(caplog):
 @pytest.mark.asyncio
 async def test_on_ws_api_connected_success_calls_resubscribe_user():
     """When logon succeeds, _resubscribe_user is called."""
-    client = Client('key')
+    client = SpotClient(Credentials('key'))
     called = []
 
     async def noop_logon():
@@ -270,7 +270,7 @@ async def test_on_ws_api_connected_success_calls_resubscribe_user():
 @pytest.mark.asyncio
 async def test_resubscribe_user_failure_logs_and_dispatches(caplog):
     """_resubscribe_user raises -> ERROR logged + StreamError(stream='user', phase='resubscribe')."""
-    client = Client('key')
+    client = SpotClient(Credentials('key'))
     client.start()
     received_errors = []
 
@@ -316,7 +316,7 @@ async def test_resubscribe_user_failure_logs_and_dispatches(caplog):
 @pytest.mark.asyncio
 async def test_resubscribe_user_no_op_when_no_user_subscriptions():
     """_resubscribe_user skips when there are no user subscriptions."""
-    client = Client('key')
+    client = SpotClient(Credentials('key'))
     called = []
 
     async def subscribe_user_only(subscribe, subs):
@@ -336,7 +336,7 @@ async def test_resubscribe_user_no_op_when_no_user_subscriptions():
 @pytest.mark.asyncio
 async def test_resubscribe_failure_without_handler_ctx(caplog):
     """_resubscribe failure when _handler_ctx is None does not raise (guards the None check)."""
-    client = Client('key')
+    client = SpotClient(Credentials('key'))
     boom = RuntimeError('no ctx')
 
     async def failing_subscribe_only(subscribe, subscriptions):
@@ -356,7 +356,7 @@ async def test_resubscribe_failure_without_handler_ctx(caplog):
 @pytest.mark.asyncio
 async def test_resubscribe_user_failure_without_handler_ctx(caplog):
     """_resubscribe_user failure when _handler_ctx is None does not raise."""
-    client = Client('key')
+    client = SpotClient(Credentials('key'))
     boom = RuntimeError('no ctx')
 
     async def failing_subscribe_user_only(subscribe, subscriptions):
@@ -376,7 +376,7 @@ async def test_resubscribe_user_failure_without_handler_ctx(caplog):
 @pytest.mark.asyncio
 async def test_logon_failure_without_handler_ctx(caplog):
     """_on_ws_api_connected logon failure when _handler_ctx is None does not raise."""
-    client = Client('key')
+    client = SpotClient(Credentials('key'))
     boom = RuntimeError('no ctx logon')
 
     async def failing_logon():
@@ -399,7 +399,7 @@ async def test_logon_failure_without_handler_ctx(caplog):
 @pytest.mark.asyncio
 async def test_buggy_stream_error_handler_does_not_break_recovery():
     """A handler whose receive raises must not prevent the recycle task from being scheduled."""
-    client = Client('key')
+    client = SpotClient(Credentials('key'))
     recycled = []
 
     class BuggyHandler(StreamErrorHandlerBase):

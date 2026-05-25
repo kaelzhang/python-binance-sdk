@@ -12,7 +12,7 @@ from logging import getLogger
 import pytest
 from aioresponses import aioresponses
 
-from binance import Client, Stream, SubType, UserStreamNotSubscribedException
+from binance import SpotClient, Credentials, Stream, SubType, UserStreamNotSubscribedException
 from binance.core.common.exceptions import (
     APIKeyNotDefinedException,
     InvalidSubTypeParamException,
@@ -35,12 +35,12 @@ _DEPTH_URL = 'https://api.binance.com/api/v3/depth'
 
 def test_ws_api_signature_requires_api_key():
     with pytest.raises(APIKeyNotDefinedException):
-        Client()._ws_api_signature_params()
+        SpotClient()._ws_api_signature_params()
 
 
 @pytest.mark.asyncio
 async def test_malformed_rate_limit_headers_are_ignored():
-    client = Client()
+    client = SpotClient()
     with aioresponses() as m:
         m.get(_DEPTH_URL + '?symbol=BTCUSDT', status=200,
               headers={'X-MBX-USED-WEIGHT-1M': 'notanumber',
@@ -53,14 +53,14 @@ async def test_malformed_rate_limit_headers_are_ignored():
 
 
 def test_client_logger_property():
-    assert Client().logger is logger or Client().logger is not None
+    assert SpotClient().logger is logger or SpotClient().logger is not None
 
 
 # --- subscribe/manager.py -------------------------------------------------
 
 def test_reconcile_ws_api_rate_limits_ignores_non_dict():
     """The on_response reconcile hook tolerates a non-dict message (no-op)."""
-    client = Client()
+    client = SpotClient()
     # Must not raise and must not touch the rate-limit core.
     client._reconcile_ws_api_rate_limits('not-a-dict')
     client._reconcile_ws_api_rate_limits(None)
@@ -70,14 +70,14 @@ def test_reconcile_ws_api_rate_limits_ignores_non_dict():
 
 @pytest.mark.asyncio
 async def test_receive_ignored_when_not_receiving():
-    client = Client()
+    client = SpotClient()
     client.stop()
     assert await client._receive({'e': 'depthUpdate'}) is None
 
 
 @pytest.mark.asyncio
 async def test_receive_server_shutdown_recycles_data_stream():
-    client = Client()
+    client = SpotClient()
     recycled = []
 
     class FakeStream:
@@ -91,7 +91,7 @@ async def test_receive_server_shutdown_recycles_data_stream():
 
 @pytest.mark.asyncio
 async def test_receive_recovery_failure_is_caught():
-    client = Client()
+    client = SpotClient()
     dispatched = []
 
     async def boom():
@@ -110,7 +110,7 @@ async def test_receive_recovery_failure_is_caught():
 
 @pytest.mark.asyncio
 async def test_resubscribe_market_and_user():
-    client = Client()
+    client = SpotClient()
     market_calls = []
     user_calls = []
 
@@ -134,7 +134,7 @@ async def test_resubscribe_market_and_user():
 # --- subscribe/handler_context.py ----------------------------------------
 
 def test_overload_partial_order_book_four_tuple():
-    ctx = Client()._get_handler_ctx()
+    ctx = SpotClient()._get_handler_ctx()
     params = ctx.overload_subscriptions(
         (SubType.PARTIAL_ORDER_BOOK, 'BTCUSDT', 10, 100))
     assert len(params) == 1
@@ -146,7 +146,7 @@ def test_overload_all_market_window_tickers_two_arg():
     must produce the same canonical tuple as the 1-tuple-of-pair form and be
     consistent with the processor's subscribe_param signature."""
     from stock_pandas import TimeFrame
-    ctx = Client()._get_handler_ctx()
+    ctx = SpotClient()._get_handler_ctx()
 
     # Flat 2-arg call: subscribe(SubType.ALL_MARKET_WINDOW_TICKERS, TimeFrame.H4)
     params_flat = ctx.overload_subscriptions(
@@ -396,7 +396,7 @@ async def test_close_logs_task_errors():
 # --- user-stream flow (mocked; replaces the live test_user_stream) ---------
 
 def test_ws_api_signature_params_builds_signed_payload():
-    signed = Client('key', 'secret')._ws_api_signature_params(symbol='BTCUSDT')
+    signed = SpotClient(Credentials('key', 'secret'))._ws_api_signature_params(symbol='BTCUSDT')
     assert signed['apiKey'] == 'key'
     assert signed['symbol'] == 'BTCUSDT'
     assert isinstance(signed['timestamp'], int)
@@ -409,7 +409,7 @@ def test_user_stream_not_subscribed_exception_message():
 
 @pytest.mark.asyncio
 async def test_user_stream_subscribe_unsubscribe_close_mocked(monkeypatch):
-    client = Client('key', 'secret')
+    client = SpotClient(Credentials('key', 'secret'))
     sent = []
 
     class FakeUserStream:
