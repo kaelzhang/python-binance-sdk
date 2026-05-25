@@ -5,6 +5,7 @@ from binance.apis import WsApiGetters
 
 from aioretry import RetryPolicy
 
+from binance.core.auth import Credentials
 from binance.subscribe.manager import SubscriptionManager
 from binance.core.common.constants import (
     REST_API_HOST,
@@ -149,9 +150,12 @@ class Client(  # type: ignore[misc]  # diamond mixin: _ws_api_request is a Calla
                 ``recvWindow=<value>`` to any signed method.
         """
 
-        self._api_key = None
-        self._api_secret = None
-        self._private_key = None
+        self._credentials = Credentials(
+            api_key=api_key,
+            api_secret=api_secret,
+            private_key=private_key,
+            private_key_pass=private_key_pass,
+        )
 
         self._used_weight = {}
         self._order_count = {}
@@ -164,10 +168,6 @@ class Client(  # type: ignore[misc]  # diamond mixin: _ws_api_request is a Calla
         # Shared REST session — lazily opened on first REST call (F-12 / F-42).
         self._rest_session = None
         self._request_timeout = float(request_timeout)
-
-        self.key(api_key)
-        self.secret(api_secret)
-        self._load_private_key(private_key, private_key_pass)
 
         self._request_params = request_params
         self._api_host = api_host
@@ -222,33 +222,3 @@ class Client(  # type: ignore[misc]  # diamond mixin: _ws_api_request is a Calla
         Read-only and local (no network); safe to poll from a monitoring loop.
         """
         return self._rate_limiter.snapshot()
-
-    def key(self, key):
-        """Defines or changes api key. This method is unnecessary if we only request APIs of `SecurityType.NONE`
-
-        Args:
-            key (str): api key
-
-        Returns:
-            self
-        """
-
-        if key:
-            self._api_key = key
-        return self
-
-    def secret(self, secret):
-        """Defines or changes api secret, especially when we have not define api secret in Client constructor.
-
-        `secret` is not always required for using binance-sdk.
-
-        Args:
-            secret (str): api secret
-
-        Returns:
-            self
-        """
-
-        if secret:
-            self._api_secret = secret
-        return self

@@ -1,18 +1,8 @@
-import base64
-import hashlib
-import hmac
-import os
 import time
 from operator import itemgetter
 from urllib.parse import quote
 
 import yarl
-
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 from typing import (
     List,
@@ -30,6 +20,7 @@ from aiohttp import (
     ClientTimeout
 )
 
+from binance.core.auth import Credentials
 from binance.core.common.exceptions import (
     APIKeyNotDefinedException,
     APISecretNotDefinedException,
@@ -154,8 +145,7 @@ class ClientBase:
       from ``rate_limit_guard``.
     """
 
-    _api_key: Optional[str]
-    _api_secret: Optional[str]
+    _credentials: Credentials
     _request_params: Optional[dict]
     _used_weight: Dict[str, int]
     _order_count: Dict[str, int]
@@ -250,57 +240,12 @@ class ClientBase:
 
         return uri, req_kwargs
 
-    _private_key: Optional[Union[Ed25519PrivateKey, RSAPrivateKey]]
-
-    def _load_private_key(self, private_key, private_key_pass) -> None:
-        """Load an Ed25519/RSA PEM private key (path or PEM content) for signing."""
-        if private_key is None:
-            self._private_key = None
-            return
-        if isinstance(private_key, (bytes, bytearray)):
-            pem = bytes(private_key)
-        elif os.path.isfile(private_key):
-            with open(private_key, 'rb') as f:
-                pem = f.read()
-        else:
-            pem = private_key.encode('utf-8')
-        password = (
-            private_key_pass.encode('utf-8')
-            if isinstance(private_key_pass, str) else private_key_pass
-        )
-        key = load_pem_private_key(pem, password)
-        if not isinstance(key, (Ed25519PrivateKey, RSAPrivateKey)):
-            raise ValueError(
-                'private_key must be an Ed25519 or RSA private key')
-        self._private_key = key
-
-    def _sign(self, query_string: str) -> str:
-        """Sign an already-assembled query string with the active credential.
-
-        The single crypto primitive shared by both signing paths: it does NOT
-        build or encode the payload, it only signs the exact UTF-8 string it is
-        given. Uses the asymmetric private key when one is loaded
-        (Ed25519/RSA -> base64), otherwise HMAC-SHA256 with ``api_secret`` ->
-        lowercase hex. Callers are responsible for assembling the payload in
-        the form Binance expects for the transport (percent-encoded for REST,
-        raw values for the WS-API).
-        """
-        key = self._private_key
-        if key is not None:
-            return self._sign_asymmetric(key, query_string)
-        assert self._api_secret is not None  # callers validate credentials before calling _sign
-        m = hmac.new(
-            self._api_secret.encode('utf-8'),
-            query_string.encode('utf-8'),
-            hashlib.sha256)
-        return m.hexdigest()
-
     def _generate_signature(
         self,
         data: dict
     ) -> str:
         """Sign REST params: percent-encoded sorted ``key=value&...`` payload."""
-        return self._sign(encode_params(data))
+        return self._credentials.sign(encode_params(data))
 
     def _ws_api_query(self, params: dict) -> str:
         """Build the WS-API signature payload: sorted RAW ``key=value&...``.
@@ -325,18 +270,6 @@ class ClientBase:
             )
         )
 
-    def _sign_asymmetric(
-        self,
-        key: Union[Ed25519PrivateKey, RSAPrivateKey],
-        query_string: str
-    ) -> str:
-        message = query_string.encode('utf-8')
-        if isinstance(key, Ed25519PrivateKey):
-            signature = key.sign(message)
-        else:  # RSA
-            signature = key.sign(message, padding.PKCS1v15(), hashes.SHA256())
-        return base64.b64encode(signature).decode('utf-8')
-
     def _ws_api_signature_params(
         self,
         **params
@@ -345,23 +278,23 @@ class ClientBase:
 
         Assembles the caller's ``params`` with ``apiKey`` and a
         ``timestamp`` (local clock + ``_time_offset``), signs the
-        :meth:`_ws_api_query` raw sorted ``key=value&...`` payload via
-        :meth:`_sign`, and attaches the resulting ``signature``. The raw-value
-        payload (NOT percent-encoded) is what the WS-API spec requires and what
-        is sent on the wire, so the signature always reconciles.
+        :meth:`_ws_api_query` raw sorted ``key=value&...`` payload via the bound
+        :class:`Credentials`, and attaches the resulting ``signature``. The
+        raw-value payload (NOT percent-encoded) is what the WS-API spec requires
+        and what is sent on the wire, so the signature always reconciles.
         """
-        if self._api_key is None:
+        if self._credentials.api_key is None:
             raise APIKeyNotDefinedException('userDataStream.subscribe.signature')
 
-        if self._api_secret is None and self._private_key is None:
+        if not self._credentials.has_signing():
             raise APISecretNotDefinedException('userDataStream.subscribe.signature')
 
         signed = {
             **params,
-            'apiKey': self._api_key,
+            'apiKey': self._credentials.api_key,
             'timestamp': int(time.time() * 1000) + self._time_offset
         }
-        signed['signature'] = self._sign(self._ws_api_query(signed))
+        signed['signature'] = self._credentials.sign(self._ws_api_query(signed))
 
         return signed
 
@@ -464,13 +397,13 @@ class ClientBase:
         need_api_key, need_signed = security_type.value
 
         if need_api_key:
-            if self._api_key is None:
+            if self._credentials.api_key is None:
                 raise APIKeyNotDefinedException(uri)
-            api_key = self._api_key
+            api_key = self._credentials.api_key
         else:
             api_key = None
 
-        if need_signed and self._api_secret is None and self._private_key is None:
+        if need_signed and not self._credentials.has_signing():
             raise APISecretNotDefinedException(uri)
 
         if need_signed and not self._time_synced:

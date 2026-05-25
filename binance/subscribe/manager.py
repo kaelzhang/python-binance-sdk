@@ -10,17 +10,13 @@ from typing import (
     Set,
     Tuple,
     Optional,
-    Union,
     cast
 )
 from logging import Logger
 
 from aioretry import RetryPolicy
 
-# Ed25519 is the only key type that supports WS-API `session.logon`.
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
-
+from binance.core.auth import Credentials
 from binance.core.common.constants import (
     DEFAULT_STREAM_CLOSE_CODE,
     EVENT_SERVER_SHUTDOWN,
@@ -91,9 +87,7 @@ class SubscriptionManager:
     _ws_api_authenticated: bool
     # Credentials / signing live on ClientBase; declared here for the WS-API
     # request path that runs on the merged Client via these mixin attributes.
-    _api_key: Optional[str]
-    _api_secret: Optional[str]
-    _private_key: Optional[Union[Ed25519PrivateKey, RSAPrivateKey]]
+    _credentials: Credentials
     _time_offset: int
     _time_synced: bool
     _recv_window: Optional[int]
@@ -299,7 +293,7 @@ class SubscriptionManager:
         logon (e.g. ``-2015`` revoked key) leaves the session unauthenticated
         and is surfaced to the caller.
         """
-        if not isinstance(self._private_key, Ed25519PrivateKey):
+        if not self._credentials.is_ed25519():
             return
 
         params = self._ws_api_signature_params()
@@ -413,13 +407,9 @@ class SubscriptionManager:
         # Validate credentials BEFORE any network round-trip (mirrors the REST
         # `_request` ordering), so a signed request lacking credentials raises
         # immediately rather than first issuing the lazy `time` sync.
-        if need_api_key and self._api_key is None:
+        if need_api_key and self._credentials.api_key is None:
             raise APIKeyNotDefinedException(method)
-        if (
-            need_signed
-            and self._api_secret is None
-            and self._private_key is None
-        ):
+        if need_signed and not self._credentials.has_signing():
             raise APISecretNotDefinedException(method)
 
         # Lazily sync the server-time offset before the FIRST signed request
