@@ -320,6 +320,8 @@ WS_APIS = [
         # Placing a new SOR order counts against the account ORDERS pool.
         is_order=True
     ),
+    dict(name='create_test_sor_order', ws_method='sor.order.test',
+         security_type=SecurityType.TRADE, weight=_order_test_weight, is_order=False),
 
     # ----- orderList.* -----------------------------------------------------
     dict(
@@ -349,6 +351,10 @@ WS_APIS = [
         # Placing a new OTOCO order list counts against the account ORDERS pool.
         is_order=True
     ),
+    dict(name='create_opo', ws_method='orderList.place.opo',
+         security_type=SecurityType.TRADE, weight=1, is_order=True),
+    dict(name='create_opoco', ws_method='orderList.place.opoco',
+         security_type=SecurityType.TRADE, weight=1, is_order=True),
     dict(
         name='cancel_oco',
         ws_method='orderList.cancel',
@@ -1581,6 +1587,21 @@ class WsApiGetters:
         """
         ...  # pragma: no cover
 
+    def create_test_sor_order(self, **kwargs) -> Awaitable:
+        """Tests a new SOR order without submitting it to the matching engine.
+
+        Weight: 1 (20 with computeCommissionRates)
+
+        Args:
+            Same parameters as ``create_sor_order``.
+            computeCommissionRates (:obj:`bool`, optional): When ``True``, also
+                computes commission rates; raises weight from 1 to 20.
+
+        Returns:
+            dict: An empty dict ``{}`` (or commission rates when requested).
+        """
+        ...  # pragma: no cover
+
     def create_sor_order(self, **kwargs) -> Awaitable:
         """Places an order using Smart Order Routing (SOR).
 
@@ -1763,6 +1784,50 @@ class WsApiGetters:
             dict: A dict describing the placed order list, with the same shape
             as ``create_oco`` (``orderListId``, ``contingencyType``: ``OTO``,
             ``orders``, ``orderReports``).
+        """
+        ...  # pragma: no cover
+
+    def create_opo(self, **kwargs) -> Awaitable:
+        """Places an OPO (One-Pending-the-Other) order list.
+
+        Weight: 1
+
+        Args:
+            symbol (str):
+            workingType (OrderType): ``LIMIT`` or ``LIMIT_MAKER``.
+            workingSide (OrderSide):
+            workingPrice (str):
+            workingQuantity (str):
+            workingTimeInForce (:obj:`TimeInForce`, optional):
+            pendingType (OrderType):
+            pendingSide (OrderSide):
+            recvWindow (:obj:`long`, optional): The value cannot be greater than 60000.
+
+        Returns:
+            dict: The placed order-list response (same shape as ``create_oco``).
+        """
+        ...  # pragma: no cover
+
+    def create_opoco(self, **kwargs) -> Awaitable:
+        """Places an OPOCO (One-Pending-One-Cancels-the-Other) order list.
+
+        Weight: 1
+
+        Args:
+            symbol (str):
+            workingType (OrderType): ``LIMIT`` or ``LIMIT_MAKER``.
+            workingSide (OrderSide):
+            workingPrice (str):
+            workingQuantity (str):
+            workingTimeInForce (:obj:`TimeInForce`, optional):
+            pendingAboveType (OrderType):
+            pendingAbovePrice (:obj:`str`, optional):
+            pendingBelowType (:obj:`OrderType`, optional):
+            pendingBelowPrice (:obj:`str`, optional):
+            recvWindow (:obj:`long`, optional): The value cannot be greater than 60000.
+
+        Returns:
+            dict: The placed order-list response (same shape as ``create_oco``).
         """
         ...  # pragma: no cover
 

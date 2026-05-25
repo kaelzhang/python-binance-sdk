@@ -465,9 +465,12 @@ def test_ws_apis_registry_matches_spec():
             'openOrders.cancelAll', SecurityType.TRADE, False),
         'get_all_orders': ('allOrders', SecurityType.USER_DATA, False),
         'create_sor_order': ('sor.order.place', SecurityType.TRADE, True),
+        'create_test_sor_order': ('sor.order.test', SecurityType.TRADE, False),
         'create_oco': ('orderList.place.oco', SecurityType.TRADE, True),
         'create_oto': ('orderList.place.oto', SecurityType.TRADE, True),
         'create_otoco': ('orderList.place.otoco', SecurityType.TRADE, True),
+        'create_opo': ('orderList.place.opo', SecurityType.TRADE, True),
+        'create_opoco': ('orderList.place.opoco', SecurityType.TRADE, True),
         'cancel_oco': ('orderList.cancel', SecurityType.TRADE, False),
         'get_oco': ('orderList.status', SecurityType.USER_DATA, False),
         'get_all_oco': ('allOrderLists', SecurityType.USER_DATA, False),
@@ -499,6 +502,8 @@ def test_static_weights_match_spec():
         'create_oco': 1,
         'create_oto': 1,
         'create_otoco': 1,
+        'create_opo': 1,
+        'create_opoco': 1,
         'cancel_oco': 1,
         'get_oco': 4,
         'get_all_oco': 20,
@@ -506,9 +511,88 @@ def test_static_weights_match_spec():
     }
     for name, weight in static_weights.items():
         assert by_name[name]['weight'] == weight
-    # The two params-dependent endpoints carry callables, not ints.
+    # The params-dependent endpoints carry callables, not ints.
     assert callable(by_name['create_test_order']['weight'])
+    assert callable(by_name['create_test_sor_order']['weight'])
     assert callable(by_name['get_open_orders']['weight'])
+
+
+# ---------------------------------------------------------------------------
+# New: sor.order.test, OPO, OPOCO
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_create_test_sor_order_via_sor_order_test_no_orders_pool():
+    server = WSAPIServer(port=_PORT)
+    server.on('sor.order.test', result={})
+    await server.run()
+    try:
+        client = _make_client(server)
+        await client.create_test_sor_order(
+            symbol='BTCUSDT', side='BUY', type='LIMIT',
+            quantity='0.5', price='31000')
+        sent = server.received[0]
+        assert sent['method'] == 'sor.order.test'
+        assert sent['params']['symbol'] == 'BTCUSDT'
+        assert 'apiKey' in sent['params']
+        # sor.order.test does NOT place an order (is_order=False)
+        assert _orders_used(client) == 0
+        # default weight 1
+        assert _weight_used(client) == 1
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_create_opo_via_order_list_place_opo_consumes_orders():
+    server = WSAPIServer(port=_PORT)
+    server.on('orderList.place.opo', result={'orderListId': 10})
+    await server.run()
+    try:
+        client = _make_client(server)
+        await client.create_opo(
+            symbol='BTCUSDT',
+            workingType='LIMIT', workingSide='BUY',
+            workingPrice='10000', workingQuantity='1',
+            workingTimeInForce='GTC',
+            pendingType='LIMIT', pendingSide='SELL')
+        sent = server.received[0]
+        assert sent['method'] == 'orderList.place.opo'
+        assert sent['params']['symbol'] == 'BTCUSDT'
+        assert 'apiKey' in sent['params']
+        # OPO places orders -> ORDERS pool consumed
+        assert _orders_used(client) == 1
+        assert _weight_used(client) == 1
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_create_opoco_via_order_list_place_opoco_consumes_orders():
+    server = WSAPIServer(port=_PORT)
+    server.on('orderList.place.opoco', result={'orderListId': 11})
+    await server.run()
+    try:
+        client = _make_client(server)
+        await client.create_opoco(
+            symbol='BTCUSDT',
+            workingType='LIMIT', workingSide='BUY',
+            workingPrice='10000', workingQuantity='1',
+            workingTimeInForce='GTC',
+            pendingAboveType='LIMIT_MAKER', pendingAbovePrice='12000',
+            pendingBelowType='STOP_LOSS_LIMIT', pendingBelowPrice='9000')
+        sent = server.received[0]
+        assert sent['method'] == 'orderList.place.opoco'
+        assert sent['params']['symbol'] == 'BTCUSDT'
+        assert 'apiKey' in sent['params']
+        # OPOCO places orders -> ORDERS pool consumed
+        assert _orders_used(client) == 1
+        assert _weight_used(client) == 1
+    finally:
+        await client.close()
+        await server.shutdown()
 
 
 # ---------------------------------------------------------------------------
