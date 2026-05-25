@@ -241,23 +241,28 @@ async def test_ws_api_request_trade_is_order_consumes_orders_pool():
 
 
 # ---------------------------------------------------------------------------
-# USER_STREAM security: apiKey + timestamp + signature
+# USER_STREAM security: apiKey only — no timestamp, no signature
+# (USER_STREAM = (need_api_key=True, need_signed=False); e.g. futures
+# userDataStream.start/ping/stop which require apiKey but not a signature)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_ws_api_request_user_stream_security_signs():
+async def test_ws_api_request_user_stream_security_api_key_only():
     server = WSAPIServer()
-    server.on('userDataStream.subscribe.signature', result=None)
+    server.on('userDataStream.start', result={'listenKey': 'lk123'})
     await server.run()
     try:
         client = _make_client(server, api_key='K', api_secret='S')
-        await client._ws_api_request(
-            'userDataStream.subscribe.signature', None,
-            security=SecurityType.USER_STREAM, weight=2)
+        result = await client._ws_api_request(
+            'userDataStream.start', None,
+            security=SecurityType.USER_STREAM, weight=1)
+        assert result == {'listenKey': 'lk123'}
+
         params = server.received[0]['params']
+        # USER_STREAM: only apiKey is attached; no timestamp or signature.
         assert params['apiKey'] == 'K'
-        assert 'timestamp' in params
-        assert isinstance(params['signature'], str) and params['signature']
+        assert 'timestamp' not in params
+        assert 'signature' not in params
     finally:
         await client.close()
         await server.shutdown()

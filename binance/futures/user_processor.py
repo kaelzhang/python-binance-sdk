@@ -79,12 +79,19 @@ class FuturesUserProcessor(Processor):
 
         self._handlers: dict = {}
 
-    async def subscribe_param(  # type: ignore[override]  # async override: returns coroutine; wrap_coroutine handles both sync and async
+    def subscribe_param(  # type: ignore[override]
         self,
         subscribe: bool,
         t: SubType
     ) -> dict:
-        """Return signed WS-API params for subscribe, or ``{}`` for unsubscribe."""
+        """Track subscription state; return ``{}`` (futures listenKey flow is handled by the mixin).
+
+        The ``FuturesUserStreamMixin`` overrides ``_subscribe_user_only`` and
+        calls ``userDataStream.start/ping/stop`` directly via ``_ws_api_request``
+        (security: ``USER_STREAM``, weight 1). This method only tracks whether
+        the user stream is currently subscribed so that
+        ``UserStreamNotSubscribedException`` is raised on a spurious unsubscribe.
+        """
         if not subscribe:
             if not self._subscribed:
                 raise UserStreamNotSubscribedException()
@@ -92,10 +99,8 @@ class FuturesUserProcessor(Processor):
             self._subscribed = False
             return {}
 
-        # Futures user stream uses the WebSocket API just like Spot.
-        params = self._client._ws_api_signature_params()
         self._subscribed = True
-        return params
+        return {}
 
     def is_message_type(self, msg):
         """Match futures user-event messages from either the WS-API or data-stream envelope."""

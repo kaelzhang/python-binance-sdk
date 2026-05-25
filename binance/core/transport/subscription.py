@@ -322,12 +322,13 @@ class SubscriptionManager:
         """Attach the auth fields a WS-API ``security`` level requires.
 
         - ``NONE``: returns ``params`` unchanged (public endpoint).
+        - ``USER_STREAM`` / ``MARKET_DATA`` (``need_api_key=True, need_signed=False``):
+          adds only ``apiKey`` — no timestamp, no signature.
         - ``TRADE``/``USER_DATA`` (SIGNED): when the connection already holds an
           authenticated session (Ed25519 ``session.logon``), only a
           ``timestamp`` (+offset) is added -- ``apiKey``/``signature`` are
           omitted; otherwise the full raw-value signed payload
           (``apiKey``+``timestamp``+``signature``) is built.
-        - ``USER_STREAM``: always the full signed payload.
 
         Credential presence is validated by the caller
         (:meth:`_ws_api_request`) before any network round-trip, so this only
@@ -339,15 +340,18 @@ class SubscriptionManager:
             # SecurityType.NONE -> public, no credentials.
             return params
 
-        if need_signed and self._ws_api_authenticated:
-            # Session is logged on: omit apiKey + signature, keep timestamp.
+        if not need_signed:
+            # USER_STREAM / MARKET_DATA: apiKey only, no timestamp or signature.
+            return {**params, 'apiKey': self._credentials.api_key}
+
+        if self._ws_api_authenticated:
+            # SIGNED + session logged on: omit apiKey + signature, keep timestamp.
             return {
                 **params,
                 'timestamp': int(time.time() * 1000) + self._time_offset
             }
 
-        # Per-request signing: apiKey + timestamp + signature.
-        # (USER_STREAM has no session shortcut, so it always lands here too.)
+        # SIGNED, per-request: apiKey + timestamp + signature.
         return self._ws_api_signature_params(**params)
 
     async def _ws_api_request(

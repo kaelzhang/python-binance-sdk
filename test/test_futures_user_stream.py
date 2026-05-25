@@ -1,4 +1,4 @@
-"""Tests for the USDⓈ-M Futures user-data-stream handlers and processor.
+"""Tests for the USDⓈ-M Futures user-data-stream handlers, processor, and mixin.
 
 Covers:
 - Each event type (ACCOUNT_UPDATE, ORDER_TRADE_UPDATE, MARGIN_CALL,
@@ -6,18 +6,25 @@ Covers:
   the correct handler base via client._receive().
 - FuturesUserProcessor routes by 'e' key (event type) within both WS-API
   'event' envelope and data-stream 'data' envelope.
-- subscribe_param returns signed WS-API params on subscribe and {} on
-  unsubscribe (mirrors the Spot UserProcessor contract).
+- subscribe_param tracks subscribed state (returns {} — listenKey flow handled by mixin).
 - Layering: all handler bases are importable from the top-level 'binance'
   package.
-- The futures user processor sends the same WS-API subscribe method as Spot
-  (userDataStream.subscribe.signature / userDataStream.unsubscribe) when
-  subscribe(SubType.USER) is called on a UMFuturesClient.
+- The CORRECT futures user-stream lifecycle:
+    - subscribe(SubType.USER) calls userDataStream.start (USER_STREAM security,
+      weight 1) over the ws-fapi connection, then opens a dedicated Stream to
+      stream_host/ws/<listenKey>.
+    - The keepalive task calls userDataStream.ping every ~50 min.
+    - close() calls userDataStream.stop and closes the dedicated stream.
+    - listenKeyExpired event triggers recreation of the listenKey + stream.
 
 SAFETY: MOCK-only — no live API calls.
 """
 
+import asyncio
+import json
 import pytest
+
+from aiohttp import web
 
 from binance import (
     UMFuturesClient,
@@ -32,6 +39,10 @@ from binance import (
     FuturesEventStreamTerminatedHandlerBase,
 )
 from binance.core.common.utils import create_future
+
+# Re-use the WSAPIServer from test_ws_api (registered under /ws-api/v3 path,
+# but the path is overridden per test via _PORT_UM).
+from test.test_ws_api import WSAPIServer
 
 
 # ---------------------------------------------------------------------------
@@ -316,21 +327,18 @@ async def test_unrelated_payload_not_delivered(client):
 
 
 # ---------------------------------------------------------------------------
-# subscribe_param contract (mirrors Spot UserProcessor behaviour)
+# subscribe_param contract
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_futures_user_processor_subscribe_param_returns_signed_params(client):
-    """subscribe_param(True, ...) returns a dict with apiKey and signature."""
+async def test_futures_user_processor_subscribe_param_returns_empty_dict(client):
+    """subscribe_param(True, ...) returns {} (listenKey flow is handled by the mixin)."""
     from binance.futures.user_processor import FuturesUserProcessor
 
     proc = FuturesUserProcessor(client)
-    params = await proc.subscribe_param(True, SubType.USER)
+    params = proc.subscribe_param(True, SubType.USER)
 
-    assert isinstance(params, dict)
-    assert 'apiKey' in params
-    assert 'signature' in params
-    assert 'timestamp' in params
+    assert params == {}
     assert proc._subscribed is True
 
 
@@ -340,8 +348,8 @@ async def test_futures_user_processor_unsubscribe_param_returns_empty(client):
     from binance.futures.user_processor import FuturesUserProcessor
 
     proc = FuturesUserProcessor(client)
-    await proc.subscribe_param(True, SubType.USER)  # subscribe first
-    params = await proc.subscribe_param(False, SubType.USER)
+    proc.subscribe_param(True, SubType.USER)  # subscribe first
+    params = proc.subscribe_param(False, SubType.USER)
 
     assert params == {}
     assert proc._subscribed is False
@@ -356,42 +364,368 @@ async def test_futures_user_processor_unsubscribe_before_subscribe_raises(client
     proc = FuturesUserProcessor(client)
 
     with pytest.raises(UserStreamNotSubscribedException):
-        await proc.subscribe_param(False, SubType.USER)
+        proc.subscribe_param(False, SubType.USER)
 
 
 # ---------------------------------------------------------------------------
-# subscribe(SubType.USER) sends userDataStream.subscribe.signature over WS-API
+# CORRECT futures user-stream lifecycle tests (listenKey flow)
 # ---------------------------------------------------------------------------
+
+# Port for the ws-fapi mock server used in user-stream lifecycle tests.
+# 9094 is used only by this file; other ports (9085-9093) are taken by other tests.
+_FAPI_PORT = 9094
+
+
+def _make_um_client_for_lifecycle(server) -> UMFuturesClient:
+    """Create a UMFuturesClient pointing at the local mock ws-api server."""
+    # stream_host must be set to a non-connectable URL for tests that monkeypatch
+    # binance.futures.user_stream.Stream; when Stream is patched, the URI is
+    # never actually connected so any value works.
+    client = UMFuturesClient(
+        Credentials(api_key='TESTAPIKEY', api_secret='TESTSECRET'),
+        ws_api_host=server.uri,
+        stream_host='wss://fstream.binance.com',  # real value; Stream is patched
+    )
+    # Mark time as synced: USER_STREAM requests don't sign so no time sync
+    # is needed, but marking it avoids an extra 'time' request on the first
+    # USER_DATA/TRADE call if tests are chained.
+    client._time_synced = True
+    return client
+
+
+class _FakeStream:
+    """Minimal Stream stub: records connections and supports send()/close()."""
+
+    connected_uris = []
+    _all_streams = []
+
+    @classmethod
+    def reset(cls):
+        cls.connected_uris = []
+        cls._all_streams = []
+
+    def __init__(self, uri, *, on_message=None, **kwargs):
+        self.uri = uri
+        self._on_message = on_message
+        self.closed = False
+        _FakeStream.connected_uris.append(uri)
+        _FakeStream._all_streams.append(self)
+
+    def connect(self):
+        return self
+
+    async def send(self, req):
+        return None
+
+    async def close(self, code=4999):
+        self.closed = True
+
+
+@pytest.fixture(autouse=False)
+def patch_fstream(monkeypatch):
+    """Monkeypatch Stream in binance.futures.user_stream to use _FakeStream."""
+    _FakeStream.reset()
+    monkeypatch.setattr('binance.futures.user_stream.Stream', _FakeStream)
+    return _FakeStream
+
 
 @pytest.mark.asyncio
-async def test_um_subscribe_user_sends_correct_ws_api_method(monkeypatch):
-    """subscribe(SubType.USER) on UMFuturesClient sends userDataStream.subscribe.signature."""
-    client = UMFuturesClient(Credentials('api_key', 'api_secret'))
-    sent = []
+async def test_subscribe_user_calls_userDataStream_start(patch_fstream):
+    """subscribe(SubType.USER) calls userDataStream.start over ws-fapi (USER_STREAM, weight 1)."""
+    listen_key = 'test-listen-key-abc123'
+    server = WSAPIServer(port=_FAPI_PORT)
+    server.on('userDataStream.start', result={'listenKey': listen_key})
+    await server.run()
+    try:
+        client = _make_um_client_for_lifecycle(server)
+        await client.subscribe(SubType.USER)
 
-    class FakeStream:
-        def __init__(self, *args, **kwargs):
-            pass
+        # Verify userDataStream.start was sent over ws-api.
+        methods = [r['method'] for r in server.received]
+        assert 'userDataStream.start' in methods
 
-        def connect(self):
-            return self
+        # USER_STREAM security: apiKey only, no signature.
+        start_req = next(r for r in server.received if r['method'] == 'userDataStream.start')
+        assert start_req.get('params', {}).get('apiKey') == 'TESTAPIKEY'
+        assert 'signature' not in start_req.get('params', {})
+        assert 'timestamp' not in start_req.get('params', {})
 
-        async def send(self, req):
-            sent.append(req)
-            return None
+        # The listenKey was stored on the client.
+        assert client._futures_listen_key == listen_key
+        assert client._want_user_stream is True
 
-        async def close(self, code=4999):
-            sent.append({'method': 'close'})
+        # A keepalive task was started.
+        assert client._futures_keepalive_task is not None
+        assert not client._futures_keepalive_task.done()
+    finally:
+        # Cancel the keepalive before closing to prevent asyncio warnings.
+        client._cancel_futures_keepalive()
+        await client.close()
+        await server.shutdown()
 
-    monkeypatch.setattr('binance.core.transport.subscription.Stream', FakeStream)
 
-    await client.subscribe(SubType.USER)
-    await client.unsubscribe(SubType.USER)
-    await client.close()
+@pytest.mark.asyncio
+async def test_subscribe_user_opens_dedicated_stream_at_correct_uri(patch_fstream):
+    """subscribe(SubType.USER) opens a dedicated Stream to stream_host/ws/<listenKey>."""
+    listen_key = 'my-futures-listen-key-xyz'
+    server = WSAPIServer(port=_FAPI_PORT)
+    server.on('userDataStream.start', result={'listenKey': listen_key})
+    await server.run()
+    try:
+        client = _make_um_client_for_lifecycle(server)
+        await client.subscribe(SubType.USER)
 
-    methods = [req.get('method') for req in sent]
-    assert 'userDataStream.subscribe.signature' in methods
-    assert 'userDataStream.unsubscribe' in methods
+        # The fstream was opened at the correct URI.
+        expected_uri = 'wss://fstream.binance.com/ws/' + listen_key
+        assert expected_uri in _FakeStream.connected_uris
+    finally:
+        client._cancel_futures_keepalive()
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_close_calls_userDataStream_stop(patch_fstream):
+    """close() calls userDataStream.stop with the listenKey and closes the dedicated stream."""
+    listen_key = 'close-test-listen-key'
+    server = WSAPIServer(port=_FAPI_PORT)
+    server.on('userDataStream.start', result={'listenKey': listen_key})
+    server.on('userDataStream.stop', result=None)
+    await server.run()
+    try:
+        client = _make_um_client_for_lifecycle(server)
+        await client.subscribe(SubType.USER)
+
+        # Cancel the keepalive before close so the test is fast.
+        client._cancel_futures_keepalive()
+
+        await client.close()
+
+        methods = [r['method'] for r in server.received]
+        assert 'userDataStream.stop' in methods
+
+        # userDataStream.stop carries the listenKey param.
+        stop_req = next(r for r in server.received if r['method'] == 'userDataStream.stop')
+        assert stop_req.get('params', {}).get('listenKey') == listen_key
+
+        # USER_STREAM security: apiKey only, no signature.
+        assert stop_req.get('params', {}).get('apiKey') == 'TESTAPIKEY'
+        assert 'signature' not in stop_req.get('params', {})
+
+        # The dedicated stream was closed.
+        fstream = _FakeStream._all_streams[-1]
+        assert fstream.closed is True
+
+        # listen_key was cleared.
+        assert client._futures_listen_key is None
+    finally:
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_user_calls_stop_and_clears_state(patch_fstream):
+    """unsubscribe(SubType.USER) stops the listenKey flow and clears state."""
+    listen_key = 'unsub-test-listen-key'
+    server = WSAPIServer(port=_FAPI_PORT)
+    server.on('userDataStream.start', result={'listenKey': listen_key})
+    server.on('userDataStream.stop', result=None)
+    await server.run()
+    try:
+        client = _make_um_client_for_lifecycle(server)
+        await client.subscribe(SubType.USER)
+
+        client._cancel_futures_keepalive()
+
+        await client.unsubscribe(SubType.USER)
+
+        methods = [r['method'] for r in server.received]
+        assert 'userDataStream.stop' in methods
+        assert client._want_user_stream is False
+        assert client._futures_listen_key is None
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_keepalive_calls_userDataStream_ping(monkeypatch, patch_fstream):
+    """The keepalive loop sends userDataStream.ping with the listenKey."""
+    listen_key = 'ping-test-listen-key'
+    server = WSAPIServer(port=_FAPI_PORT)
+    server.on('userDataStream.start', result={'listenKey': listen_key})
+    server.on('userDataStream.ping', result=None)
+    await server.run()
+    try:
+        # Shorten the keepalive interval to 0 for the test.
+        monkeypatch.setattr('binance.futures.user_stream._KEEPALIVE_INTERVAL', 0)
+
+        client = _make_um_client_for_lifecycle(server)
+        await client.subscribe(SubType.USER)
+
+        # Let the keepalive loop run at least one iteration.
+        await asyncio.sleep(0.05)
+
+        methods = [r['method'] for r in server.received]
+        assert 'userDataStream.ping' in methods
+
+        ping_req = next(r for r in server.received if r['method'] == 'userDataStream.ping')
+        assert ping_req.get('params', {}).get('listenKey') == listen_key
+
+        # USER_STREAM security: apiKey only, no signature.
+        assert ping_req.get('params', {}).get('apiKey') == 'TESTAPIKEY'
+        assert 'signature' not in ping_req.get('params', {})
+    finally:
+        client._cancel_futures_keepalive()
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_events_delivered_on_futures_user_stream(patch_fstream):
+    """Events arriving on the dedicated fstream are dispatched to the correct handler."""
+    # The fstream calls client._receive; simulate that directly.
+    listen_key = 'events-test-listen-key'
+    server = WSAPIServer(port=_FAPI_PORT)
+    server.on('userDataStream.start', result={'listenKey': listen_key})
+    server.on('userDataStream.stop', result=None)
+    await server.run()
+    try:
+        client = _make_um_client_for_lifecycle(server)
+        client.start()
+
+        received_payloads = []
+
+        class Handler(FuturesAccountUpdateHandlerBase):
+            def receive(self, p):
+                received_payloads.append(p)
+
+        client.handler(Handler())
+
+        await client.subscribe(SubType.USER)
+
+        # Simulate an event arriving on the fstream via client._receive.
+        await client._receive({'data': ACCOUNT_UPDATE_PAYLOAD})
+
+        assert len(received_payloads) == 1
+        assert received_payloads[0]['e'] == 'ACCOUNT_UPDATE'
+    finally:
+        client._cancel_futures_keepalive()
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_listen_key_expired_triggers_stream_restart(monkeypatch, patch_fstream):
+    """listenKeyExpired event triggers a new userDataStream.start and opens a new stream."""
+    old_key = 'old-listen-key-111'
+    new_key = 'new-listen-key-222'
+    server = WSAPIServer(port=_FAPI_PORT)
+    server.on('userDataStream.stop', result=None)
+
+    # First call returns old_key; subsequent calls return new_key.
+    call_count = {'n': 0}
+
+    async def _patched_handler(request):
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        async for raw in ws:
+            if raw.type != web.WSMsgType.TEXT:
+                continue
+            msg = json.loads(raw.data)
+            server.received.append(msg)
+            mid = msg.get('id')
+            method = msg.get('method')
+            if method == 'userDataStream.start':
+                call_count['n'] += 1
+                k = old_key if call_count['n'] == 1 else new_key
+                await ws.send_str(json.dumps({'id': mid, 'status': 200, 'result': {'listenKey': k}}))
+            elif method == 'userDataStream.stop':
+                await ws.send_str(json.dumps({'id': mid, 'status': 200, 'result': None}))
+            elif method == 'time':
+                await ws.send_str(json.dumps({'id': mid, 'status': 200, 'result': {'serverTime': 1_700_000_000_000}}))
+            else:
+                await ws.send_str(json.dumps({'id': mid, 'status': 200, 'result': None}))
+        return ws
+
+    # Replace the server handler.
+    app = web.Application()
+    app.add_routes([web.get('/ws-api/v3', _patched_handler)])
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, 'localhost', _FAPI_PORT)
+    await site.start()
+
+    try:
+        uri = f'ws://localhost:{_FAPI_PORT}/ws-api/v3'
+        client = UMFuturesClient(
+            Credentials(api_key='TESTAPIKEY', api_secret='TESTSECRET'),
+            ws_api_host=uri,
+            stream_host='wss://fstream.binance.com',
+        )
+        client._time_synced = True
+        client.start()
+        await client.subscribe(SubType.USER)
+
+        assert client._futures_listen_key == old_key
+
+        # Simulate listenKeyExpired arriving on the dedicated stream.
+        await client._receive({'data': LISTEN_KEY_EXPIRED_PAYLOAD})
+
+        # Allow the background task spawned by _receive to complete.
+        await asyncio.sleep(0.1)
+
+        # The client should have re-obtained a new listen key.
+        assert client._futures_listen_key == new_key
+        assert 'wss://fstream.binance.com/ws/' + new_key in _FakeStream.connected_uris
+
+    finally:
+        client._cancel_futures_keepalive()
+        await client.close()
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_resubscribe_user_is_noop(patch_fstream):
+    """_resubscribe_user() is a no-op for futures (dedicated stream reconnects itself)."""
+    server = WSAPIServer(port=_FAPI_PORT)
+    server.on('userDataStream.start', result={'listenKey': 'noop-test-key'})
+    await server.run()
+    try:
+        client = _make_um_client_for_lifecycle(server)
+        await client.subscribe(SubType.USER)
+
+        before_received = len(server.received)
+
+        # _resubscribe_user is called by _on_ws_api_connected after reconnect.
+        await client._resubscribe_user()
+
+        # No extra ws-api requests should have been sent.
+        assert len(server.received) == before_received
+    finally:
+        client._cancel_futures_keepalive()
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_no_spot_subscribe_method_sent(patch_fstream):
+    """subscribe(SubType.USER) must NOT send userDataStream.subscribe.signature (Spot-only method)."""
+    server = WSAPIServer(port=_FAPI_PORT)
+    server.on('userDataStream.start', result={'listenKey': 'correct-key'})
+    server.on('userDataStream.stop', result=None)
+    await server.run()
+    try:
+        client = _make_um_client_for_lifecycle(server)
+        await client.subscribe(SubType.USER)
+        client._cancel_futures_keepalive()
+        await client.unsubscribe(SubType.USER)
+        await client.close()
+
+        methods = [r['method'] for r in server.received]
+        assert 'userDataStream.subscribe.signature' not in methods
+        assert 'userDataStream.unsubscribe' not in methods
+    finally:
+        await server.shutdown()
 
 
 # ---------------------------------------------------------------------------
@@ -507,3 +841,238 @@ def test_is_message_type_no_match():
 
     assert matched is False
     assert payload is None
+
+
+# ---------------------------------------------------------------------------
+# Coverage: edge-case paths in FuturesUserStreamMixin
+# ---------------------------------------------------------------------------
+
+def test_extract_event_type_non_dict_returns_none():
+    """_extract_event_type returns None for non-dict messages (line 49)."""
+    from binance.futures.user_stream import _extract_event_type
+    assert _extract_event_type('not-a-dict') is None
+    assert _extract_event_type(None) is None
+    assert _extract_event_type(42) is None
+
+
+def test_extract_event_type_top_level_e():
+    """_extract_event_type returns msg['e'] when not nested in data/event (line 54)."""
+    from binance.futures.user_stream import _extract_event_type
+    assert _extract_event_type({'e': 'ACCOUNT_UPDATE', 'E': 1}) == 'ACCOUNT_UPDATE'
+
+
+@pytest.mark.asyncio
+async def test_listen_key_expired_when_not_want_user_stream(patch_fstream):
+    """_on_futures_listen_key_expired is a no-op when _want_user_stream is False (line 183)."""
+    client = UMFuturesClient(Credentials('key', 'secret'))
+    client._want_user_stream = False
+    # Should return immediately without any side effects.
+    await client._on_futures_listen_key_expired()
+    assert client._futures_listen_key is None
+
+
+@pytest.mark.asyncio
+async def test_listen_key_expired_old_stream_close_error_is_logged(patch_fstream):
+    """If the old stream.close() raises in _on_futures_listen_key_expired, the error is logged (lines 197-198)."""
+    listen_key = 'error-close-key'
+    server = WSAPIServer(port=_FAPI_PORT)
+    server.on('userDataStream.start', result={'listenKey': listen_key})
+    server.on('userDataStream.stop', result=None)
+    await server.run()
+    try:
+        client = _make_um_client_for_lifecycle(server)
+        await client.subscribe(SubType.USER)
+        client._cancel_futures_keepalive()
+
+        # Replace the dedicated stream with one whose close() raises.
+        class BrokenStream:
+            async def close(self, code=4999):
+                raise RuntimeError('close failed')
+
+        client._futures_user_stream = BrokenStream()
+        client._futures_listen_key = listen_key
+        client._want_user_stream = True
+
+        # Should not raise; error is logged.
+        await client._on_futures_listen_key_expired()
+
+        # A new stream was opened after the error.
+        assert client._futures_listen_key is not None
+    finally:
+        client._cancel_futures_keepalive()
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_listen_key_expired_start_failure_dispatches_stream_error(patch_fstream):
+    """If _futures_user_stream_start fails in _on_futures_listen_key_expired, the error is dispatched (lines 205-216)."""
+    listen_key = 'start-fail-key'
+    server = WSAPIServer(port=_FAPI_PORT)
+    # First call succeeds; second call (after listenKeyExpired) fails.
+    call_count = {'n': 0}
+
+    async def _patched_handler(request):
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        async for raw in ws:
+            if raw.type != web.WSMsgType.TEXT:
+                continue
+            msg = json.loads(raw.data)
+            server.received.append(msg)
+            mid = msg.get('id')
+            method = msg.get('method')
+            if method == 'userDataStream.start':
+                call_count['n'] += 1
+                if call_count['n'] == 1:
+                    await ws.send_str(json.dumps({'id': mid, 'status': 200, 'result': {'listenKey': listen_key}}))
+                else:
+                    await ws.send_str(json.dumps({'id': mid, 'status': 400, 'error': {'code': -1100, 'msg': 'fail'}}))
+            elif method == 'time':
+                await ws.send_str(json.dumps({'id': mid, 'status': 200, 'result': {'serverTime': 1_700_000_000_000}}))
+            else:
+                await ws.send_str(json.dumps({'id': mid, 'status': 200, 'result': None}))
+        return ws
+
+    app = web.Application()
+    app.add_routes([web.get('/ws-api/v3', _patched_handler)])
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, 'localhost', _FAPI_PORT)
+    await site.start()
+
+    try:
+        uri = f'ws://localhost:{_FAPI_PORT}/ws-api/v3'
+        client = UMFuturesClient(
+            Credentials(api_key='TESTAPIKEY', api_secret='TESTSECRET'),
+            ws_api_host=uri,
+            stream_host='wss://fstream.binance.com',
+        )
+        client._time_synced = True
+        client.start()
+
+        errors_dispatched = []
+        from binance.core.handlers.framework import StreamErrorHandlerBase
+        class ErrHandler(StreamErrorHandlerBase):
+            def receive(self, err):
+                errors_dispatched.append(err)
+        client.handler(ErrHandler())
+
+        await client.subscribe(SubType.USER)
+        client._cancel_futures_keepalive()
+
+        # Simulate listenKeyExpired; the restart will fail.
+        await client._receive({'data': LISTEN_KEY_EXPIRED_PAYLOAD})
+        await asyncio.sleep(0.1)
+
+        # A stream error was dispatched.
+        assert len(errors_dispatched) > 0
+    finally:
+        client._cancel_futures_keepalive()
+        await client.close()
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_futures_cleanup_stop_error_is_logged(patch_fstream):
+    """If userDataStream.stop raises in _futures_cleanup, the error is logged (lines 268-269)."""
+    listen_key = 'stop-error-key'
+    server = WSAPIServer(port=_FAPI_PORT)
+    server.on('userDataStream.start', result={'listenKey': listen_key})
+    server.on_error('userDataStream.stop', code=-1000)
+    await server.run()
+    try:
+        client = _make_um_client_for_lifecycle(server)
+        await client.subscribe(SubType.USER)
+        client._cancel_futures_keepalive()
+
+        # Should not raise; error is logged.
+        await client._futures_cleanup()
+
+        assert client._futures_listen_key is None
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_futures_cleanup_stream_close_error_is_logged(patch_fstream):
+    """If the dedicated stream close() raises in _futures_cleanup, the error is logged (lines 277-278)."""
+    listen_key = 'close-error-key'
+    server = WSAPIServer(port=_FAPI_PORT)
+    server.on('userDataStream.start', result={'listenKey': listen_key})
+    server.on('userDataStream.stop', result=None)
+    await server.run()
+    try:
+        client = _make_um_client_for_lifecycle(server)
+        await client.subscribe(SubType.USER)
+        client._cancel_futures_keepalive()
+
+        # Replace the dedicated stream with one whose close() raises.
+        class BrokenStream:
+            async def close(self, code=4999):
+                raise RuntimeError('close error')
+
+        client._futures_user_stream = BrokenStream()
+
+        # Should not raise; error is logged.
+        await client._futures_cleanup()
+
+        assert client._futures_user_stream is None
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_keepalive_returns_when_listen_key_cleared(monkeypatch, patch_fstream):
+    """The keepalive loop returns early when _futures_listen_key is None (line 295)."""
+    listen_key = 'early-return-key'
+    server = WSAPIServer(port=_FAPI_PORT)
+    server.on('userDataStream.start', result={'listenKey': listen_key})
+    await server.run()
+    try:
+        monkeypatch.setattr('binance.futures.user_stream._KEEPALIVE_INTERVAL', 0)
+        client = _make_um_client_for_lifecycle(server)
+        await client.subscribe(SubType.USER)
+
+        # Clear the listen key so the keepalive exits on next iteration.
+        client._futures_listen_key = None
+
+        # Allow the keepalive to run its next iteration.
+        await asyncio.sleep(0.05)
+
+        # Keepalive task should have exited.
+        task = client._futures_keepalive_task
+        if task is not None:
+            await asyncio.sleep(0.05)
+    finally:
+        client._cancel_futures_keepalive()
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_keepalive_ping_error_is_logged_not_raised(monkeypatch, patch_fstream):
+    """A ping failure in the keepalive loop is logged but the loop continues (lines 306-307)."""
+    listen_key = 'ping-error-key'
+
+    server = WSAPIServer(port=_FAPI_PORT)
+    server.on('userDataStream.start', result={'listenKey': listen_key})
+    server.on_error('userDataStream.ping', code=-1000)
+    await server.run()
+    try:
+        monkeypatch.setattr('binance.futures.user_stream._KEEPALIVE_INTERVAL', 0)
+        client = _make_um_client_for_lifecycle(server)
+        await client.subscribe(SubType.USER)
+
+        # Allow the keepalive to run and hit the ping error.
+        await asyncio.sleep(0.1)
+
+        # Keepalive should still be running (error was caught, not re-raised).
+        assert client._futures_keepalive_task is not None
+        assert not client._futures_keepalive_task.done()
+    finally:
+        client._cancel_futures_keepalive()
+        await client.close()
+        await server.shutdown()

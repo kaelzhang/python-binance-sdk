@@ -11,9 +11,10 @@ from binance.futures.um.processors import (
     ExceptionProcessor,
     StreamErrorProcessor,
 )
+from binance.futures.user_stream import FuturesUserStreamMixin
 
 
-class UMFuturesClient(BaseClient, UMFuturesGetters):  # type: ignore[misc]  # diamond mixin: compatible at runtime
+class UMFuturesClient(FuturesUserStreamMixin, BaseClient, UMFuturesGetters):  # type: ignore[misc]  # diamond mixin: compatible at runtime
     """Async Binance USDⓈ-M Futures market-data client.
 
     Binds the USDⓈ-M Futures :class:`~binance.core.market.MarketSpec` (hosts,
