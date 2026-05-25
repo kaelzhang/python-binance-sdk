@@ -31,7 +31,8 @@ class StreamName(StringEnum):
     - ``USER`` -- the WS-API connection (``wss://ws-api...``) that also carries
       the user-data stream subscription.
 
-    A ``str`` enum, so ``StreamName.DATA == 'data'`` is ``True``.
+    ``str(member)`` returns the raw wire value (e.g. ``str(StreamName.DATA) == 'data'``).
+    Compare with the enum member (e.g. ``error.stream == StreamName.DATA``).
     """
 
     DATA = 'data'
@@ -44,7 +45,8 @@ class StreamErrorPhase(StringEnum):
     - ``RESUBSCRIBE`` -- replaying subscriptions after a reconnect failed.
     - ``LOGON`` -- the WS-API ``session.logon`` failed after a reconnect.
 
-    A ``str`` enum, so ``StreamErrorPhase.LOGON == 'logon'`` is ``True``.
+    ``str(member)`` returns the raw wire value (e.g. ``str(StreamErrorPhase.LOGON) == 'logon'``).
+    Compare with the enum member (e.g. ``error.phase == StreamErrorPhase.LOGON``).
     """
 
     RESUBSCRIBE = 'resubscribe'
@@ -56,10 +58,13 @@ class StreamError:
     """Structured error object delivered to ``StreamErrorHandlerBase.receive``.
 
     Attributes:
-        stream: ``'data'`` for the market-data WebSocket or ``'user'`` for the
-            WS-API / user-data stream.
-        phase: ``'resubscribe'`` when a post-reconnect subscription replay
-            failed, or ``'logon'`` when the WS-API ``session.logon`` failed.
+        stream: :attr:`StreamName.DATA` for the market-data WebSocket or
+            :attr:`StreamName.USER` for the WS-API / user-data stream.
+            Compare with the member, e.g. ``err.stream == StreamName.DATA``.
+        phase: :attr:`StreamErrorPhase.RESUBSCRIBE` when a post-reconnect
+            subscription replay failed, or :attr:`StreamErrorPhase.LOGON` when
+            the WS-API ``session.logon`` failed.  Compare with the member, e.g.
+            ``err.phase == StreamErrorPhase.RESUBSCRIBE``.
         exception: the underlying exception that was raised.
         recovering: ``True`` when the SDK has already scheduled a
             :meth:`~binance.subscribe.stream.Stream.recycle` on the affected

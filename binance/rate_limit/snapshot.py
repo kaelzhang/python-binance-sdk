@@ -18,11 +18,14 @@ class RateLimitWindow:
     """A point-in-time view of a single rate-limit pool.
 
     Attributes:
-        scope: ``'ip'`` | ``'account'`` | ``'connection'`` (see
-            :class:`~binance.rate_limit.types.RateLimitScope`).
-        type: The pool, e.g. ``'request_weight'``, ``'orders'``,
-            ``'ws_streams'`` (see
-            :class:`~binance.rate_limit.types.RateLimitType`).
+        scope: :class:`~binance.rate_limit.types.RateLimitScope` member —
+            compare with the member, e.g. ``w.scope == RateLimitScope.IP``.
+            ``str(w.scope)`` yields the wire string (``'ip'``, ``'account'``,
+            or ``'connection'``).
+        type: :class:`~binance.rate_limit.types.RateLimitType` member — compare
+            with the member, e.g. ``w.type == RateLimitType.REQUEST_WEIGHT``.
+            ``str(w.type)`` yields the wire string (e.g. ``'request_weight'``,
+            ``'orders'``, ``'ws_streams'``).
         interval: Window label such as ``'1m'`` or ``'10s'``; ``''`` for the
             window-less per-connection stream cap.
         used: Current usage within the window -- summed weight, event count, or
@@ -37,9 +40,11 @@ class RateLimitWindow:
             when an authoritative header reports usage above the effective cap.
         pending: Number of callers currently blocked or queued waiting on this
             pool. Only nonzero for ``SLEEP``-mode pools under contention.
-        source: ``'header'`` when ``used`` reflects an authoritative Binance
-            response header (reconciled and trustworthy); ``'client'`` when it
-            is only the local proactive estimate.
+        source: :class:`~binance.rate_limit.types.RateLimitSource` member —
+            compare with the member, e.g. ``w.source == RateLimitSource.HEADER``.
+            ``str(w.source)`` yields ``'header'`` when ``used`` reflects an
+            authoritative Binance response header (reconciled and trustworthy),
+            or ``'client'`` when it is only the local proactive estimate.
     """
 
     scope: RateLimitScope

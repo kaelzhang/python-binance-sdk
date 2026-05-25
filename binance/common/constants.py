@@ -10,13 +10,12 @@ KLINE_TYPE_PREFIX = 'kline_'
 
 
 class StringEnum(str, _Enum):
-    """Base enum class for string-valued enums.
+    """A ``str``-subclass enum whose ``str(member)`` is the raw wire value
+    (e.g. ``str(OrderSide.BUY) == 'BUY'``), used for serialization.
 
-    Members are ``str`` instances, so ``Member == 'value'`` is ``True`` and
-    ``isinstance(member, str)`` holds.  ``str(member)`` returns the raw value
-    (e.g. ``'BUY'``) rather than the default ``'Class.MEMBER'`` form, making
-    members safe to pass directly to string contexts (query parameters, JSON
-    bodies, log messages) without explicit ``.value`` access.
+    Members can be passed directly to string contexts (query parameters, JSON
+    bodies, log messages) without explicit ``.value`` access.  Compare members
+    to members (``side == OrderSide.BUY``), not to raw strings.
     """
 
     def __str__(self) -> str:
@@ -26,8 +25,9 @@ class StringEnum(str, _Enum):
 class SubType(StringEnum):
     """WebSocket stream subscription types supported by the Binance SDK.
 
-    Each member is a `str` enum so it equals its string value, e.g.
-    `SubType.TRADE == 'trade'`.  Members are passed as the first argument to
+    Each member's wire value is returned by ``str(member)``, e.g.
+    ``str(SubType.TRADE) == 'trade'``.  Compare members to members
+    (``subtype == SubType.TRADE``).  Members are passed as the first argument to
     `client.subscribe(subtype, ...)`.  Required and optional per-type
     parameters are documented in the README's SubType section and summarised
     below.
@@ -196,8 +196,9 @@ class SecurityType(_Enum):
 class RequestMethod(StringEnum):
     """HTTP verbs used when defining REST API endpoints.
 
-    Each member is a `str` enum whose value is the lowercase method name as
-    expected by `aiohttp.ClientSession` (e.g. `RequestMethod.GET == 'get'`).
+    Each member's wire value is the lowercase method name as expected by
+    ``aiohttp.ClientSession``; ``str(RequestMethod.GET) == 'get'``.  Compare
+    members to members (``method == RequestMethod.GET``).
 
     Members:
         GET: HTTP GET — used for read-only data retrieval.
@@ -215,8 +216,9 @@ class RequestMethod(StringEnum):
 class OrderSide(StringEnum):
     """Direction of a Binance order.
 
-    Each member is a `str` enum that equals its wire value, e.g.
-    `OrderSide.BUY == 'BUY'`.
+    Each member's wire value is returned by ``str(member)``, e.g.
+    ``str(OrderSide.BUY) == 'BUY'``.  Compare members to members
+    (``side == OrderSide.BUY``).
 
     Members:
         BUY: Purchase the base asset (open a long position).
@@ -230,8 +232,9 @@ class OrderSide(StringEnum):
 class OrderType(StringEnum):
     """Binance order execution type.
 
-    Each member is a `str` enum that equals its wire value, e.g.
-    `OrderType.LIMIT == 'LIMIT'`.  Different order types require different
+    Each member's wire value is returned by ``str(member)``, e.g.
+    ``str(OrderType.LIMIT) == 'LIMIT'``.  Compare members to members
+    (``order_type == OrderType.LIMIT``).  Different order types require different
     combinations of parameters (price, quantity, stopPrice, etc.) as
     documented in the Binance REST API reference.
 
@@ -263,8 +266,9 @@ class OrderType(StringEnum):
 class OrderRespType(StringEnum):
     """Controls how much detail the Binance REST API returns after placing an order.
 
-    Each member is a `str` enum that equals its wire value, e.g.
-    `OrderRespType.ACK == 'ACK'`.  Passed as the `newOrderRespType` parameter
+    Each member's wire value is returned by ``str(member)``, e.g.
+    ``str(OrderRespType.ACK) == 'ACK'``.  Compare members to members
+    (``resp_type == OrderRespType.ACK``).  Passed as the ``newOrderRespType`` parameter
     to order-creation endpoints.
 
     Members:
@@ -284,9 +288,10 @@ class OrderRespType(StringEnum):
 class TimeInForce(StringEnum):
     """Specifies how long a Binance limit order remains active before it is cancelled.
 
-    Each member is a `str` enum that equals its wire value, e.g.
-    `TimeInForce.GTC == 'GTC'`.  Required for `LIMIT`, `STOP_LOSS_LIMIT`, and
-    `TAKE_PROFIT_LIMIT` order types.
+    Each member's wire value is returned by ``str(member)``, e.g.
+    ``str(TimeInForce.GTC) == 'GTC'``.  Compare members to members
+    (``tif == TimeInForce.GTC``).  Required for ``LIMIT``, ``STOP_LOSS_LIMIT``, and
+    ``TAKE_PROFIT_LIMIT`` order types.
 
     Members:
         GTC: Good Till Cancelled — the order stays open until it is fully

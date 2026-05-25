@@ -24,9 +24,9 @@ class RateLimitScope(StringEnum):
     - ``CONNECTION`` -- local to a single WebSocket connection (its outgoing
       message rate and its concurrent stream count).
 
-    This is a ``str`` enum, so a member compares equal to its value
-    (``RateLimitScope.IP == 'ip'`` is ``True``); the same string appears as
-    :attr:`RateLimitWindow.scope` in a snapshot.
+    ``str(member)`` returns the raw wire value (e.g. ``str(RateLimitScope.IP) == 'ip'``);
+    the same string appears as :attr:`RateLimitWindow.scope` in a snapshot.
+    Compare with the enum member (e.g. ``w.scope == RateLimitScope.IP``).
     """
 
     IP = 'ip'
@@ -48,10 +48,10 @@ class RateLimitType(StringEnum):
       counting subscribe/unsubscribe and ping/pong.
     - ``WS_STREAMS`` -- concurrent streams on one connection (a cap of 1024).
 
-    These string values appear verbatim as :attr:`RateLimitWindow.type` in a
-    snapshot, so windows can be filtered with either a literal
-    (``w.type == 'request_weight'``) or the enum
-    (``w.type == RateLimitType.REQUEST_WEIGHT``).
+    ``str(member)`` returns the raw wire value (e.g.
+    ``str(RateLimitType.REQUEST_WEIGHT) == 'request_weight'``); these values
+    appear verbatim as :attr:`RateLimitWindow.type` in a snapshot.  Filter
+    windows with the enum member (e.g. ``w.type == RateLimitType.REQUEST_WEIGHT``).
     """
 
     REQUEST_WEIGHT = 'request_weight'
@@ -108,8 +108,10 @@ class RateLimitSource(StringEnum):
     - ``CLIENT`` -- only the local proactive estimate; no authoritative reading
       has landed for this window yet.
 
-    A ``str`` enum, so ``RateLimitSource.HEADER == 'header'`` is ``True``; the
-    same string appears as :attr:`RateLimitWindow.source` in a snapshot.
+    ``str(member)`` returns the raw wire value (e.g.
+    ``str(RateLimitSource.HEADER) == 'header'``); the same string appears as
+    :attr:`RateLimitWindow.source` in a snapshot.  Compare with the enum member
+    (e.g. ``w.source == RateLimitSource.HEADER``).
     """
 
     HEADER = 'header'
