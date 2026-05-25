@@ -3,7 +3,8 @@ import pytest
 from aioresponses import aioresponses
 
 from binance import SpotClient, Credentials, RateLimitException, IPBannedException
-from binance.core.rate_limit import parse_retry_after, depth_weight
+from binance.core.rate_limit import parse_retry_after
+from binance.spot.rate_limit import depth_weight
 from binance.core.rate_limit.types import RateLimitType, RateLimitSource
 
 

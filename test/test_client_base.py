@@ -13,6 +13,7 @@ from binance.core.common.constants import SecurityType
 from binance.core.transport.rest import _reject_float_params, encode_params, sort_params
 from binance.core.rate_limit import RateLimiter
 from binance.core.rate_limit.types import RateLimitType
+from binance.spot.rate_limit import DEFAULT_RULES as SPOT_DEFAULT_RULES
 
 # TODO:
 # global request_params
@@ -443,7 +444,7 @@ def test_default_rate_limiter_created_without_injection():
 @pytest.mark.asyncio
 async def test_shared_rate_limiter_shared_between_clients():
     """Two clients sharing a RateLimiter see each other's REST weight usage."""
-    shared = RateLimiter(enabled=False)
+    shared = RateLimiter(rules=SPOT_DEFAULT_RULES, enabled=False)
     client_a = SpotClient(rate_limiter=shared)
     client_b = SpotClient(rate_limiter=shared)
     assert client_a._rate_limiter is client_b._rate_limiter

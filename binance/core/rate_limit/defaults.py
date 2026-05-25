@@ -1,25 +1,18 @@
-"""Built-in defaults for the rate-limit core.
+"""Market-agnostic rate-limit helpers and per-connection rules.
 
-Holds the response-header / weight helpers (:func:`parse_retry_after`,
-:func:`depth_weight`) and the default
-:class:`~binance.core.rate_limit.types.RateLimitRule` set for every documented
-Binance pool: :data:`DEFAULT_RULES` (the shared IP/account pools, used by a new
-:class:`~binance.core.rate_limit.core.RateLimiter`) plus :data:`WS_MESSAGE_RULE` and
-:data:`WS_STREAMS_RULE` (instantiated per WebSocket connection). The numeric
-limits live in :mod:`binance.core.common.constants` and are reconciled at runtime
-against response headers and ``exchangeInfo``.
+Holds the response-header helper (:func:`parse_retry_after`) and the two
+per-connection :class:`~binance.core.rate_limit.types.RateLimitRule` instances
+(:data:`WS_MESSAGE_RULE` and :data:`WS_STREAMS_RULE`) that are instantiated
+per WebSocket connection and are identical across all markets.
+
+Market-specific default rule sets (e.g. Spot's :data:`DEFAULT_RULES`) live in
+their respective market packages (e.g. :mod:`binance.spot.rate_limit`).
 """
 
 from typing import Optional
 
 from binance.core.common.constants import (
     HEADER_RETRY_AFTER,
-    DEFAULT_REQUEST_WEIGHT_LIMIT, DEFAULT_REQUEST_WEIGHT_INTERVAL,
-    DEFAULT_WEIGHT_SAFETY_RATIO,
-    DEFAULT_RAW_REQUESTS_LIMIT, DEFAULT_RAW_REQUESTS_INTERVAL,
-    DEFAULT_ORDERS_10S_LIMIT, DEFAULT_ORDERS_10S_INTERVAL,
-    DEFAULT_ORDERS_1D_LIMIT, DEFAULT_ORDERS_1D_INTERVAL,
-    WS_CONNECTION_SAFETY, WS_CONNECTION_WINDOW,
     WS_MAX_MESSAGES_PER_SEC, WS_MESSAGE_WINDOW,
     WS_MAX_STREAMS_PER_CONNECTION,
 )
@@ -42,36 +35,6 @@ def parse_retry_after(response) -> Optional[int]:
     except (TypeError, ValueError):
         return None
 
-
-def depth_weight(limit: int) -> int:
-    """Verified weight tiers for GET /api/v3/depth."""
-    if limit <= 100:
-        return 5
-    if limit <= 500:
-        return 25
-    if limit <= 1000:
-        return 50
-    return 250
-
-
-DEFAULT_RULES = (
-    RateLimitRule(RateLimitScope.IP, RateLimitType.REQUEST_WEIGHT,
-                  DEFAULT_REQUEST_WEIGHT_INTERVAL, DEFAULT_REQUEST_WEIGHT_LIMIT,
-                  RateLimitKind.WEIGHT, EnforceMode.SLEEP,
-                  DEFAULT_WEIGHT_SAFETY_RATIO),
-    RateLimitRule(RateLimitScope.IP, RateLimitType.RAW_REQUESTS,
-                  DEFAULT_RAW_REQUESTS_INTERVAL, DEFAULT_RAW_REQUESTS_LIMIT,
-                  RateLimitKind.COUNT, EnforceMode.SLEEP),
-    RateLimitRule(RateLimitScope.ACCOUNT, RateLimitType.ORDERS,
-                  DEFAULT_ORDERS_10S_INTERVAL, DEFAULT_ORDERS_10S_LIMIT,
-                  RateLimitKind.COUNT, EnforceMode.RAISE),
-    RateLimitRule(RateLimitScope.ACCOUNT, RateLimitType.ORDERS,
-                  DEFAULT_ORDERS_1D_INTERVAL, DEFAULT_ORDERS_1D_LIMIT,
-                  RateLimitKind.COUNT, EnforceMode.RAISE),
-    RateLimitRule(RateLimitScope.IP, RateLimitType.WS_CONNECTIONS,
-                  WS_CONNECTION_WINDOW, WS_CONNECTION_SAFETY,
-                  RateLimitKind.COUNT, EnforceMode.SLEEP),
-)
 
 WS_MESSAGE_RULE = RateLimitRule(
     RateLimitScope.CONNECTION, RateLimitType.WS_MESSAGES,

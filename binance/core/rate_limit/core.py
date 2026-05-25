@@ -18,7 +18,7 @@ from binance.core.rate_limit.types import RateLimitType, RateLimitRule, RateLimi
 from binance.core.rate_limit.bucket import RateLimitBucket
 from binance.core.rate_limit.snapshot import RateLimitWindow, RateLimitSnapshot
 from binance.core.rate_limit.defaults import (
-    DEFAULT_RULES, WS_MESSAGE_RULE, WS_STREAMS_RULE
+    WS_MESSAGE_RULE, WS_STREAMS_RULE
 )
 
 
@@ -44,7 +44,7 @@ class RateLimiter:
     def __init__(
         self,
         *,
-        rules: Iterable[RateLimitRule] = DEFAULT_RULES,
+        rules: Iterable[RateLimitRule] = (),
         enabled: bool = True
     ) -> None:
         self._enabled = enabled

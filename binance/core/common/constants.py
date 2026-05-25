@@ -336,27 +336,16 @@ WS_API_TIME_UNIT_QUERY = 'timeUnit'
 WS_API_TIME_UNIT_MICROSECOND = 'MICROSECOND'
 WS_API_TIME_UNIT_MILLISECOND = 'MILLISECOND'
 
-# Rate limits — verified 2026-05-23 against Binance Spot API docs
+# Rate limits — shared across all markets
 # ==================================================
 
-# REST (rest-api.md LIMITS, faqs/rate_limits.md)
+# REST headers (rest-api.md LIMITS, faqs/rate_limits.md)
 HEADER_USED_WEIGHT_PREFIX = 'x-mbx-used-weight-'   # e.g. x-mbx-used-weight-1m
 HEADER_ORDER_COUNT_PREFIX = 'x-mbx-order-count-'   # e.g. x-mbx-order-count-1m
 HEADER_RETRY_AFTER = 'Retry-After'
 
 HTTP_TOO_MANY_REQUESTS = 429
 HTTP_IP_BANNED = 418
-
-DEFAULT_REQUEST_WEIGHT_LIMIT = 6000      # weight / interval / IP (since 2023-08-25)
-DEFAULT_REQUEST_WEIGHT_INTERVAL = 60.0   # seconds
-DEFAULT_WEIGHT_SAFETY_RATIO = 0.9        # only use 90% of the budget client-side
-
-DEFAULT_RAW_REQUESTS_LIMIT = 300000
-DEFAULT_RAW_REQUESTS_INTERVAL = 300.0    # 5 minutes
-DEFAULT_ORDERS_10S_LIMIT = 100
-DEFAULT_ORDERS_10S_INTERVAL = 10.0
-DEFAULT_ORDERS_1D_LIMIT = 200000
-DEFAULT_ORDERS_1D_INTERVAL = 86400.0
 
 # WebSocket streams (web-socket-streams.md)
 WS_MAX_CONNECTIONS = 300

@@ -9,6 +9,12 @@ from binance.core.rate_limit.types import (
 from binance.core.common.exceptions import (
     RateLimitReachedException, TooManyStreamsException
 )
+from binance.spot.rate_limit import DEFAULT_RULES as SPOT_DEFAULT_RULES
+
+
+def _spot_limiter(**kwargs) -> RateLimiter:
+    """Create a RateLimiter seeded with Spot's default rules (for core-engine tests)."""
+    return RateLimiter(rules=SPOT_DEFAULT_RULES, **kwargs)
 
 
 def _windows_by(snapshot, type_: RateLimitType):
@@ -17,7 +23,7 @@ def _windows_by(snapshot, type_: RateLimitType):
 
 @pytest.mark.asyncio
 async def test_acquire_rest_consumes_weight_raw_orders():
-    rl = RateLimiter()
+    rl = _spot_limiter()
     await rl.acquire_rest(weight=10, is_order=False)
     snap = rl.snapshot()
     assert _windows_by(snap, RateLimitType.REQUEST_WEIGHT)[0].used == 10
@@ -33,14 +39,14 @@ async def test_acquire_rest_consumes_weight_raw_orders():
 async def test_acquire_request_is_canonical_and_acquire_rest_aliases_it():
     # acquire_request is the canonical gate; acquire_rest must delegate to it
     # with identical effect (so REST callers keep working unchanged).
-    rl = RateLimiter()
+    rl = _spot_limiter()
     await rl.acquire_request(weight=7, is_order=True)
     snap = rl.snapshot()
     assert _windows_by(snap, RateLimitType.REQUEST_WEIGHT)[0].used == 7
     assert _windows_by(snap, RateLimitType.RAW_REQUESTS)[0].used == 1
     assert all(w.used == 1 for w in _windows_by(snap, RateLimitType.ORDERS))
 
-    rl2 = RateLimiter()
+    rl2 = _spot_limiter()
     await rl2.acquire_rest(weight=7, is_order=True)
     snap2 = rl2.snapshot()
     assert _windows_by(snap2, RateLimitType.REQUEST_WEIGHT)[0].used == 7
@@ -49,7 +55,7 @@ async def test_acquire_request_is_canonical_and_acquire_rest_aliases_it():
 
 
 def test_sync_from_ws_rate_limits_reconciles_matching_buckets():
-    rl = RateLimiter()
+    rl = _spot_limiter()
     rl.sync_from_ws_rate_limits([
         # weight pool (MINUTE x1 -> 60s -> the request_weight bucket)
         {'rateLimitType': 'REQUEST_WEIGHT', 'interval': 'MINUTE',
@@ -71,7 +77,7 @@ def test_sync_from_ws_rate_limits_reconciles_matching_buckets():
 
 
 def test_sync_from_ws_rate_limits_tolerates_garbage_and_none():
-    rl = RateLimiter()
+    rl = _spot_limiter()
     rl.sync_from_ws_rate_limits(None)               # None -> no-op
     rl.sync_from_ws_rate_limits([
         'not-a-dict',                               # non-dict entry skipped
@@ -94,7 +100,7 @@ def test_sync_from_ws_rate_limits_tolerates_garbage_and_none():
 
 @pytest.mark.asyncio
 async def test_disabled_records_but_never_blocks_or_raises():
-    rl = RateLimiter(enabled=False)
+    rl = _spot_limiter(enabled=False)
     for _ in range(5):
         await rl.acquire_rest(weight=1, is_order=True)
     assert all(w.used == 5 for w in _windows_by(rl.snapshot(), RateLimitType.ORDERS))
@@ -118,7 +124,7 @@ async def test_orders_raise_when_enabled_and_over_limit():
 
 
 def test_sync_from_headers_sets_authoritative():
-    rl = RateLimiter()
+    rl = _spot_limiter()
     rl.sync_from_headers({'1m': 5000}, {'10s': 50})
     snap = rl.snapshot()
     weight = _windows_by(snap, RateLimitType.REQUEST_WEIGHT)[0]
@@ -130,7 +136,7 @@ def test_sync_from_headers_sets_authoritative():
 
 
 def test_configure_from_exchange_info_sets_limits_and_skips_unknown():
-    rl = RateLimiter()
+    rl = _spot_limiter()
     rl.configure_from_exchange_info([
         {'rateLimitType': 'REQUEST_WEIGHT', 'interval': 'MINUTE', 'intervalNum': 1, 'limit': 1200},
         {'rateLimitType': 'ORDERS', 'interval': 'SECOND', 'intervalNum': 10, 'limit': 50},
@@ -147,7 +153,7 @@ def test_configure_from_exchange_info_sets_limits_and_skips_unknown():
 
 @pytest.mark.asyncio
 async def test_acquire_connection_and_per_connection_message():
-    rl = RateLimiter()
+    rl = _spot_limiter()
     await rl.acquire_connection()
     assert _windows_by(rl.snapshot(), RateLimitType.WS_CONNECTIONS)[0].used == 1
     # auto-registers an unknown connection on first acquire_message
@@ -163,7 +169,7 @@ async def test_acquire_connection_and_per_connection_message():
 async def test_acquire_message_throttles_at_per_connection_limit():
     # The per-connection ws-messages bucket (5/1s, SLEEP) must actually block
     # the message past its budget, not just account it.
-    rl = RateLimiter()
+    rl = _spot_limiter()
     rl.register_connection('c1')
     limit = _windows_by(rl.snapshot(), RateLimitType.WS_MESSAGES)[0].limit
     start = time.monotonic()
@@ -178,14 +184,14 @@ async def test_acquire_message_throttles_at_per_connection_limit():
 
 @pytest.mark.asyncio
 async def test_disabled_message_records_only():
-    rl = RateLimiter(enabled=False)
+    rl = _spot_limiter(enabled=False)
     rl.register_connection('c1')
     await rl.acquire_message('c1')
     assert any(w.used == 1 for w in _windows_by(rl.snapshot(), RateLimitType.WS_MESSAGES))
 
 
 def test_reserve_and_release_streams():
-    rl = RateLimiter()
+    rl = _spot_limiter()
     rl.reserve_streams('c1', 1024)
     assert _windows_by(rl.snapshot(), RateLimitType.WS_STREAMS)[0].used == 1024
     with pytest.raises(TooManyStreamsException):
@@ -196,7 +202,7 @@ def test_reserve_and_release_streams():
 
 
 def test_note_retry_after_and_throttled():
-    rl = RateLimiter()
+    rl = _spot_limiter()
     snap = rl.snapshot()
     assert snap.retry_after is None and snap.throttled is False
     rl.note_retry_after(120, 429)
@@ -208,14 +214,14 @@ def test_note_retry_after_and_throttled():
 
 
 def test_retry_after_expires():
-    rl = RateLimiter()
+    rl = _spot_limiter()
     rl._retry_after_until = time.time() - 1   # already elapsed
     snap = rl.snapshot()
     assert snap.retry_after is None and snap.throttled is False
 
 
 def test_snapshot_window_fields_and_max_utilization():
-    rl = RateLimiter()
+    rl = _spot_limiter()
     rl.sync_from_headers({'1m': 3000}, {})   # 50% of 6000
     snap = rl.snapshot()
     weight = _windows_by(snap, RateLimitType.REQUEST_WEIGHT)[0]
@@ -237,7 +243,7 @@ async def test_acquire_request_waits_out_retry_after_ban():
     Monkey-patches _retry_after so a short (0.1s) measured wait is used instead
     of the integer-rounded real window, keeping the test fast.
     """
-    rl = RateLimiter()
+    rl = _spot_limiter()
     deadline = time.time() + 0.1
     original = rl._retry_after
 
@@ -263,7 +269,7 @@ async def test_acquire_request_waits_out_retry_after_ban():
 @pytest.mark.asyncio
 async def test_acquire_connection_waits_out_retry_after_ban():
     """After a 429 ban, acquire_connection blocks until the ban elapses (F-74)."""
-    rl = RateLimiter()
+    rl = _spot_limiter()
     deadline = time.time() + 0.1
 
     def _fake_retry_after():
@@ -285,7 +291,7 @@ async def test_acquire_connection_waits_out_retry_after_ban():
 @pytest.mark.asyncio
 async def test_acquire_message_waits_out_retry_after_ban():
     """After a 429 ban, acquire_message blocks until the ban elapses (F-74)."""
-    rl = RateLimiter()
+    rl = _spot_limiter()
     deadline = time.time() + 0.1
     rl.register_connection('c1')
 
@@ -308,7 +314,7 @@ async def test_acquire_message_waits_out_retry_after_ban():
 @pytest.mark.asyncio
 async def test_disabled_limiter_does_not_block_on_retry_after():
     """A disabled limiter must NOT block on retry-after (guard-disabled path, F-74)."""
-    rl = RateLimiter(enabled=False)
+    rl = _spot_limiter(enabled=False)
     # A large ban; _await_retry_after must short-circuit when disabled.
     def _always_ban():
         return 60  # always returns 60s remaining
@@ -328,7 +334,7 @@ async def test_disabled_limiter_does_not_block_on_retry_after():
 @pytest.mark.asyncio
 async def test_no_ban_acquire_request_returns_immediately():
     """Without a ban, acquire_request returns without delay (F-74 no-ban path)."""
-    rl = RateLimiter()
+    rl = _spot_limiter()
     # No ban: _retry_after returns None immediately.
     start = time.monotonic()
     await rl.acquire_request(weight=1, is_order=False)

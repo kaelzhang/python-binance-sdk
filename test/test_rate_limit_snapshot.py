@@ -1,6 +1,7 @@
 from binance.core.rate_limit.snapshot import RateLimitWindow, RateLimitSnapshot
 from binance.core.rate_limit import RateLimitScope, RateLimitType, RateLimitSource
 from binance.core.rate_limit.core import RateLimiter
+from binance.spot.rate_limit import DEFAULT_RULES as SPOT_DEFAULT_RULES
 
 
 def _w(util):
@@ -25,7 +26,7 @@ def test_max_utilization_empty():
 
 def test_window_fields_are_enum_instances():
     """Snapshot windows must carry enum types, not raw strings."""
-    limiter = RateLimiter()
+    limiter = RateLimiter(rules=SPOT_DEFAULT_RULES)
     snap = limiter.snapshot()
     assert len(snap.windows) > 0
     w = snap.windows[0]

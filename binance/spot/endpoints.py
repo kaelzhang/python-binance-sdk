@@ -5,7 +5,7 @@ from typing import (
 
 from binance.core.common.constants import SecurityType
 from binance.core.getters import define_getter as define_ws_getter
-from binance.core.rate_limit import depth_weight
+from binance.spot.rate_limit import depth_weight
 
 # WS-API trading endpoints ref:
 # https://github.com/binance/binance-spot-api-docs/blob/master/web-socket-api.md
