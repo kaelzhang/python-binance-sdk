@@ -89,3 +89,11 @@ from binance.futures.um.streams import (
     MarkPriceHandlerBase,
     ForceOrderHandlerBase,
 )
+
+from binance.futures.enums import (
+    PositionSide,
+    FuturesOrderType,
+    WorkingType,
+    MarginType,
+    FuturesTimeInForce,
+)
