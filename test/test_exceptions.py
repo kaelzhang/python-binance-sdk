@@ -140,12 +140,16 @@ def test_too_many_streams_and_stream_rate_limit_exceptions():
 
 def test_rate_limit_reached_exception_message():
     from binance.common.exceptions import RateLimitReachedException
-    exc = RateLimitReachedException('account', 'orders', '10s', 7)
+    from binance.rate_limit.types import RateLimitScope, RateLimitType
+    exc = RateLimitReachedException(RateLimitScope.ACCOUNT, RateLimitType.ORDERS, '10s', 7)
     assert exc.scope == 'account'
     assert exc.limit_type == 'orders'
     assert exc.interval == '10s'
     assert exc.retry_after == 7
     assert '10s' in str(exc) and 'orders' in str(exc)
+    assert isinstance(exc.scope, RateLimitScope)
+    assert isinstance(exc.limit_type, RateLimitType)
+    assert 'account' in str(exc) and 'orders' in str(exc)
 
 
 def test_status_exception_redacts_signature_and_api_key():

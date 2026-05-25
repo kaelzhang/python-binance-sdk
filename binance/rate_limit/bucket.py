@@ -134,8 +134,8 @@ class RateLimitBucket:
         # fail fast instead of blocking forever.
         if cost > self.effective_limit:
             raise RateLimitReachedException(
-                self._rule.scope.value,
-                self._rule.type.value,
+                self._rule.scope,
+                self._rule.type,
                 self._rule.interval,
                 int(self._rule.interval_seconds))
         self._pending += 1
@@ -151,8 +151,8 @@ class RateLimitBucket:
                         return
                     if self._rule.enforce == EnforceMode.RAISE:
                         raise RateLimitReachedException(
-                            self._rule.scope.value,
-                            self._rule.type.value,
+                            self._rule.scope,
+                            self._rule.type,
                             self._rule.interval,
                             self._retry_after(now))
                     wait = self._blocked_wait(now)

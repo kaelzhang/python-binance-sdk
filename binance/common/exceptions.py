@@ -1,8 +1,13 @@
+from __future__ import annotations
+
 # coding=utf-8
 
 import json
 import re
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from binance.rate_limit.types import RateLimitScope, RateLimitType
 
 from aiohttp import ClientResponse
 
@@ -226,8 +231,8 @@ class RateLimitReachedException(Exception):
 
     def __init__(
         self,
-        scope: str,
-        limit_type: str,
+        scope: RateLimitScope,
+        limit_type: RateLimitType,
         interval: str,
         retry_after: int
     ) -> None:
