@@ -175,8 +175,12 @@ class SubscriptionManager:
                     'Failed to recover user stream after eventStreamTerminated: %s',
                     repr_exception(e)))
 
-        if self._handler_ctx is not None:
-            await self._handler_ctx.receive(msg)
+        # Invariant: a dispatchable message only arrives after a subscription
+        # opened a stream, and subscribing always creates the handler context
+        # first (serverShutdown returns above; it never reaches here). Assert
+        # the invariant for the type-checker rather than silently dropping.
+        assert self._handler_ctx is not None
+        await self._handler_ctx.receive(msg)
 
     def _get_handler_ctx(self) -> HandlerContext:
         if not self._handler_ctx:
