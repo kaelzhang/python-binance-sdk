@@ -9,7 +9,7 @@ from binance import (
     StatusException
 )
 from binance.common.constants import SecurityType
-from binance.client.base import _reject_float_params
+from binance.client.base import _reject_float_params, encode_params, sort_params
 from binance.rate_limit import RateLimiter
 
 # TODO:
@@ -486,3 +486,54 @@ async def test_put_and_delete_methods():
         m.delete(URL, payload={'deleted': True})
         res = await client.delete(URL)
     assert res == {'deleted': True}
+
+
+# ---------------------------------------------------------------------------
+# F-75 — bool params must serialize as JSON `true`/`false` (not Python True/False)
+# ---------------------------------------------------------------------------
+
+def test_encode_params_bool_true_is_lowercase():
+    """encode_params must produce `true` (not `True`) for Python True values."""
+    result = encode_params({'computeCommissionRates': True})
+    assert 'computeCommissionRates=true' in result
+    assert 'True' not in result
+
+
+def test_encode_params_bool_false_is_lowercase():
+    """encode_params must produce `false` (not `False`) for Python False values."""
+    result = encode_params({'computeCommissionRates': False})
+    assert 'computeCommissionRates=false' in result
+    assert 'False' not in result
+
+
+def test_sort_params_bool_serialization():
+    """sort_params must emit lowercase true/false for bool values."""
+    pairs = dict(sort_params({'flag': True, 'off': False, 'num': 1}))
+    assert pairs['flag'] == 'true'
+    assert pairs['off'] == 'false'
+    assert pairs['num'] == '1'
+
+
+def test_ws_api_query_bool_is_lowercase():
+    """_ws_api_query must emit lowercase true/false for bool params (F-75).
+
+    Correct bool serialization is critical for WS-API signed requests:
+    the signature is over `_ws_api_query` output; the wire JSON serializes
+    bool as JSON `true`/`false`. Both must agree.
+    """
+    client = Client(api_key='k', api_secret='s')
+    query = client._ws_api_query({'computeCommissionRates': True,
+                                   'symbol': 'BTCUSDT'})
+    assert 'computeCommissionRates=true' in query
+    assert 'True' not in query
+
+    query_false = client._ws_api_query({'computeCommissionRates': False})
+    assert 'computeCommissionRates=false' in query_false
+    assert 'False' not in query_false
+
+
+def test_int_and_str_params_unaffected_by_bool_fix():
+    """Non-bool types (int, str) are still stringified via str()."""
+    result = encode_params({'limit': 100, 'symbol': 'BTCUSDT'})
+    assert 'limit=100' in result
+    assert 'symbol=BTCUSDT' in result

@@ -70,7 +70,7 @@ def sort_params(data: dict) -> List[Tuple[str, str]]:
         if key == 'signature':
             has_signature = True
         else:
-            params.append((key, str(value)))
+            params.append((key, _param_str(value)))
 
     # sort parameters by key
     params.sort(key=itemgetter(0))
@@ -117,6 +117,18 @@ def _reject_float_params(data: Union[dict, list, tuple]) -> None:
             )
         if isinstance(value, (dict, list, tuple)):
             _reject_float_params(value)
+
+
+def _param_str(value) -> str:
+    """Serialize a param value for the wire/signature.
+
+    Booleans must become JSON-style lowercase ``true``/``false`` (Binance does
+    not accept Python's ``True``/``False``); everything else uses ``str``.
+    ``bool`` is checked before anything else because it is an ``int`` subclass.
+    """
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    return str(value)
 
 
 KEY_REQUEST_PARAMS = 'request_params'
@@ -304,7 +316,7 @@ class ClientBase:
             f'{key}={value}'
             for key, value in sorted(
                 (
-                    (k, str(v))
+                    (k, _param_str(v))
                     for k, v in params.items()
                     if k != 'signature'
                 ),
