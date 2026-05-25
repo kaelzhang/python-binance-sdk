@@ -1,11 +1,12 @@
 from dataclasses import dataclass
-from enum import Enum
 from typing import (
     Union,
     Callable,
     Awaitable,
     Optional
 )
+
+from binance.common.constants import StringEnum
 
 
 APIResponse = Union[dict, list]
@@ -23,7 +24,7 @@ EventCallback = Callable[..., Optional[Awaitable[None]]]
 WrappedEventCallback = Callable[..., Awaitable[None]]
 
 
-class StreamName(str, Enum):
+class StreamName(StringEnum):
     """Which physical WebSocket connection a :class:`StreamError` refers to.
 
     - ``DATA`` -- the market-data stream (``wss://stream.binance.com``).
@@ -37,7 +38,7 @@ class StreamName(str, Enum):
     USER = 'user'
 
 
-class StreamErrorPhase(str, Enum):
+class StreamErrorPhase(StringEnum):
     """Which post-reconnect recovery phase failed for a :class:`StreamError`.
 
     - ``RESUBSCRIBE`` -- replaying subscriptions after a reconnect failed.

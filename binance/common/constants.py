@@ -9,20 +9,21 @@ from aioretry import (
 KLINE_TYPE_PREFIX = 'kline_'
 
 
-class Enum(_Enum):
-    """Base enum class that casts to its string value when converted to `str`.
+class StringEnum(str, _Enum):
+    """Base enum class for string-valued enums.
 
-    All project enums extend this class so that an enum member can be used
-    directly in string contexts (e.g. query parameters, JSON bodies) without
-    explicit `.value` access.  The string representation of any member is
-    its raw value, e.g. `str(OrderSide.BUY) == 'BUY'`.
+    Members are ``str`` instances, so ``Member == 'value'`` is ``True`` and
+    ``isinstance(member, str)`` holds.  ``str(member)`` returns the raw value
+    (e.g. ``'BUY'``) rather than the default ``'Class.MEMBER'`` form, making
+    members safe to pass directly to string contexts (query parameters, JSON
+    bodies, log messages) without explicit ``.value`` access.
     """
 
     def __str__(self) -> str:
         return str(self.value)
 
 
-class SubType(Enum):
+class SubType(StringEnum):
     """WebSocket stream subscription types supported by the Binance SDK.
 
     Each member is a `str` enum so it equals its string value, e.g.
@@ -158,14 +159,14 @@ ATOM = {}
 # ==================================================
 
 
-class SecurityType(Enum):
+class SecurityType(_Enum):
     """REST endpoint authentication requirements.
 
     Each member is a `(need_api_key, need_signed)` tuple that the request
-    builder inspects to decide which credentials to attach.  Because this
-    class inherits from `Enum` (which returns `str(self.value)`), the string
-    representation is the tuple's repr, not typically used in wire messages
-    directly.
+    builder inspects to decide which credentials to attach.  Because the values
+    are tuples (not strings), this class uses the plain stdlib ``_Enum`` base
+    rather than ``StringEnum``; the string representation is the tuple's repr,
+    not typically used in wire messages directly.
 
     Members:
         NONE: No credentials required — public market data endpoints.
@@ -192,7 +193,7 @@ class SecurityType(Enum):
     MARKET_DATA = (True, False)
 
 
-class RequestMethod(Enum):
+class RequestMethod(StringEnum):
     """HTTP verbs used when defining REST API endpoints.
 
     Each member is a `str` enum whose value is the lowercase method name as
@@ -211,7 +212,7 @@ class RequestMethod(Enum):
     DELETE = 'delete'
 
 
-class OrderSide(Enum):
+class OrderSide(StringEnum):
     """Direction of a Binance order.
 
     Each member is a `str` enum that equals its wire value, e.g.
@@ -226,7 +227,7 @@ class OrderSide(Enum):
     SELL = 'SELL'
 
 
-class OrderType(Enum):
+class OrderType(StringEnum):
     """Binance order execution type.
 
     Each member is a `str` enum that equals its wire value, e.g.
@@ -259,7 +260,7 @@ class OrderType(Enum):
     LIMIT_MAKER = 'LIMIT_MAKER'
 
 
-class OrderRespType(Enum):
+class OrderRespType(StringEnum):
     """Controls how much detail the Binance REST API returns after placing an order.
 
     Each member is a `str` enum that equals its wire value, e.g.
@@ -280,7 +281,7 @@ class OrderRespType(Enum):
     FULL = 'FULL'
 
 
-class TimeInForce(Enum):
+class TimeInForce(StringEnum):
     """Specifies how long a Binance limit order remains active before it is cancelled.
 
     Each member is a `str` enum that equals its wire value, e.g.

@@ -546,3 +546,27 @@ async def test_send_raises_on_close_while_awaiting():
 
     with pytest.raises(StreamDisconnectedException):
         await asyncio.wait_for(send_task, timeout=2.0)
+
+
+# --- StringEnum unification (F-68) ----------------------------------------
+
+def test_stringenum_str_and_equality_consistent():
+    """StringEnum members stringify to their value and compare equal to it."""
+    from binance.common.constants import SubType, OrderSide
+    from binance.rate_limit.types import RateLimitScope, RateLimitType, RateLimitSource
+    from binance.common.types import StreamName, StreamErrorPhase
+
+    # str(member) == value (no 'Class.MEMBER')
+    assert str(SubType.TRADE) == 'trade'
+    assert str(OrderSide.BUY) == 'BUY'
+    assert str(RateLimitScope.IP) == 'ip'
+    assert str(RateLimitType.REQUEST_WEIGHT) == 'request_weight'
+    assert str(RateLimitSource.HEADER) == 'header'
+    assert str(StreamName.DATA) == 'data'
+    assert str(StreamErrorPhase.LOGON) == 'logon'
+
+    # member == 'value' (str subclass) — matches the docstrings
+    assert SubType.TRADE == 'trade'
+    assert OrderSide.BUY == 'BUY'
+    assert RateLimitScope.IP == 'ip'
+    assert StreamName.DATA == 'data'

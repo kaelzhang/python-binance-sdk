@@ -7,10 +7,11 @@ data; the live counters and runtime behaviour live in
 """
 
 from dataclasses import dataclass
-from enum import Enum
+
+from binance.common.constants import StringEnum
 
 
-class RateLimitScope(str, Enum):
+class RateLimitScope(StringEnum):
     """Who a limit's budget is shared across.
 
     The scope decides which requests compete for the same allowance:
@@ -33,7 +34,7 @@ class RateLimitScope(str, Enum):
     CONNECTION = 'connection'
 
 
-class RateLimitType(str, Enum):
+class RateLimitType(StringEnum):
     """The specific Binance limit pool a rule or bucket represents.
 
     - ``REQUEST_WEIGHT`` -- the weighted REST budget (per IP, e.g. 6000/min);
@@ -61,7 +62,7 @@ class RateLimitType(str, Enum):
     WS_STREAMS = 'ws_streams'
 
 
-class RateLimitKind(str, Enum):
+class RateLimitKind(StringEnum):
     """How a bucket accounts usage over time.
 
     - ``WEIGHT`` -- a monotonic sliding window summing per-event *cost*
@@ -77,7 +78,7 @@ class RateLimitKind(str, Enum):
     CAP = 'cap'         # instantaneous current-count ceiling
 
 
-class EnforceMode(str, Enum):
+class EnforceMode(StringEnum):
     """What a bucket does when a request would exceed the effective limit.
 
     Usage is *always* accounted regardless of mode; the mode only decides the
@@ -98,7 +99,7 @@ class EnforceMode(str, Enum):
     TRACK = 'track'     # never block/raise; only account
 
 
-class RateLimitSource(str, Enum):
+class RateLimitSource(StringEnum):
     """Where a snapshot window's ``used`` figure came from.
 
     - ``HEADER`` -- reconciled from an authoritative Binance reading (a REST
