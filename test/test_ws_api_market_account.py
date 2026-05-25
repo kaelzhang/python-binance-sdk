@@ -29,6 +29,7 @@ from binance.apis.ws_api import (
     _per_symbol_ticker_weight,
     _execution_rules_weight,
 )
+from binance.rate_limit.types import RateLimitType
 
 from test.test_ws_api import WSAPIServer
 
@@ -50,12 +51,12 @@ def _make_client(server, signed: bool = False) -> Client:
 
 def _weight_used(client) -> int:
     snap = client.rate_limit_snapshot()
-    return [w for w in snap.windows if w.type == 'request_weight'][0].used
+    return [w for w in snap.windows if w.type == RateLimitType.REQUEST_WEIGHT][0].used
 
 
 def _orders_used(client) -> int:
     snap = client.rate_limit_snapshot()
-    orders = [w for w in snap.windows if w.type == 'orders']
+    orders = [w for w in snap.windows if w.type == RateLimitType.ORDERS]
     assert orders
     return orders[0].used
 

@@ -11,6 +11,7 @@ from binance import (
 from binance.common.constants import SecurityType
 from binance.client.base import _reject_float_params, encode_params, sort_params
 from binance.rate_limit import RateLimiter
+from binance.rate_limit.types import RateLimitType
 
 # TODO:
 # global request_params
@@ -173,7 +174,7 @@ async def test_rest_escape_hatch_exchange_info_configures_pool_caps():
         await client.get(_EXCHANGE_INFO_URL)
 
     snap = client.rate_limit_snapshot()
-    weight = [w for w in snap.windows if w.type == 'request_weight'][0]
+    weight = [w for w in snap.windows if w.type == RateLimitType.REQUEST_WEIGHT][0]
     # configured cap 12000 * 0.9 safety ratio = 10800 effective
     assert weight.limit == 10800
 
@@ -455,7 +456,7 @@ async def test_shared_rate_limiter_shared_between_clients():
     client_a._rate_limiter.sync_from_headers(
         client_a._used_weight, client_a._order_count)
     snap = shared.snapshot()
-    weight_windows = [w for w in snap.windows if w.type == 'request_weight']
+    weight_windows = [w for w in snap.windows if w.type == RateLimitType.REQUEST_WEIGHT]
     assert weight_windows[0].used == 5
 
 

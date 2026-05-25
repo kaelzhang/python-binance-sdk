@@ -28,6 +28,7 @@ from binance.common.exceptions import (
     StreamSubscribeException,
     StreamRateLimitException,
 )
+from binance.rate_limit.types import RateLimitType, RateLimitSource
 
 
 WS_API_PORT = 9085
@@ -167,7 +168,7 @@ async def test_ws_api_request_none_security_no_auth():
         # weight was accounted in the shared core
         snap = client.rate_limit_snapshot()
         assert [w for w in snap.windows
-                if w.type == 'request_weight'][0].used == 5
+                if w.type == RateLimitType.REQUEST_WEIGHT][0].used == 5
     finally:
         await client.close()
         await server.shutdown()
@@ -228,7 +229,7 @@ async def test_ws_api_request_trade_is_order_consumes_orders_pool():
             'order.place', {'symbol': 'BTCUSDT'},
             security=SecurityType.TRADE, weight=1, is_order=True)
         snap = client.rate_limit_snapshot()
-        assert all(w.used == 1 for w in snap.windows if w.type == 'orders')
+        assert all(w.used == 1 for w in snap.windows if w.type == RateLimitType.ORDERS)
     finally:
         await client.close()
         await server.shutdown()
@@ -352,9 +353,9 @@ async def test_ws_api_response_rate_limits_are_reconciled():
             security=SecurityType.USER_DATA, weight=20)
         # The authoritative server count overrides the local estimate.
         snap = client.rate_limit_snapshot()
-        weight = [w for w in snap.windows if w.type == 'request_weight'][0]
+        weight = [w for w in snap.windows if w.type == RateLimitType.REQUEST_WEIGHT][0]
         assert weight.used == 1234
-        assert weight.source == 'header'
+        assert weight.source == RateLimitSource.HEADER
     finally:
         await client.close()
         await server.shutdown()

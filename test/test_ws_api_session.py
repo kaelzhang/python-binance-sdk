@@ -9,6 +9,7 @@ clears the ``_ws_api_authenticated`` flag on the client.
 import pytest
 
 from binance import Client
+from binance.rate_limit.types import RateLimitType
 from test.test_ws_api import WSAPIServer
 
 
@@ -23,7 +24,7 @@ def _make_client(server) -> Client:
 
 def _weight_used(client) -> int:
     snap = client.rate_limit_snapshot()
-    return [w for w in snap.windows if w.type == 'request_weight'][0].used
+    return [w for w in snap.windows if w.type == RateLimitType.REQUEST_WEIGHT][0].used
 
 
 # ---------------------------------------------------------------------------

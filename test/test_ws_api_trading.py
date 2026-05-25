@@ -23,6 +23,7 @@ from binance.apis.ws_api import (
     _order_test_weight,
     _open_orders_status_weight,
 )
+from binance.rate_limit.types import RateLimitType
 
 from test.test_ws_api import WSAPIServer
 
@@ -44,12 +45,12 @@ def _make_client(server) -> Client:
 
 def _weight_used(client) -> int:
     snap = client.rate_limit_snapshot()
-    return [w for w in snap.windows if w.type == 'request_weight'][0].used
+    return [w for w in snap.windows if w.type == RateLimitType.REQUEST_WEIGHT][0].used
 
 
 def _orders_used(client) -> int:
     snap = client.rate_limit_snapshot()
-    orders = [w for w in snap.windows if w.type == 'orders']
+    orders = [w for w in snap.windows if w.type == RateLimitType.ORDERS]
     assert orders
     # both the 10s and 1d ORDERS buckets move together
     assert len({w.used for w in orders}) == 1

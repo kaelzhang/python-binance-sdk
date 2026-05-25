@@ -25,8 +25,8 @@ from binance.common.types import StreamError, StreamName, StreamErrorPhase
 def test_stream_error_fields():
     exc = RuntimeError('boom')
     err = StreamError(stream=StreamName.DATA, phase=StreamErrorPhase.RESUBSCRIBE, exception=exc, recovering=True)
-    assert err.stream == 'data'
-    assert err.phase == 'resubscribe'
+    assert err.stream == StreamName.DATA
+    assert err.phase == StreamErrorPhase.RESUBSCRIBE
     assert err.exception is exc
     assert err.recovering is True
     assert isinstance(err.stream, StreamName)
@@ -86,7 +86,7 @@ async def test_dispatch_stream_error_async_handler():
     err = StreamError(stream=StreamName.USER, phase=StreamErrorPhase.LOGON, exception=exc, recovering=True)
     await ctx.dispatch_stream_error(err)
     assert len(received) == 1
-    assert received[0].phase == 'logon'
+    assert received[0].phase == StreamErrorPhase.LOGON
 
 
 @pytest.mark.asyncio
@@ -117,8 +117,8 @@ async def test_dispatch_stream_error_multiple_handlers():
     err = StreamError(stream=StreamName.DATA, phase=StreamErrorPhase.RESUBSCRIBE,
                       exception=RuntimeError(), recovering=True)
     await ctx.dispatch_stream_error(err)
-    assert ('A', 'data') in results
-    assert ('B', 'resubscribe') in results
+    assert ('A', StreamName.DATA) in results
+    assert ('B', StreamErrorPhase.RESUBSCRIBE) in results
 
 
 # ---------------------------------------------------------------------------
@@ -163,8 +163,8 @@ async def test_resubscribe_data_failure_logs_and_dispatches(caplog):
         'Expected ERROR-level log about resubscribe failure'
     assert len(received_errors) == 1
     err = received_errors[0]
-    assert err.stream == 'data'
-    assert err.phase == 'resubscribe'
+    assert err.stream == StreamName.DATA
+    assert err.phase == StreamErrorPhase.RESUBSCRIBE
     assert isinstance(err.stream, StreamName)
     assert isinstance(err.phase, StreamErrorPhase)
     assert err.exception is boom
@@ -234,8 +234,8 @@ async def test_on_ws_api_connected_logon_failure_logs_and_dispatches(caplog):
         'Expected ERROR-level log about logon failure'
     assert len(received_errors) == 1
     err = received_errors[0]
-    assert err.stream == 'user'
-    assert err.phase == 'logon'
+    assert err.stream == StreamName.USER
+    assert err.phase == StreamErrorPhase.LOGON
     assert isinstance(err.stream, StreamName)
     assert isinstance(err.phase, StreamErrorPhase)
     assert err.exception is boom
@@ -304,8 +304,8 @@ async def test_resubscribe_user_failure_logs_and_dispatches(caplog):
         'Expected ERROR-level log about user resubscribe failure'
     assert len(received_errors) == 1
     err = received_errors[0]
-    assert err.stream == 'user'
-    assert err.phase == 'resubscribe'
+    assert err.stream == StreamName.USER
+    assert err.phase == StreamErrorPhase.RESUBSCRIBE
     assert isinstance(err.stream, StreamName)
     assert isinstance(err.phase, StreamErrorPhase)
     assert err.exception is boom

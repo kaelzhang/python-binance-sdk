@@ -23,6 +23,7 @@ from binance import (
 )
 from binance.common.exceptions import TooManyStreamsException
 from binance.common.utils import create_future
+from binance.rate_limit.types import RateLimitType
 
 
 @pytest.fixture
@@ -466,7 +467,7 @@ async def test_orderbook_handler_init_orderbook_after(client, monkeypatch):
 
 def _ws_streams_used(client):
     for w in client.rate_limit_snapshot().windows:
-        if w.type == 'ws_streams':
+        if w.type == RateLimitType.WS_STREAMS:
             return w.used
     return 0
 

@@ -142,8 +142,8 @@ def test_rate_limit_reached_exception_message():
     from binance.common.exceptions import RateLimitReachedException
     from binance.rate_limit.types import RateLimitScope, RateLimitType
     exc = RateLimitReachedException(RateLimitScope.ACCOUNT, RateLimitType.ORDERS, '10s', 7)
-    assert exc.scope == 'account'
-    assert exc.limit_type == 'orders'
+    assert exc.scope == RateLimitScope.ACCOUNT
+    assert exc.limit_type == RateLimitType.ORDERS
     assert exc.interval == '10s'
     assert exc.retry_after == 7
     assert '10s' in str(exc) and 'orders' in str(exc)

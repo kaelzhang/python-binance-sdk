@@ -4,6 +4,7 @@ from aioresponses import aioresponses
 
 from binance import Client, RateLimitException, IPBannedException
 from binance.rate_limit import parse_retry_after, depth_weight
+from binance.rate_limit.types import RateLimitType, RateLimitSource
 
 
 class _Resp:
@@ -93,9 +94,9 @@ async def test_rate_limit_snapshot_reflects_used_weight():
               payload={'lastUpdateId': 1, 'bids': [], 'asks': []})
         await client.get(_URL, symbol='BTCUSDT')
     snap = client.rate_limit_snapshot()
-    weight = [w for w in snap.windows if w.type == 'request_weight'][0]
+    weight = [w for w in snap.windows if w.type == RateLimitType.REQUEST_WEIGHT][0]
     assert weight.used == 4321
-    assert weight.source == 'header'
+    assert weight.source == RateLimitSource.HEADER
 
 
 @pytest.mark.asyncio
@@ -130,7 +131,7 @@ async def test_order_endpoint_consumes_orders_pool():
         await client.create_order(symbol='BTCUSDT', side='BUY', type='MARKET',
                                   quantity=1)
         snap = client.rate_limit_snapshot()
-        orders = [w for w in snap.windows if w.type == 'orders']
+        orders = [w for w in snap.windows if w.type == RateLimitType.ORDERS]
         assert orders and all(w.used == 1 for w in orders)  # proactively consumed
     finally:
         await client.close()
@@ -149,7 +150,7 @@ async def test_non_order_endpoint_does_not_consume_orders_pool():
         client = Client(ws_api_host=server.uri)
         await client.get_orderbook(symbol='BTCUSDT', limit=100)
         snap = client.rate_limit_snapshot()
-        orders = [w for w in snap.windows if w.type == 'orders']
+        orders = [w for w in snap.windows if w.type == RateLimitType.ORDERS]
         # A plain market-data request must never touch the ORDERS pool.
         assert orders and all(w.used == 0 for w in orders)
     finally:
@@ -176,7 +177,7 @@ async def test_exchange_info_autoconfigures_pool_limits():
         client = Client(ws_api_host=server.uri)
         await client.get_exchange_info()
         snap = client.rate_limit_snapshot()
-        weight = [w for w in snap.windows if w.type == 'request_weight'][0]
+        weight = [w for w in snap.windows if w.type == RateLimitType.REQUEST_WEIGHT][0]
         # configured cap 12000 * 0.9 safety ratio = 10800 effective
         assert weight.limit == 10800
     finally:

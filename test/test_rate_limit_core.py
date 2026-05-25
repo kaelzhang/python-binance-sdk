@@ -3,14 +3,15 @@ import pytest
 
 from binance.rate_limit.core import RateLimiter
 from binance.rate_limit.types import (
-    RateLimitRule, RateLimitScope, RateLimitType, RateLimitKind, EnforceMode
+    RateLimitRule, RateLimitScope, RateLimitType, RateLimitKind, EnforceMode,
+    RateLimitSource
 )
 from binance.common.exceptions import (
     RateLimitReachedException, TooManyStreamsException
 )
 
 
-def _windows_by(snapshot, type_):
+def _windows_by(snapshot, type_: RateLimitType):
     return [w for w in snapshot.windows if w.type == type_]
 
 
@@ -19,13 +20,13 @@ async def test_acquire_rest_consumes_weight_raw_orders():
     rl = RateLimiter()
     await rl.acquire_rest(weight=10, is_order=False)
     snap = rl.snapshot()
-    assert _windows_by(snap, 'request_weight')[0].used == 10
-    assert _windows_by(snap, 'raw_requests')[0].used == 1
-    assert all(w.used == 0 for w in _windows_by(snap, 'orders'))
+    assert _windows_by(snap, RateLimitType.REQUEST_WEIGHT)[0].used == 10
+    assert _windows_by(snap, RateLimitType.RAW_REQUESTS)[0].used == 1
+    assert all(w.used == 0 for w in _windows_by(snap, RateLimitType.ORDERS))
     await rl.acquire_rest(weight=5, is_order=True)
     snap = rl.snapshot()
-    assert _windows_by(snap, 'request_weight')[0].used == 15
-    assert all(w.used == 1 for w in _windows_by(snap, 'orders'))   # both intervals
+    assert _windows_by(snap, RateLimitType.REQUEST_WEIGHT)[0].used == 15
+    assert all(w.used == 1 for w in _windows_by(snap, RateLimitType.ORDERS))   # both intervals
 
 
 @pytest.mark.asyncio
@@ -35,16 +36,16 @@ async def test_acquire_request_is_canonical_and_acquire_rest_aliases_it():
     rl = RateLimiter()
     await rl.acquire_request(weight=7, is_order=True)
     snap = rl.snapshot()
-    assert _windows_by(snap, 'request_weight')[0].used == 7
-    assert _windows_by(snap, 'raw_requests')[0].used == 1
-    assert all(w.used == 1 for w in _windows_by(snap, 'orders'))
+    assert _windows_by(snap, RateLimitType.REQUEST_WEIGHT)[0].used == 7
+    assert _windows_by(snap, RateLimitType.RAW_REQUESTS)[0].used == 1
+    assert all(w.used == 1 for w in _windows_by(snap, RateLimitType.ORDERS))
 
     rl2 = RateLimiter()
     await rl2.acquire_rest(weight=7, is_order=True)
     snap2 = rl2.snapshot()
-    assert _windows_by(snap2, 'request_weight')[0].used == 7
-    assert _windows_by(snap2, 'raw_requests')[0].used == 1
-    assert all(w.used == 1 for w in _windows_by(snap2, 'orders'))
+    assert _windows_by(snap2, RateLimitType.REQUEST_WEIGHT)[0].used == 7
+    assert _windows_by(snap2, RateLimitType.RAW_REQUESTS)[0].used == 1
+    assert all(w.used == 1 for w in _windows_by(snap2, RateLimitType.ORDERS))
 
 
 def test_sync_from_ws_rate_limits_reconciles_matching_buckets():
@@ -61,12 +62,12 @@ def test_sync_from_ws_rate_limits_reconciles_matching_buckets():
          'intervalNum': 5, 'limit': 300000, 'count': 99},
     ])
     snap = rl.snapshot()
-    weight = _windows_by(snap, 'request_weight')[0]
-    assert weight.used == 4321 and weight.source == 'header'
-    orders10 = [w for w in _windows_by(snap, 'orders') if w.interval == '10s'][0]
-    assert orders10.used == 7 and orders10.source == 'header'
-    raw = _windows_by(snap, 'raw_requests')[0]
-    assert raw.used == 99 and raw.source == 'header'
+    weight = _windows_by(snap, RateLimitType.REQUEST_WEIGHT)[0]
+    assert weight.used == 4321 and weight.source == RateLimitSource.HEADER
+    orders10 = [w for w in _windows_by(snap, RateLimitType.ORDERS) if w.interval == '10s'][0]
+    assert orders10.used == 7 and orders10.source == RateLimitSource.HEADER
+    raw = _windows_by(snap, RateLimitType.RAW_REQUESTS)[0]
+    assert raw.used == 99 and raw.source == RateLimitSource.HEADER
 
 
 def test_sync_from_ws_rate_limits_tolerates_garbage_and_none():
@@ -87,8 +88,8 @@ def test_sync_from_ws_rate_limits_tolerates_garbage_and_none():
     ])
     # nothing became authoritative
     snap = rl.snapshot()
-    assert _windows_by(snap, 'request_weight')[0].source == 'client'
-    assert all(w.source == 'client' for w in _windows_by(snap, 'orders'))
+    assert _windows_by(snap, RateLimitType.REQUEST_WEIGHT)[0].source == RateLimitSource.CLIENT
+    assert all(w.source == RateLimitSource.CLIENT for w in _windows_by(snap, RateLimitType.ORDERS))
 
 
 @pytest.mark.asyncio
@@ -96,7 +97,7 @@ async def test_disabled_records_but_never_blocks_or_raises():
     rl = RateLimiter(enabled=False)
     for _ in range(5):
         await rl.acquire_rest(weight=1, is_order=True)
-    assert all(w.used == 5 for w in _windows_by(rl.snapshot(), 'orders'))
+    assert all(w.used == 5 for w in _windows_by(rl.snapshot(), RateLimitType.ORDERS))
 
 
 @pytest.mark.asyncio
@@ -120,12 +121,12 @@ def test_sync_from_headers_sets_authoritative():
     rl = RateLimiter()
     rl.sync_from_headers({'1m': 5000}, {'10s': 50})
     snap = rl.snapshot()
-    weight = _windows_by(snap, 'request_weight')[0]
-    assert weight.used == 5000 and weight.source == 'header'
-    orders10 = [w for w in _windows_by(snap, 'orders') if w.interval == '10s'][0]
-    assert orders10.used == 50 and orders10.source == 'header'
+    weight = _windows_by(snap, RateLimitType.REQUEST_WEIGHT)[0]
+    assert weight.used == 5000 and weight.source == RateLimitSource.HEADER
+    orders10 = [w for w in _windows_by(snap, RateLimitType.ORDERS) if w.interval == '10s'][0]
+    assert orders10.used == 50 and orders10.source == RateLimitSource.HEADER
     # a pool with no header reads as client-sourced
-    assert _windows_by(snap, 'raw_requests')[0].source == 'client'
+    assert _windows_by(snap, RateLimitType.RAW_REQUESTS)[0].source == RateLimitSource.CLIENT
 
 
 def test_configure_from_exchange_info_sets_limits_and_skips_unknown():
@@ -139,8 +140,8 @@ def test_configure_from_exchange_info_sets_limits_and_skips_unknown():
     ])
     rl.configure_from_exchange_info(None)   # tolerates None
     snap = rl.snapshot()
-    assert _windows_by(snap, 'request_weight')[0].limit == int(1200 * 0.9)
-    orders10 = [w for w in _windows_by(snap, 'orders') if w.interval == '10s'][0]
+    assert _windows_by(snap, RateLimitType.REQUEST_WEIGHT)[0].limit == int(1200 * 0.9)
+    orders10 = [w for w in _windows_by(snap, RateLimitType.ORDERS) if w.interval == '10s'][0]
     assert orders10.limit == 50
 
 
@@ -148,14 +149,14 @@ def test_configure_from_exchange_info_sets_limits_and_skips_unknown():
 async def test_acquire_connection_and_per_connection_message():
     rl = RateLimiter()
     await rl.acquire_connection()
-    assert _windows_by(rl.snapshot(), 'ws_connections')[0].used == 1
+    assert _windows_by(rl.snapshot(), RateLimitType.WS_CONNECTIONS)[0].used == 1
     # auto-registers an unknown connection on first acquire_message
     await rl.acquire_message('c1')
     await rl.acquire_message('c1')
-    msgs = _windows_by(rl.snapshot(), 'ws_messages')
-    assert any(w.used == 2 and w.scope == 'connection' for w in msgs)
+    msgs = _windows_by(rl.snapshot(), RateLimitType.WS_MESSAGES)
+    assert any(w.used == 2 and w.scope == RateLimitScope.CONNECTION for w in msgs)
     rl.unregister_connection('c1')
-    assert not _windows_by(rl.snapshot(), 'ws_messages')
+    assert not _windows_by(rl.snapshot(), RateLimitType.WS_MESSAGES)
 
 
 @pytest.mark.asyncio
@@ -164,13 +165,13 @@ async def test_acquire_message_throttles_at_per_connection_limit():
     # the message past its budget, not just account it.
     rl = RateLimiter()
     rl.register_connection('c1')
-    limit = _windows_by(rl.snapshot(), 'ws_messages')[0].limit
+    limit = _windows_by(rl.snapshot(), RateLimitType.WS_MESSAGES)[0].limit
     start = time.monotonic()
     for _ in range(limit):
         await rl.acquire_message('c1')
     assert time.monotonic() - start < 0.3      # the first `limit` are immediate
     # all accounted while still inside the window (before it rolls)
-    assert _windows_by(rl.snapshot(), 'ws_messages')[0].used == limit
+    assert _windows_by(rl.snapshot(), RateLimitType.WS_MESSAGES)[0].used == limit
     await rl.acquire_message('c1')             # one past budget -> waits the window
     assert time.monotonic() - start >= 0.5
 
@@ -180,17 +181,17 @@ async def test_disabled_message_records_only():
     rl = RateLimiter(enabled=False)
     rl.register_connection('c1')
     await rl.acquire_message('c1')
-    assert any(w.used == 1 for w in _windows_by(rl.snapshot(), 'ws_messages'))
+    assert any(w.used == 1 for w in _windows_by(rl.snapshot(), RateLimitType.WS_MESSAGES))
 
 
 def test_reserve_and_release_streams():
     rl = RateLimiter()
     rl.reserve_streams('c1', 1024)
-    assert _windows_by(rl.snapshot(), 'ws_streams')[0].used == 1024
+    assert _windows_by(rl.snapshot(), RateLimitType.WS_STREAMS)[0].used == 1024
     with pytest.raises(TooManyStreamsException):
         rl.reserve_streams('c1', 1025)
     rl.release_streams('c1', 24)
-    assert _windows_by(rl.snapshot(), 'ws_streams')[0].used == 1000
+    assert _windows_by(rl.snapshot(), RateLimitType.WS_STREAMS)[0].used == 1000
     rl.release_streams('nope', 5)        # unknown connection -> no-op, no error
 
 
@@ -217,7 +218,7 @@ def test_snapshot_window_fields_and_max_utilization():
     rl = RateLimiter()
     rl.sync_from_headers({'1m': 3000}, {})   # 50% of 6000
     snap = rl.snapshot()
-    weight = _windows_by(snap, 'request_weight')[0]
+    weight = _windows_by(snap, RateLimitType.REQUEST_WEIGHT)[0]
     assert weight.limit == int(6000 * 0.9)
     assert weight.remaining == weight.limit - weight.used
     assert 0.0 <= weight.utilization <= 1.0

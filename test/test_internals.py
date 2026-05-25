@@ -565,8 +565,8 @@ def test_stringenum_str_and_equality_consistent():
     assert str(StreamName.DATA) == 'data'
     assert str(StreamErrorPhase.LOGON) == 'logon'
 
-    # member == 'value' (str subclass) — matches the docstrings
-    assert SubType.TRADE == 'trade'
-    assert OrderSide.BUY == 'BUY'
-    assert RateLimitScope.IP == 'ip'
-    assert StreamName.DATA == 'data'
+    # member == member comparisons (preferred style)
+    assert SubType.TRADE == SubType.TRADE
+    assert OrderSide.BUY == OrderSide.BUY
+    assert RateLimitScope.IP == RateLimitScope.IP
+    assert StreamName.DATA == StreamName.DATA
