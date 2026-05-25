@@ -98,6 +98,23 @@ class EnforceMode(str, Enum):
     TRACK = 'track'     # never block/raise; only account
 
 
+class RateLimitSource(str, Enum):
+    """Where a snapshot window's ``used`` figure came from.
+
+    - ``HEADER`` -- reconciled from an authoritative Binance reading (a REST
+      ``x-mbx-used-weight``/``x-mbx-order-count`` header, or a WS-API response
+      ``rateLimits`` array); trustworthy.
+    - ``CLIENT`` -- only the local proactive estimate; no authoritative reading
+      has landed for this window yet.
+
+    A ``str`` enum, so ``RateLimitSource.HEADER == 'header'`` is ``True``; the
+    same string appears as :attr:`RateLimitWindow.source` in a snapshot.
+    """
+
+    HEADER = 'header'
+    CLIENT = 'client'
+
+
 def interval_label(seconds: float) -> str:
     """Internal: render a window length in seconds as a compact label
     (``60 -> '1m'``, ``86400 -> '1d'``); ``''`` when ``seconds <= 0``."""

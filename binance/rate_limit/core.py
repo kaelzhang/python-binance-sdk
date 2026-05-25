@@ -13,7 +13,7 @@ headers and ``exchangeInfo``, and exposes a read-only
 import time
 from typing import Dict, Iterable, List, Optional
 
-from binance.rate_limit.types import RateLimitType, RateLimitRule
+from binance.rate_limit.types import RateLimitType, RateLimitRule, RateLimitSource
 from binance.rate_limit.bucket import RateLimitBucket
 from binance.rate_limit.snapshot import RateLimitWindow, RateLimitSnapshot
 from binance.rate_limit.defaults import (
@@ -316,13 +316,13 @@ class RateLimiter:
         used = bucket.used
         limit = bucket.effective_limit
         return RateLimitWindow(
-            scope=bucket.rule.scope.value,
-            type=bucket.rule.type.value,
+            scope=bucket.rule.scope,
+            type=bucket.rule.type,
             interval=bucket.rule.interval,
             used=used,
             limit=limit,
             remaining=max(0, limit - used),
             utilization=used / limit,
             pending=bucket.pending,
-            source='header' if bucket.has_authoritative else 'client',
+            source=RateLimitSource.HEADER if bucket.has_authoritative else RateLimitSource.CLIENT,
         )

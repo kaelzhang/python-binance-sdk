@@ -10,6 +10,8 @@ frequently from a monitoring loop or a pre-trade risk gate.
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+from binance.rate_limit.types import RateLimitScope, RateLimitType, RateLimitSource
+
 
 @dataclass(frozen=True)
 class RateLimitWindow:
@@ -40,15 +42,15 @@ class RateLimitWindow:
             is only the local proactive estimate.
     """
 
-    scope: str
-    type: str
+    scope: RateLimitScope
+    type: RateLimitType
     interval: str
     used: int
     limit: int
     remaining: int
     utilization: float
     pending: int
-    source: str          # 'header' (authoritative) | 'client' (estimate)
+    source: RateLimitSource
 
 
 @dataclass(frozen=True)

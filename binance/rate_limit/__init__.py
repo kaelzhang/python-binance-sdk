@@ -1,6 +1,7 @@
 from binance.rate_limit.types import (
     RateLimitScope,
     RateLimitType,
+    RateLimitSource,
     RateLimitKind,
     EnforceMode,
     RateLimitRule,
@@ -15,7 +16,8 @@ from binance.rate_limit.defaults import (
 )
 
 __all__ = [
-    'RateLimitScope', 'RateLimitType', 'RateLimitKind', 'EnforceMode',
-    'RateLimitRule', 'RateLimitBucket', 'RateLimitWindow', 'RateLimitSnapshot',
-    'RateLimiter', 'parse_retry_after', 'depth_weight', 'DEFAULT_RULES',
+    'RateLimitScope', 'RateLimitType', 'RateLimitSource', 'RateLimitKind',
+    'EnforceMode', 'RateLimitRule', 'RateLimitBucket', 'RateLimitWindow',
+    'RateLimitSnapshot', 'RateLimiter', 'parse_retry_after', 'depth_weight',
+    'DEFAULT_RULES',
 ]
