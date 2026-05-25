@@ -31,6 +31,7 @@ from binance.futures.streams import (  # noqa: F401  (re-exported for convenienc
     MarkPriceProcessor as _MarkPriceProcessor,
     ForceOrderProcessor as _ForceOrderProcessor,
 )
+from binance.futures.user_processor import FuturesUserProcessor  # noqa: F401  (re-exported)
 
 
 # ---------------------------------------------------------------------------
@@ -130,4 +131,5 @@ class ForceOrderProcessor(_ForceOrderProcessor):
 PROCESSORS = [
     MarkPriceProcessor,
     ForceOrderProcessor,
+    FuturesUserProcessor,
 ]

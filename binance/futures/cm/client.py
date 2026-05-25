@@ -11,37 +11,51 @@ from binance.futures.cm.processors import (
     ExceptionProcessor,
     StreamErrorProcessor,
 )
+from binance.futures.user_stream import FuturesUserStreamMixin
 
 
-class CMFuturesClient(BaseClient, CMFuturesGetters):  # type: ignore[misc]  # diamond mixin: compatible at runtime
-    """Async Binance COIN-M (coin-margined) Futures market-data client.
+class CMFuturesClient(FuturesUserStreamMixin, BaseClient, CMFuturesGetters):  # type: ignore[misc]  # diamond mixin: compatible at runtime
+    """Async Binance COIN-M (coin-margined) Futures client.
 
     Binds the COIN-M Futures :class:`~binance.core.market.MarketSpec` (hosts,
     rate-limit rules, stream processors) onto the shared
     :class:`~binance.core.client_base.BaseClient` and mixes in
-    ``CMFuturesGetters``, the generated async REST methods for every COIN-M
-    Futures market-data endpoint -- open interest (current and historical),
-    funding rate history, funding info, and mark price / premium index.
-
-    This phase implements **read-only market-data only** (no order placement or
-    account endpoints). An optional :class:`~binance.core.auth.Credentials`
-    is accepted for symmetry with other clients but is not required for public
-    market-data access.
+    ``CMFuturesGetters``, the generated async methods for every COIN-M Futures
+    endpoint -- market-data, trading, account, and position management.
 
     Key COIN-M differences from USDⓈ-M:
     - REST host: ``https://dapi.binance.com`` (dapi, not fapi).
     - Stream host: ``wss://dstream.binance.com`` (dstream, not fstream).
+    - WS-API host: ``wss://ws-dapi.binance.com/ws-dapi/v1``.
     - ``get_open_interest_hist`` uses ``pair`` + ``contractType`` (not ``symbol``).
     - ``get_premium_index`` always returns a list (even for a single symbol).
     - Mark Price stream has no ``mark_price_avg`` (``ap``) field.
     - Force Order stream has a ``pair`` (``ps``) field in the nested order object.
+    - No ``multiAssetsMargin`` endpoint (USDⓈ-M only).
+    - ``get_position_risk`` is on ``/dapi/v1/positionRisk`` (not ``/fapi/v3/``).
+    - Rate limits: no 10-second ORDERS pool (only 1-minute ORDERS pool).
+    - User-data stream events arrive on ``wss://dstream.binance.com/ws/<listenKey>``.
 
-    Construct with an optional :class:`~binance.core.auth.Credentials`::
+    Construct with a :class:`~binance.core.auth.Credentials` for trading::
 
-        from binance import CMFuturesClient
+        from binance import CMFuturesClient, Credentials, SubType
 
-        client = CMFuturesClient()
+        client = CMFuturesClient(Credentials(api_key='...', api_secret='...'))
 
+        # Trading
+        order = await client.create_order(
+            symbol='BTCUSD_PERP', side='BUY', type='LIMIT',
+            timeInForce='GTC', quantity='1', price='30000')
+
+        # Account
+        balance = await client.get_balance()
+        positions = await client.get_position_risk(pair='BTCUSD')
+
+        # User-data stream
+        client.handler(on_account_update)
+        await client.subscribe(SubType.USER)
+
+        # Market-data (no credentials needed)
         oi = await client.get_open_interest(symbol='BTCUSD_PERP')
         fr = await client.get_funding_rate(symbol='BTCUSD_PERP', limit=10)
         oih = await client.get_open_interest_hist(
