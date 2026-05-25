@@ -3,6 +3,7 @@ Ref: https://developers.binance.com/docs/binance-spot-api-docs/web-socket-stream
 """
 
 import re
+from typing import ClassVar
 from stock_pandas import TimeFrame
 
 from binance.handlers.handlers import (
@@ -328,7 +329,7 @@ class WindowTickerProcessor(Processor):
 
 class AllMarketMiniTickersProcessor(Processor):
     """Processor for the all-market mini-ticker array stream (``!miniTicker@arr``)."""
-    HANDLER = AllMarketMiniTickersHandlerBase
+    HANDLER: ClassVar[type] = AllMarketMiniTickersHandlerBase
     SUB_TYPE = SubType.ALL_MARKET_MINI_TICKERS
     STREAM_TYPE_PREFIX = '!miniTicker@arr'
 

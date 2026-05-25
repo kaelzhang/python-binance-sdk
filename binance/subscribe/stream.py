@@ -1,10 +1,11 @@
 import json
 import asyncio
-from asyncio import Future
+from asyncio import Future, Task
 from typing import (
-    Optional,
+    Any,
     Dict,
-    Any
+    List,
+    Optional,
 )
 from logging import Logger
 
@@ -79,6 +80,9 @@ class Stream:
     """
 
     _socket: Optional[ClientConnection]
+    _open_future: Optional[Future[Any]]
+    _conn_task: Optional[Task[None]]
+    _connected_task: Optional[Task[None]]
     _message_futures: Dict[int, Future]
     _retry_policy: RetryPolicy
     _rate_limiter: RateLimiter
@@ -253,16 +257,18 @@ class Stream:
         self._open_future = create_future()
 
     async def _receive(self) -> None:
+        socket = self._socket
+        assert socket is not None  # _receive is only called from _connect after _set_socket
         try:
             msg = await asyncio.wait_for(
-                self._socket.recv(), timeout=self._timeout)
+                socket.recv(), timeout=self._timeout)
         except asyncio.TimeoutError:
             try:
                 # Apply rate limiting before sending ping
                 await self._rate_limiter.acquire_message(self._connection_id)
 
                 # Send ping and wait for pong with a shorter timeout
-                pong_waiter = await self._socket.ping()
+                pong_waiter = await socket.ping()
                 await asyncio.wait_for(pong_waiter, timeout=10.0)
                 self._logger.debug("WebSocket ping successful")
             except asyncio.TimeoutError:
@@ -414,7 +420,7 @@ class Stream:
         self._closing = True
         self._reject_pending(StreamDisconnectedException(self._uri))
 
-        tasks = [self._conn_task]
+        tasks: List[Any] = [self._conn_task]
 
         if self._socket:
             tasks.append(

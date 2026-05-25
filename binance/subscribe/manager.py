@@ -4,11 +4,14 @@ from typing import (
     Any,
     Awaitable,
     Callable,
+    Dict,
     List,
     Iterable,
     Set,
     Tuple,
-    Optional
+    Optional,
+    Union,
+    cast
 )
 from logging import Logger
 
@@ -16,6 +19,7 @@ from aioretry import RetryPolicy
 
 # Ed25519 is the only key type that supports WS-API `session.logon`.
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 
 from binance.common.constants import (
     DEFAULT_STREAM_CLOSE_CODE,
@@ -89,11 +93,14 @@ class SubscriptionManager:
     # request path that runs on the merged Client via these mixin attributes.
     _api_key: Optional[str]
     _api_secret: Optional[str]
-    _private_key: Optional[object]
+    _private_key: Optional[Union[Ed25519PrivateKey, RSAPrivateKey]]
     _time_offset: int
     _time_synced: bool
     _recv_window: Optional[int]
+    _handler_ctx: Optional[HandlerContext]
     sync_time: Callable[[], Awaitable]
+    # Cross-mixin method defined on ClientBase but used by SubscriptionManager
+    _ws_api_signature_params: Callable[..., dict]
 
     def start(self):
         """Starts receiving messages.
@@ -168,7 +175,8 @@ class SubscriptionManager:
                     'Failed to recover user stream after eventStreamTerminated: %s',
                     repr_exception(e)))
 
-        await self._handler_ctx.receive(msg)
+        if self._handler_ctx is not None:
+            await self._handler_ctx.receive(msg)
 
     def _get_handler_ctx(self) -> HandlerContext:
         if not self._handler_ctx:
@@ -298,6 +306,7 @@ class SubscriptionManager:
         # array that the on_response hook (_reconcile_ws_api_rate_limits) folds
         # into the shared core, so the +2 is reconciled immediately after logon
         # (once per connection).
+        assert self._user_stream is not None  # only called from on_connected which fires after stream is open
         await self._user_stream.send({
             'method': WS_API_METHOD_SESSION_LOGON,
             'params': params
@@ -461,10 +470,12 @@ class SubscriptionManager:
         subscribe: bool,
         subscriptions: Iterable[tuple]
     ) -> None:
-        params = await self._get_handler_ctx().subscribe_params(
+        raw_params = await self._get_handler_ctx().subscribe_params(
             subscribe,
             subscriptions
         )
+        # Market subscriptions always produce string stream names; cast is safe here
+        params: Tuple[str, ...] = cast(Tuple[str, ...], raw_params)
 
         if subscribe:
             projected = self._stream_names | set(params)
@@ -510,7 +521,7 @@ class SubscriptionManager:
                 else 'userDataStream.unsubscribe'
             )
 
-            req = {'method': method}
+            req: Dict[str, Any] = {'method': method}
 
             if param:
                 req['params'] = param

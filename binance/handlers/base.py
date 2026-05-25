@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import ClassVar, Dict, Iterable, List, Optional
 
 from stock_pandas import StockDataFrame
 
@@ -9,8 +9,8 @@ from binance.common.types import Payload
 class Handler:
     """Internal base class for stream message handlers."""
 
-    COLUMNS = None
-    COLUMNS_MAP = None
+    COLUMNS: ClassVar[Optional[Iterable[str]]] = None
+    COLUMNS_MAP: ClassVar[Optional[Dict[str, str]]] = None
 
     def _receive(
         self,

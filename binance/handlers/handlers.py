@@ -1,7 +1,7 @@
 import traceback
 from datetime import datetime
 import sys
-from typing import TextIO
+from typing import List, Optional, TextIO
 
 from binance.common.constants import (
     STREAM_TYPE_MAP,
@@ -262,7 +262,9 @@ class PartialOrderBookHandlerBase(Handler):
     COLUMNS_MAP = PARTIAL_ORDER_BOOK_COLUMNS_MAP
     COLUMNS = PARTIAL_ORDER_BOOK_COLUMNS
 
-    def _receive(self, payload: DictPayload):
+    def _receive(  # type: ignore[override]  # intentional narrowing: only dict payloads are valid for this handler
+        self, payload: DictPayload, index: Optional[List[int]] = None
+    ):
         bids = super()._receive([
             {'price': x[0], 'quantity': x[1]}
             for x in payload['bids']
@@ -313,7 +315,9 @@ class KlineHandlerBase(Handler):
     COLUMNS_MAP = KLINE_COLUMNS_MAP
     COLUMNS = KLINE_COLUMNS
 
-    def _receive(self, payload: DictPayload):
+    def _receive(  # type: ignore[override]  # intentional narrowing: only dict payloads are valid for kline
+        self, payload: DictPayload, index: Optional[List[int]] = None
+    ):
         """The payload of kline has unnecessary hierarchy,
         so just flatten it.
         """
@@ -321,7 +325,7 @@ class KlineHandlerBase(Handler):
         k = payload['k']
         k['E'] = payload['E']
 
-        return super()._receive(k)
+        return super()._receive(k, index)
 
 
 MINI_TICKER_COLUMNS_MAP = {

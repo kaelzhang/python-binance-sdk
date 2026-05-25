@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 from typing import (
+    Any,
     List,
     Iterable,
     Set,
@@ -48,7 +49,7 @@ class HandlerContext:
     _processor_cache: Dict[SubType, Processor]
 
     def __init__(self, client) -> None:
-        self._handler_table = {}
+        self._handler_table: Dict[str, Any] = {}
         self._all_processors = [Factory(client) for Factory in self.PROCESSORS]
         self._processors = set()
         self._processor_cache = {}
@@ -108,6 +109,7 @@ class HandlerContext:
         for subtype_param in subs:
             length = len(subtype_param)
             prefix = None
+            args_iter: Any  # product arity varies by branch
 
             # subtype without params
             # ('allMarketMiniTickers',)

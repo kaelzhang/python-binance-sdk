@@ -288,6 +288,7 @@ class ClientBase:
         key = self._private_key
         if key is not None:
             return self._sign_asymmetric(key, query_string)
+        assert self._api_secret is not None  # callers validate credentials before calling _sign
         m = hmac.new(
             self._api_secret.encode('utf-8'),
             query_string.encode('utf-8'),

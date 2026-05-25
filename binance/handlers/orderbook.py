@@ -1,7 +1,10 @@
 import asyncio
 from asyncio import Future
 from typing import (
+    Any,
+    Dict,
     Iterable,
+    List,
     Optional
 )
 
@@ -85,7 +88,7 @@ class OrderBook:
 
         self._last_update_id = 0
         # The queue to save messages that are not continuous
-        self._unsolved_queue = []
+        self._unsolved_queue: List[Dict[str, Any]] = []
         self._onchange_callbacks = None
         self.__updated_future = None
 

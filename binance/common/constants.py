@@ -153,7 +153,7 @@ KEY_PAYLOAD = 'data'
 KEY_PAYLOAD_TYPE = 'e'
 KEY_STREAM_TYPE = 'stream'
 
-ATOM = {}
+ATOM: dict = {}
 
 # APIs
 # ==================================================

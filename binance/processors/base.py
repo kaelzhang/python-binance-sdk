@@ -1,6 +1,8 @@
 import asyncio
 import inspect
 from typing import (
+    Any,
+    ClassVar,
     Optional,
     Set,
     Awaitable,
@@ -24,13 +26,13 @@ class Processor:
     """Internal base class for a single stream sub-type."""
 
     # The handler class
-    HANDLER: type
+    HANDLER: ClassVar[type]
 
-    # The payload['e'] of message
-    PAYLOAD_TYPE = ATOM
+    # The payload['e'] of message: ATOM sentinel, a str event type, or a tuple of strs
+    PAYLOAD_TYPE: ClassVar[Any] = ATOM
 
     # subtype used by client.subscribe
-    SUB_TYPE: Optional[SubType] = None
+    SUB_TYPE: ClassVar[Optional[SubType]] = None
 
     def __init__(
         self,
@@ -68,7 +70,7 @@ class Processor:
         self,
         subscribe: bool,
         t: SubType,
-        *args
+        *args: Any
     ) -> Union[str, dict]:
         """Build the wire-format subscribe param (default: ``<symbol>@<subtype>``)."""
         symbol = self._get_param_symbol(t, args)

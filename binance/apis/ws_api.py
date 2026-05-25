@@ -2147,4 +2147,4 @@ class WsApiGetters:
 
 
 for getter_setting in WS_APIS:
-    define_ws_getter(WsApiGetters, **getter_setting)
+    define_ws_getter(WsApiGetters, **getter_setting)  # type: ignore[arg-type]  # WS_APIS entries are always valid; mypy cannot narrow dict[str, object]

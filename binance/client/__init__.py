@@ -59,7 +59,7 @@ def _apply_time_unit(ws_api_host: str, time_unit) -> str:
     )
 
 
-class Client(
+class Client(  # type: ignore[misc]  # diamond mixin: _ws_api_request is a Callable hint in WsApiGetters and an actual method in SubscriptionManager; compatible at runtime
     ClientBase,
     WsApiGetters,
     SubscriptionManager

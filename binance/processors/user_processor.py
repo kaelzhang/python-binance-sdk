@@ -56,7 +56,7 @@ class UserProcessor(Processor):
 
         self._handlers = {}
 
-    async def subscribe_param(
+    async def subscribe_param(  # type: ignore[override]  # async override: returns coroutine; wrap_coroutine handles both sync and async
         self,
         subscribe: bool,
         t: SubType

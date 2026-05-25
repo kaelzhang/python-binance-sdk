@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from aioretry import RetryPolicy
 from stock_pandas import StockDataFrame
@@ -95,19 +95,20 @@ class OrderBookHandlerBase(Handler):
         self._limit = limit
         self._retry_policy = retry_policy
 
-        self._orderbooks = {}
+        self._orderbooks: Dict[str, OrderBook] = {}
 
-        self._uninit_orderbooks = []
+        self._uninit_orderbooks: List[OrderBook] = []
 
         # If the current class has no `receive` method,
         #   the raw payload will not be dispatched to self.receive
         self._has_receive = hasattr(self.__class__, METHOD_NAME_RECEIVE)
 
-    def _receive(
+    def _receive(  # type: ignore[override]  # intentional narrowing: only dict payloads are valid for order book
         self,
-        payload: DictPayload
-    ):
-        info = super()._receive(payload)
+        payload: DictPayload,
+        index: Optional[List[int]] = None
+    ) -> Any:
+        info = super()._receive(payload, index)
 
         bids = create_depth_df(payload[KEY_BIDS])
         asks = create_depth_df(payload[KEY_ASKS])

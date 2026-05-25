@@ -1,6 +1,7 @@
 import bisect
 from typing import (
     List,
+    SupportsIndex,
     Tuple,
     Iterable
 )
@@ -18,7 +19,7 @@ class SequencedList(List[Pair]):
         super().__init__(*args, **kwargs)
 
         # For performance, just hardcode the logic to get the key
-        self._key_list = [x[0] for x in self]
+        self._key_list: List[float] = [x[0] for x in self]
 
     # -------------------------------------------------
     # Override list methods
@@ -32,14 +33,14 @@ class SequencedList(List[Pair]):
 
     def pop(
         self,
-        index: int
+        index: SupportsIndex = -1
     ) -> Pair:
         self._key_list.pop(index)
         return super().pop(index)
 
     def insert(
         self,
-        index: int,
+        index: SupportsIndex,
         subject: Pair
     ) -> None:
         self._key_list.insert(index, subject[0])
@@ -112,7 +113,7 @@ class SequencedList(List[Pair]):
         for subject in l:
             self.add(subject)
 
-    def __setitem__(
+    def __setitem__(  # type: ignore[override]  # intentional element-type narrowing; slice assignment unsupported
         self,
         index: int,
         subject: Pair

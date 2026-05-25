@@ -106,10 +106,12 @@ class RateLimiter:
         for entry in rate_limits or []:
             if not isinstance(entry, dict):
                 continue
-            limit_type = _EXCHANGE_INFO_TYPE.get(entry.get('rateLimitType'))
+            entry_type = entry.get('rateLimitType')
+            limit_type = _EXCHANGE_INFO_TYPE.get(entry_type) if isinstance(entry_type, str) else None
             if limit_type is None:
                 continue
-            unit = _INTERVAL_SECONDS.get(entry.get('interval'))
+            entry_interval = entry.get('interval')
+            unit = _INTERVAL_SECONDS.get(entry_interval) if isinstance(entry_interval, str) else None
             if unit is None:
                 continue
             count = entry.get('count')
