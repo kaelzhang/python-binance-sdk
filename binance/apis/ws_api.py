@@ -1,10 +1,10 @@
 from typing import (
     Awaitable,
     Callable,
-    Union
 )
 
 from binance.core.common.constants import SecurityType
+from binance.core.getters import define_getter as define_ws_getter
 from binance.core.rate_limit import depth_weight
 
 # WS-API trading endpoints ref:
@@ -386,45 +386,6 @@ WS_APIS = [
         weight=6
     )
 ]
-
-
-def define_ws_getter(
-    Target,
-    name,
-    ws_method,
-    params=True,
-    *,
-    security_type,
-    weight: Union[int, Callable[[dict], int]],
-    is_order=False
-):
-    """Internal factory: build a concrete async WS-API closure and install it on ``Target``.
-
-    The generated coroutine forwards its keyword arguments straight to
-    :meth:`_ws_api_request` with the registered ``security``/``weight``/
-    ``is_order``. ``weight`` may be a static ``int`` or a callable
-    ``(kwargs) -> int`` resolved per call for params-dependent endpoints
-    (e.g. ``order.test``, ``openOrders.status``).
-    """
-    weight_is_dynamic = callable(weight)
-
-    def getter(self, **kwargs):
-        resolved_weight = weight(kwargs) if weight_is_dynamic else weight
-
-        return self._ws_api_request(
-            ws_method,
-            kwargs if params else None,
-            security=security_type,
-            weight=resolved_weight,
-            is_order=is_order
-        )
-
-    origin = getattr(Target, name)
-
-    # Migrate the docstring to the new getter.
-    getter.__doc__ = origin.__doc__
-
-    setattr(Target, name, getter)
 
 
 # Neither VSCode Python language server nor Jedi server could handle

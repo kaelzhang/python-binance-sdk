@@ -19,7 +19,7 @@ from binance.core.common.constants import (
     KEY_PAYLOAD,
     KEY_PAYLOAD_TYPE
 )
-from binance.handlers.base import Handler
+from binance.core.handlers.base import Handler
 
 
 class Processor:

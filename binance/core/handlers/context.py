@@ -10,13 +10,7 @@ from typing import (
     Union
 )
 
-from binance.processors import (
-    PROCESSORS,
-    ExceptionProcessor,
-    StreamErrorProcessor
-)
-
-from binance.processors.base import Processor
+from binance.core.processors.base import Processor
 
 from binance.core.common.constants import (
     SubType
@@ -35,9 +29,12 @@ from binance.core.common.utils import (
 
 
 class HandlerContext:
-    """Internal: routes incoming stream messages to handlers and builds subscribe params."""
+    """Internal: routes incoming stream messages to handlers and builds subscribe params.
 
-    PROCESSORS = PROCESSORS
+    The set of processors is supplied by the client's market (injected, not
+    hardcoded): the client class provides ``PROCESSORS`` (the subtype processor
+    classes), ``EXCEPTION_PROCESSOR`` and ``STREAM_ERROR_PROCESSOR``.
+    """
 
     # all supported processors
     _all_processors: List[Processor]
@@ -50,11 +47,11 @@ class HandlerContext:
 
     def __init__(self, client) -> None:
         self._handler_table: Dict[str, Any] = {}
-        self._all_processors = [Factory(client) for Factory in self.PROCESSORS]
+        self._all_processors = [Factory(client) for Factory in client.PROCESSORS]
         self._processors = set()
         self._processor_cache = {}
-        self._exception_processor = ExceptionProcessor(client)
-        self._stream_error_processor = StreamErrorProcessor(client)
+        self._exception_processor = client.EXCEPTION_PROCESSOR(client)
+        self._stream_error_processor = client.STREAM_ERROR_PROCESSOR(client)
 
     def set_handler(self, handler) -> bool:
         """Register a handler with the first processor that claims it; return False if none does."""

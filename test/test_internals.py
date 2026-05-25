@@ -428,7 +428,7 @@ async def test_user_stream_subscribe_unsubscribe_close_mocked(monkeypatch):
 
     # Patch the Stream class the manager builds so the real _get_ws_api_stream
     # body runs (no network) and send() returns instantly.
-    monkeypatch.setattr('binance.subscribe.manager.Stream', FakeUserStream)
+    monkeypatch.setattr('binance.core.transport.subscription.Stream', FakeUserStream)
 
     await client.subscribe(SubType.USER)
     await client.unsubscribe(SubType.USER)

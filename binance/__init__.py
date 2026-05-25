@@ -77,4 +77,4 @@ from binance.handlers.user_handlers import (
 )
 
 from binance.handlers.orderbook import OrderBook
-from binance.subscribe.stream import Stream
+from binance.core.transport.stream import Stream

@@ -16,7 +16,7 @@ from binance.core.common.utils import (
 
 from binance.core.common.types import DictPayload
 
-from .base import Handler
+from binance.core.handlers.base import Handler
 
 from .orderbook import (
     OrderBook,

@@ -45,11 +45,11 @@ from binance.core.common.utils import (
     format_msg,
     repr_exception
 )
-from binance.client.base import _reject_float_params
+from binance.core.transport.rest import _reject_float_params
 from binance.core.rate_limit import RateLimiter
 
 from .stream import Stream
-from .handler_context import HandlerContext
+from binance.core.handlers.context import HandlerContext
 
 # pylint: disable=no-member
 

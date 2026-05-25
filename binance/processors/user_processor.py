@@ -21,9 +21,9 @@ from binance.handlers.user_handlers import (
     EventStreamTerminatedHandlerBase
 )
 
-from binance.handlers.base import Handler
+from binance.core.handlers.base import Handler
 
-from .base import Processor
+from binance.core.processors.base import Processor
 
 
 class UserProcessor(Processor):

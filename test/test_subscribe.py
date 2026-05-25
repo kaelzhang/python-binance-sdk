@@ -65,7 +65,7 @@ def install_fake_stream(monkeypatch, depth_snapshot=None):
         async def close(self, code=4999):
             pass
 
-    monkeypatch.setattr('binance.subscribe.manager.Stream', FakeStream)
+    monkeypatch.setattr('binance.core.transport.subscription.Stream', FakeStream)
     return FakeStream
 
 

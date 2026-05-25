@@ -14,7 +14,7 @@ from binance.core.common.types import (
     # ListPayload
 )
 
-from .base import Handler
+from binance.core.handlers.base import Handler
 
 
 class StreamErrorHandlerBase(Handler):

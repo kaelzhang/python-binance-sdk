@@ -36,7 +36,7 @@ from binance.core.common.constants import (
 from binance.core.common.exceptions import InvalidSubTypeParamException
 from binance.core.common.utils import normalize_symbol
 
-from .base import Processor
+from binance.core.processors.base import Processor
 
 
 VALID_KLINE_INTERVALS = frozenset((
