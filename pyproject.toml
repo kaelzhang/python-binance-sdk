@@ -73,7 +73,8 @@ packages = [
   'binance.core.transport',
   'binance.spot',
   'binance.futures',
-  'binance.futures.um'
+  'binance.futures.um',
+  'binance.futures.cm'
 ]
 
 [tool.setuptools.dynamic]

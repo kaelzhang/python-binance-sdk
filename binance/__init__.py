@@ -9,6 +9,7 @@ from stock_pandas import TimeFrame
 
 from binance.spot import SpotClient
 from binance.futures.um import UMFuturesClient
+from binance.futures.cm import CMFuturesClient
 from binance.core.auth import Credentials
 from binance.core.common.constants import (
     SubType,
