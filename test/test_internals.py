@@ -550,13 +550,13 @@ async def test_send_raises_on_close_while_awaiting():
 
 # --- StringEnum unification (F-68) ----------------------------------------
 
-def test_stringenum_str_and_equality_consistent():
-    """StringEnum members stringify to their value and compare equal to it."""
+def test_stringenum_str_is_wire_value():
+    """Every StringEnum member stringifies to its raw wire value across all
+    enum families (not Python's default ``'Class.MEMBER'``)."""
     from binance.common.constants import SubType, OrderSide
     from binance.rate_limit.types import RateLimitScope, RateLimitType, RateLimitSource
     from binance.common.types import StreamName, StreamErrorPhase
 
-    # str(member) == value (no 'Class.MEMBER')
     assert str(SubType.TRADE) == 'trade'
     assert str(OrderSide.BUY) == 'BUY'
     assert str(RateLimitScope.IP) == 'ip'
@@ -564,9 +564,3 @@ def test_stringenum_str_and_equality_consistent():
     assert str(RateLimitSource.HEADER) == 'header'
     assert str(StreamName.DATA) == 'data'
     assert str(StreamErrorPhase.LOGON) == 'logon'
-
-    # member == member comparisons (preferred style)
-    assert SubType.TRADE == SubType.TRADE
-    assert OrderSide.BUY == OrderSide.BUY
-    assert RateLimitScope.IP == RateLimitScope.IP
-    assert StreamName.DATA == StreamName.DATA
