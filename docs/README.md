@@ -1,3 +1,7 @@
+[![](https://github.com/kaelzhang/python-binance-sdk/actions/workflows/python.yml/badge.svg)](https://github.com/kaelzhang/python-binance-sdk/actions/workflows/python.yml)
+[![](https://codecov.io/gh/kaelzhang/python-binance-sdk/branch/master/graph/badge.svg)](https://codecov.io/gh/kaelzhang/python-binance-sdk)
+[![](https://img.shields.io/pypi/v/binance-sdk.svg)](https://pypi.org/project/binance-sdk/)
+
 # binance-sdk
 
 `binance-sdk` is an unofficial async Binance SDK for Python 3.9+, now multi-market (Spot + USDⓈ-M Futures). It:
