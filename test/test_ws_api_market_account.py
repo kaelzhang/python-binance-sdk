@@ -26,6 +26,8 @@ from binance.apis.ws_api import (
     _ticker_price_weight,
     _ticker_book_weight,
     _my_trades_weight,
+    _per_symbol_ticker_weight,
+    _execution_rules_weight,
 )
 
 from test.test_ws_api import WSAPIServer
@@ -544,3 +546,207 @@ def test_params_false_general_endpoints():
     # The three general endpoints historically took no params.
     for name in ('ping', 'get_server_time', 'get_exchange_info'):
         assert by_name[name].get('params') is False
+
+
+# ---------------------------------------------------------------------------
+# New market-data endpoints (NONE, public)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_ui_klines_via_ui_klines():
+    server = WSAPIServer(port=_PORT)
+    server.on('uiKlines', result=[])
+    await server.run()
+    try:
+        client = _make_client(server)
+        await client.get_ui_klines(symbol='BTCUSDT', interval='1d')
+        sent = server.received[0]
+        assert sent['method'] == 'uiKlines'
+        assert sent['params'] == {'symbol': 'BTCUSDT', 'interval': '1d'}
+        assert 'apiKey' not in sent.get('params', {})
+        assert _weight_used(client) == 2
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_get_rolling_window_ticker_single_symbol():
+    server = WSAPIServer(port=_PORT)
+    server.on('ticker', result={})
+    await server.run()
+    try:
+        client = _make_client(server)
+        await client.get_rolling_window_ticker(symbol='BTCUSDT', windowSize='1h')
+        sent = server.received[0]
+        assert sent['method'] == 'ticker'
+        assert sent['params']['symbol'] == 'BTCUSDT'
+        assert 'apiKey' not in sent.get('params', {})
+        # single symbol -> weight 4
+        assert _weight_used(client) == 4
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_get_trading_day_ticker_single_symbol():
+    server = WSAPIServer(port=_PORT)
+    server.on('ticker.tradingDay', result={})
+    await server.run()
+    try:
+        client = _make_client(server)
+        await client.get_trading_day_ticker(symbol='BTCUSDT')
+        sent = server.received[0]
+        assert sent['method'] == 'ticker.tradingDay'
+        assert sent['params']['symbol'] == 'BTCUSDT'
+        assert 'apiKey' not in sent.get('params', {})
+        # single symbol -> weight 4
+        assert _weight_used(client) == 4
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_get_historical_block_trades_via_block_trades_historical():
+    server = WSAPIServer(port=_PORT)
+    server.on('blockTrades.historical', result=[])
+    await server.run()
+    try:
+        client = _make_client(server)
+        await client.get_historical_block_trades(symbol='BTCUSDT', limit=100)
+        sent = server.received[0]
+        assert sent['method'] == 'blockTrades.historical'
+        assert sent['params']['symbol'] == 'BTCUSDT'
+        assert 'apiKey' not in sent.get('params', {})
+        assert _weight_used(client) == 25
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_get_execution_rules_single_symbol():
+    server = WSAPIServer(port=_PORT)
+    server.on('executionRules', result={})
+    await server.run()
+    try:
+        client = _make_client(server)
+        await client.get_execution_rules(symbol='BTCUSDT')
+        sent = server.received[0]
+        assert sent['method'] == 'executionRules'
+        assert sent['params']['symbol'] == 'BTCUSDT'
+        assert 'apiKey' not in sent.get('params', {})
+        # single symbol -> weight 2
+        assert _weight_used(client) == 2
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_get_reference_price_via_reference_price():
+    server = WSAPIServer(port=_PORT)
+    server.on('referencePrice', result={})
+    await server.run()
+    try:
+        client = _make_client(server)
+        await client.get_reference_price(symbol='BTCUSDT')
+        sent = server.received[0]
+        assert sent['method'] == 'referencePrice'
+        assert sent['params']['symbol'] == 'BTCUSDT'
+        assert 'apiKey' not in sent.get('params', {})
+        assert _weight_used(client) == 2
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_get_reference_price_calculation_via_reference_price_calculation():
+    server = WSAPIServer(port=_PORT)
+    server.on('referencePrice.calculation', result={})
+    await server.run()
+    try:
+        client = _make_client(server)
+        await client.get_reference_price_calculation(symbol='BTCUSDT')
+        sent = server.received[0]
+        assert sent['method'] == 'referencePrice.calculation'
+        assert sent['params']['symbol'] == 'BTCUSDT'
+        assert 'apiKey' not in sent.get('params', {})
+        assert _weight_used(client) == 2
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# New account endpoints (USER_DATA, signed)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_order_amendments_is_signed():
+    server = WSAPIServer(port=_PORT)
+    server.on('order.amendments', result=[])
+    await server.run()
+    try:
+        client = _make_client(server, signed=True)
+        await client.get_order_amendments(symbol='BTCUSDT', orderId=42)
+        sent = server.received[0]
+        assert sent['method'] == 'order.amendments'
+        assert sent['params']['symbol'] == 'BTCUSDT'
+        assert sent['params']['orderId'] == 42
+        assert 'apiKey' in sent['params']
+        assert 'signature' in sent['params']
+        assert _weight_used(client) == 4
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_get_my_filters_is_signed():
+    server = WSAPIServer(port=_PORT)
+    server.on('myFilters', result={})
+    await server.run()
+    try:
+        client = _make_client(server, signed=True)
+        await client.get_my_filters(symbol='BTCUSDT')
+        sent = server.received[0]
+        assert sent['method'] == 'myFilters'
+        assert sent['params']['symbol'] == 'BTCUSDT'
+        assert 'apiKey' in sent['params']
+        assert 'signature' in sent['params']
+        assert _weight_used(client) == 40
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Weight-helper unit tests for the two new helpers.
+# ---------------------------------------------------------------------------
+
+def test_per_symbol_ticker_weight_helper():
+    # single symbol (no 'symbols' key)
+    assert _per_symbol_ticker_weight({'symbol': 'BTCUSDT'}) == 4
+    # symbols list of 3 -> 3 * 4 = 12
+    assert _per_symbol_ticker_weight({'symbols': ['A', 'B', 'C']}) == 12
+    # symbols list of 60 -> capped at 200
+    assert _per_symbol_ticker_weight({'symbols': ['A'] * 60}) == 200
+    # no symbol / symbols -> single default cost
+    assert _per_symbol_ticker_weight({}) == 4
+
+
+def test_execution_rules_weight_helper():
+    # single symbol -> 2
+    assert _execution_rules_weight({'symbol': 'BTCUSDT'}) == 2
+    # symbols list of 3 -> 2*3 = 6
+    assert _execution_rules_weight({'symbols': ['A', 'B', 'C']}) == 6
+    # symbols list of 30 -> 2*30 = 60, capped at 40
+    assert _execution_rules_weight({'symbols': ['A'] * 30}) == 40
+    # symbolStatus only -> 40
+    assert _execution_rules_weight({'symbolStatus': 'TRADING'}) == 40
+    # empty -> 40
+    assert _execution_rules_weight({}) == 40

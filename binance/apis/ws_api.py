@@ -66,6 +66,27 @@ def _my_trades_weight(kwargs) -> int:
     return 5 if 'orderId' in kwargs else 20
 
 
+def _per_symbol_ticker_weight(kwargs) -> int:
+    """`ticker` / `ticker.tradingDay` weight: 4 per symbol; capped at 200 once
+    more than 50 symbols are requested. A single ``symbol`` costs 4."""
+    symbols = kwargs.get('symbols')
+    if symbols is not None:
+        n = len(symbols)
+        return 200 if n > 50 else 4 * n
+    return 4
+
+
+def _execution_rules_weight(kwargs) -> int:
+    """`executionRules` weight: a single ``symbol`` costs 2; a ``symbols`` list
+    costs 2 each capped at 40; ``symbolStatus`` or an unscoped query costs 40."""
+    if 'symbol' in kwargs:
+        return 2
+    symbols = kwargs.get('symbols')
+    if symbols is not None:
+        return min(2 * len(symbols), 40)
+    return 40
+
+
 WS_APIS = [
     # ----- general ---------------------------------------------------------
     # These three historically took NO params on the REST path
@@ -155,6 +176,20 @@ WS_APIS = [
         # 2 for a single symbol, else 4.
         weight=_ticker_book_weight
     ),
+    dict(name='get_ui_klines', ws_method='uiKlines',
+         security_type=SecurityType.NONE, weight=2),
+    dict(name='get_rolling_window_ticker', ws_method='ticker',
+         security_type=SecurityType.NONE, weight=_per_symbol_ticker_weight),
+    dict(name='get_trading_day_ticker', ws_method='ticker.tradingDay',
+         security_type=SecurityType.NONE, weight=_per_symbol_ticker_weight),
+    dict(name='get_historical_block_trades', ws_method='blockTrades.historical',
+         security_type=SecurityType.NONE, weight=25),
+    dict(name='get_execution_rules', ws_method='executionRules',
+         security_type=SecurityType.NONE, weight=_execution_rules_weight),
+    dict(name='get_reference_price', ws_method='referencePrice',
+         security_type=SecurityType.NONE, weight=2),
+    dict(name='get_reference_price_calculation', ws_method='referencePrice.calculation',
+         security_type=SecurityType.NONE, weight=2),
 
     # ----- account (USER_DATA) ---------------------------------------------
     dict(
@@ -195,6 +230,10 @@ WS_APIS = [
         security_type=SecurityType.USER_DATA,
         weight=20
     ),
+    dict(name='get_order_amendments', ws_method='order.amendments',
+         security_type=SecurityType.USER_DATA, weight=4),
+    dict(name='get_my_filters', ws_method='myFilters',
+         security_type=SecurityType.USER_DATA, weight=40),
 
     # ----- order.* ---------------------------------------------------------
     dict(
@@ -777,6 +816,104 @@ class WsApiGetters:
         """
         ...  # pragma: no cover
 
+    def get_ui_klines(self, **kwargs) -> Awaitable:
+        """Gets klines optimized for chart presentation (same params as ``get_klines``).
+
+        Weight: 2
+
+        Returns:
+            list: kline rows, same shape as ``get_klines``.
+        """
+        ...  # pragma: no cover
+
+    def get_rolling_window_ticker(self, **kwargs) -> Awaitable:
+        """Gets rolling-window price-change statistics for a symbol or list of symbols.
+
+        Weight: 4 per symbol; 200 when more than 50 symbols are requested.
+
+        Args:
+            symbol (:obj:`str`, optional): A single symbol.
+            symbols (:obj:`list`, optional): A list of symbols.
+            windowSize (:obj:`str`, optional): Window size (e.g. ``'1m'``–``'7d'``).
+
+        Returns:
+            dict or list: Stats dict for a single symbol, or a list of dicts.
+        """
+        ...  # pragma: no cover
+
+    def get_trading_day_ticker(self, **kwargs) -> Awaitable:
+        """Gets trading-day price statistics for a symbol or list of symbols.
+
+        Weight: 4 per symbol; 200 when more than 50 symbols are requested.
+
+        Args:
+            symbol (:obj:`str`, optional): A single symbol.
+            symbols (:obj:`list`, optional): A list of symbols.
+            timeZone (:obj:`str`, optional): UTC offset (e.g. ``'0'``, ``'8:00'``).
+            type (:obj:`str`, optional): Response type: ``'FULL'`` (default) or ``'MINI'``.
+
+        Returns:
+            dict or list: Stats dict for a single symbol, or a list of dicts.
+        """
+        ...  # pragma: no cover
+
+    def get_historical_block_trades(self, **kwargs) -> Awaitable:
+        """Gets historical block trades for a symbol.
+
+        Weight: 25
+
+        Args:
+            symbol (str): The symbol.
+            fromId (:obj:`long`, optional): Block-trade ID to fetch from.
+            limit (:obj:`int`, optional): Defaults to 500; max 1000.
+
+        Returns:
+            list: A list of historical block trade records.
+        """
+        ...  # pragma: no cover
+
+    def get_execution_rules(self, **kwargs) -> Awaitable:
+        """Gets per-symbol execution rules (e.g. price bands, order size limits).
+
+        Weight: 2 for a single ``symbol``; 2 per symbol in a ``symbols`` list
+        (capped at 40); 40 for an unscoped or ``symbolStatus``-only query.
+
+        Args:
+            symbol (:obj:`str`, optional): A single symbol.
+            symbols (:obj:`list`, optional): A list of symbols.
+            symbolStatus (:obj:`str`, optional): Filter by status (e.g. ``'TRADING'``).
+
+        Returns:
+            dict or list: Execution-rule data for the queried symbol(s).
+        """
+        ...  # pragma: no cover
+
+    def get_reference_price(self, **kwargs) -> Awaitable:
+        """Gets the current reference price for a symbol.
+
+        Weight: 2
+
+        Args:
+            symbol (str): The symbol.
+
+        Returns:
+            dict: Reference price data for the symbol.
+        """
+        ...  # pragma: no cover
+
+    def get_reference_price_calculation(self, **kwargs) -> Awaitable:
+        """Gets the methodology used to compute the reference price for a symbol.
+
+        Weight: 2
+
+        Args:
+            symbol (str): The symbol.
+
+        Returns:
+            dict: Reference price calculation details.
+        """
+        ...  # pragma: no cover
+
     # ----- account ---------------------------------------------------------
 
     def get_account(self, **kwargs) -> Awaitable:
@@ -1001,6 +1138,35 @@ class WsApiGetters:
                         'isAllocator': False
                     }
                 ]
+        """
+        ...  # pragma: no cover
+
+    def get_order_amendments(self, **kwargs) -> Awaitable:
+        """Queries amendment history for a single order.
+
+        Weight: 4
+
+        Args:
+            symbol (str): Required.
+            orderId (long): Required.
+            recvWindow (:obj:`long`, optional): The value cannot be greater than 60000.
+
+        Returns:
+            list: A list of amendment records for the specified order.
+        """
+        ...  # pragma: no cover
+
+    def get_my_filters(self, **kwargs) -> Awaitable:
+        """Gets account-relevant filters, including ``MAX_ASSET`` limits.
+
+        Weight: 40
+
+        Args:
+            symbol (str): Required.
+            recvWindow (:obj:`long`, optional): The value cannot be greater than 60000.
+
+        Returns:
+            dict: Account-specific filter data for the requested symbol.
         """
         ...  # pragma: no cover
 

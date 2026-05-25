@@ -274,9 +274,15 @@ method names and keyword arguments. The public market-data **streams**
 General / market-data (public, no credentials):
 
 - `ping()` / `get_server_time()` / `get_exchange_info()`
-- `get_orderbook(**kwargs)` / `get_klines(**kwargs)` / `get_average_price(**kwargs)`
+- `get_orderbook(**kwargs)` / `get_klines(**kwargs)` / `get_ui_klines(**kwargs)` / `get_average_price(**kwargs)`
 - `get_recent_trades(**kwargs)` / `get_historical_trades(**kwargs)` / `get_aggregate_trades(**kwargs)`
+- `get_historical_block_trades(**kwargs)` — historical block trades for a symbol
 - `get_ticker(**kwargs)` / `get_ticker_price(**kwargs)` / `get_orderbook_ticker(**kwargs)`
+- `get_rolling_window_ticker(**kwargs)` — rolling-window price statistics (1m–7d window)
+- `get_trading_day_ticker(**kwargs)` — trading-day price statistics for a symbol or list
+- `get_execution_rules(**kwargs)` — per-symbol execution rules (price bands, order limits)
+- `get_reference_price(**kwargs)` — current reference price for a symbol
+- `get_reference_price_calculation(**kwargs)` — methodology used to compute the reference price
 
 Account (signed):
 
@@ -285,6 +291,8 @@ Account (signed):
 - `get_order_rate_limit(**kwargs)` — current unfilled order count per order rate limit
 - `get_prevented_matches(**kwargs)` — orders expired by self-trade prevention
 - `get_allocations(**kwargs)` — allocations resulting from SOR order placement
+- `get_order_amendments(**kwargs)` — amendment history for a single order
+- `get_my_filters(**kwargs)` — account-relevant filters including MAX_ASSET limits
 
 Trading (signed):
 
@@ -293,8 +301,10 @@ Trading (signed):
 - `cancel_order(**kwargs)` / `cancel_all_orders(**kwargs)`
 - `cancel_replace_order(**kwargs)` — cancel an order and place a new one atomically
 - `amend_order(**kwargs)` — reduce an open order's quantity, keeping its priority
-- `create_sor_order(**kwargs)` — place an order using Smart Order Routing
+- `create_sor_order(**kwargs)` / `create_test_sor_order(**kwargs)` — Smart Order Routing (live and test)
 - `create_oco(**kwargs)` / `create_oto(**kwargs)` / `create_otoco(**kwargs)`
+- `create_opo(**kwargs)` — One-Pending-the-Other order list
+- `create_opoco(**kwargs)` — One-Pending-One-Cancels-the-Other order list
 - `cancel_oco(**kwargs)` / `get_oco(**kwargs)` / `get_all_oco(**kwargs)` / `get_open_oco(**kwargs)`
 
 All take keyword arguments matching the [Binance WebSocket API](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-api) parameters and return the parsed `result`.
