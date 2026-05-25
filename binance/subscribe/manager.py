@@ -21,7 +21,7 @@ from aioretry import RetryPolicy
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 
-from binance.common.constants import (
+from binance.core.common.constants import (
     DEFAULT_STREAM_CLOSE_CODE,
     EVENT_SERVER_SHUTDOWN,
     EVENT_STREAM_TERMINATED,
@@ -33,24 +33,24 @@ from binance.common.constants import (
     ERROR_CODE_UNAUTHORIZED,
     ERROR_CODE_INVALID_TIMESTAMP
 )
-from binance.common.exceptions import (
+from binance.core.common.exceptions import (
     APIKeyNotDefinedException,
     APISecretNotDefinedException,
     InvalidHandlerException,
     StreamSubscribeException
 )
-from binance.common.types import (
+from binance.core.common.types import (
     StreamError,
     StreamName,
     StreamErrorPhase,
     Timeout
 )
-from binance.common.utils import (
+from binance.core.common.utils import (
     format_msg,
     repr_exception
 )
 from binance.client.base import _reject_float_params
-from binance.rate_limit import RateLimiter
+from binance.core.rate_limit import RateLimiter
 
 from .stream import Stream
 from .handler_context import HandlerContext

@@ -2,11 +2,11 @@ import asyncio
 import time
 import pytest
 
-from binance.rate_limit.types import (
+from binance.core.rate_limit.types import (
     RateLimitRule, RateLimitScope, RateLimitType, RateLimitKind, EnforceMode
 )
-from binance.rate_limit.bucket import RateLimitBucket
-from binance.common.exceptions import (
+from binance.core.rate_limit.bucket import RateLimitBucket
+from binance.core.common.exceptions import (
     RateLimitReachedException, TooManyStreamsException
 )
 
@@ -116,7 +116,7 @@ def test_bucket_exposes_rule_and_pending():
 def test_blocked_wait_floors_at_min_when_nothing_to_expire():
     # No events and no authoritative reading: the loop must still yield a
     # positive sleep (the busy-wait guard) rather than 0.
-    from binance.rate_limit.bucket import _MIN_WAIT
+    from binance.core.rate_limit.bucket import _MIN_WAIT
     b = RateLimitBucket(_rule(enforce=EnforceMode.SLEEP, interval=10, limit=10))
     assert b._blocked_wait(time.monotonic()) == _MIN_WAIT
 

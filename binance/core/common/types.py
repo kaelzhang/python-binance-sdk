@@ -6,7 +6,7 @@ from typing import (
     Optional
 )
 
-from binance.common.constants import StringEnum
+from binance.core.common.constants import StringEnum
 
 
 APIResponse = Union[dict, list]

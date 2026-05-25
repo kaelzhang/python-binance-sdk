@@ -3,18 +3,18 @@ from typing import Any, Dict, List, Optional
 from aioretry import RetryPolicy
 from stock_pandas import StockDataFrame
 
-from binance.common.constants import (
+from binance.core.common.constants import (
     STREAM_TYPE_MAP,
     DEFAULT_DEPTH_LIMIT,
     DEFAULT_RETRY_POLICY
 )
 
-from binance.common.utils import (
+from binance.core.common.utils import (
     normalize_symbol,
     wrap_coroutine
 )
 
-from binance.common.types import DictPayload
+from binance.core.common.types import DictPayload
 
 from .base import Handler
 

@@ -8,7 +8,7 @@ data; the live counters and runtime behaviour live in
 
 from dataclasses import dataclass
 
-from binance.common.constants import StringEnum
+from binance.core.common.constants import StringEnum
 
 
 class RateLimitScope(StringEnum):

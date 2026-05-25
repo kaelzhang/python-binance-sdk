@@ -18,7 +18,7 @@ assert:
 import pytest
 
 from binance import Client
-from binance.common.constants import SecurityType
+from binance.core.common.constants import SecurityType
 from binance.apis.ws_api import (
     WS_APIS,
     _depth_weight,
@@ -29,7 +29,7 @@ from binance.apis.ws_api import (
     _per_symbol_ticker_weight,
     _execution_rules_weight,
 )
-from binance.rate_limit.types import RateLimitType
+from binance.core.rate_limit.types import RateLimitType
 
 from test.test_ws_api import WSAPIServer
 

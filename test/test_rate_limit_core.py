@@ -1,12 +1,12 @@
 import time
 import pytest
 
-from binance.rate_limit.core import RateLimiter
-from binance.rate_limit.types import (
+from binance.core.rate_limit.core import RateLimiter
+from binance.core.rate_limit.types import (
     RateLimitRule, RateLimitScope, RateLimitType, RateLimitKind, EnforceMode,
     RateLimitSource
 )
-from binance.common.exceptions import (
+from binance.core.common.exceptions import (
     RateLimitReachedException, TooManyStreamsException
 )
 

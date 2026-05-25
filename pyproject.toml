@@ -67,10 +67,11 @@ packages = [
   'binance',
   'binance.apis',
   'binance.client',
-  'binance.common',
+  'binance.core',
+  'binance.core.common',
+  'binance.core.rate_limit',
   'binance.handlers',
   'binance.processors',
-  'binance.rate_limit',
   'binance.subscribe'
 ]
 

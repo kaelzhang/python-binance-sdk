@@ -7,7 +7,7 @@ import re
 from typing import Any, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from binance.rate_limit.types import RateLimitScope, RateLimitType
+    from binance.core.rate_limit.types import RateLimitScope, RateLimitType
 
 from aiohttp import ClientResponse
 

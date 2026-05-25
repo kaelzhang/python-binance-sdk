@@ -6,7 +6,7 @@ from binance import (
     AccountPositionHandlerBase
 )
 
-from binance.common.utils import create_future
+from binance.core.common.utils import create_future
 
 ACCOUNT_POSITION = {
     'e': 'outboundAccountPosition',

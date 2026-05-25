@@ -3,12 +3,12 @@ from datetime import datetime
 import sys
 from typing import List, Optional, TextIO
 
-from binance.common.constants import (
+from binance.core.common.constants import (
     STREAM_TYPE_MAP,
     STREAM_OHLC_MAP
 )
 
-from binance.common.types import (
+from binance.core.common.types import (
     DictPayload,
     StreamError,
     # ListPayload

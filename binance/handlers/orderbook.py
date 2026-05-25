@@ -13,23 +13,23 @@ from aioretry import (
     RetryPolicy
 )
 
-from binance.common.sequenced_list import (
+from binance.core.common.sequenced_list import (
     SequencedList,
     Pair
 )
-from binance.common.constants import (
+from binance.core.common.constants import (
     DEFAULT_DEPTH_LIMIT,
     DEFAULT_RETRY_POLICY,
     NO_RETRY_POLICY
 )
 
-from binance.common.utils import (
+from binance.core.common.utils import (
     normalize_symbol,
     create_future,
     format_msg,
     repr_exception
 )
-from binance.common.exceptions import OrderBookFetchAbandonedException
+from binance.core.common.exceptions import OrderBookFetchAbandonedException
 
 KEY_FIRST_UPDATE_ID = 'U'
 KEY_LAST_UPDATE_ID = 'u'

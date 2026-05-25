@@ -11,11 +11,11 @@ import asyncio
 import time
 from typing import List, Optional, Tuple
 
-from binance.common.exceptions import (
+from binance.core.common.exceptions import (
     RateLimitReachedException,
     TooManyStreamsException
 )
-from binance.rate_limit.types import RateLimitRule, RateLimitKind, EnforceMode
+from binance.core.rate_limit.types import RateLimitRule, RateLimitKind, EnforceMode
 
 
 # Smallest sleep used when blocked, so the loop always yields and re-checks

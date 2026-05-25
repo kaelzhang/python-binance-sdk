@@ -8,10 +8,10 @@ from binance import (
     Client,
     StatusException
 )
-from binance.common.constants import SecurityType
+from binance.core.common.constants import SecurityType
 from binance.client.base import _reject_float_params, encode_params, sort_params
-from binance.rate_limit import RateLimiter
-from binance.rate_limit.types import RateLimitType
+from binance.core.rate_limit import RateLimiter
+from binance.core.rate_limit.types import RateLimitType
 
 # TODO:
 # global request_params

@@ -16,14 +16,14 @@ request/response harness (reused from ``test_ws_api``) and assert:
 import pytest
 
 from binance import Client
-from binance.common.constants import SecurityType
+from binance.core.common.constants import SecurityType
 from binance.apis.ws_api import (
     WS_APIS,
     define_ws_getter,
     _order_test_weight,
     _open_orders_status_weight,
 )
-from binance.rate_limit.types import RateLimitType
+from binance.core.rate_limit.types import RateLimitType
 
 from test.test_ws_api import WSAPIServer
 

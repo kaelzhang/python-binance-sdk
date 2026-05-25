@@ -9,7 +9,7 @@ clears the ``_ws_api_authenticated`` flag on the client.
 import pytest
 
 from binance import Client
-from binance.rate_limit.types import RateLimitType
+from binance.core.rate_limit.types import RateLimitType
 from test.test_ws_api import WSAPIServer
 
 

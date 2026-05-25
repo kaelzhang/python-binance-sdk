@@ -18,17 +18,17 @@ from binance.processors import (
 
 from binance.processors.base import Processor
 
-from binance.common.constants import (
+from binance.core.common.constants import (
     SubType
 )
-from binance.common.exceptions import (
+from binance.core.common.exceptions import (
     InvalidSubParamsException,
     UnsupportedSubTypeException
 )
 
-from binance.common.types import StreamError
+from binance.core.common.types import StreamError
 
-from binance.common.utils import (
+from binance.core.common.utils import (
     make_list,
     wrap_coroutine
 )

@@ -9,11 +9,11 @@ from typing import (
     Union
 )
 
-from binance.common.exceptions import (
+from binance.core.common.exceptions import (
     InvalidSubTypeParamException
 )
-from binance.common.utils import normalize_symbol
-from binance.common.constants import (
+from binance.core.common.utils import normalize_symbol
+from binance.core.common.constants import (
     SubType,
     ATOM,
     KEY_PAYLOAD,

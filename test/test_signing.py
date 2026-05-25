@@ -23,7 +23,7 @@ from cryptography.hazmat.primitives.serialization import (
 
 from binance import Client
 from binance.client.base import encode_params
-from binance.common.exceptions import APISecretNotDefinedException
+from binance.core.common.exceptions import APISecretNotDefinedException
 
 from test.test_ws_api import WSAPIServer
 

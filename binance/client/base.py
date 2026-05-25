@@ -30,7 +30,7 @@ from aiohttp import (
     ClientTimeout
 )
 
-from binance.common.exceptions import (
+from binance.core.common.exceptions import (
     APIKeyNotDefinedException,
     APISecretNotDefinedException,
     StatusException,
@@ -39,7 +39,7 @@ from binance.common.exceptions import (
     IPBannedException
 )
 
-from binance.common.constants import (
+from binance.core.common.constants import (
     HEADER_API_KEY,
     SecurityType,
     RequestMethod,
@@ -50,9 +50,9 @@ from binance.common.constants import (
     ERROR_CODE_INVALID_TIMESTAMP
 )
 
-from binance.rate_limit import RateLimiter, parse_retry_after
+from binance.core.rate_limit import RateLimiter, parse_retry_after
 
-from binance.common.types import APIResponse
+from binance.core.common.types import APIResponse
 
 # pylint: disable=no-member
 

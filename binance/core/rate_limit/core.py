@@ -14,10 +14,10 @@ import asyncio
 import time
 from typing import Dict, Iterable, List, Optional
 
-from binance.rate_limit.types import RateLimitType, RateLimitRule, RateLimitSource
-from binance.rate_limit.bucket import RateLimitBucket
-from binance.rate_limit.snapshot import RateLimitWindow, RateLimitSnapshot
-from binance.rate_limit.defaults import (
+from binance.core.rate_limit.types import RateLimitType, RateLimitRule, RateLimitSource
+from binance.core.rate_limit.bucket import RateLimitBucket
+from binance.core.rate_limit.snapshot import RateLimitWindow, RateLimitSnapshot
+from binance.core.rate_limit.defaults import (
     DEFAULT_RULES, WS_MESSAGE_RULE, WS_STREAMS_RULE
 )
 

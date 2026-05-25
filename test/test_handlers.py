@@ -21,7 +21,7 @@ from binance import (
     BlockTradeHandlerBase,
     ReferencePriceHandlerBase,
 )
-from binance.common.utils import create_future
+from binance.core.common.utils import create_future
 
 @pytest.fixture
 def client():

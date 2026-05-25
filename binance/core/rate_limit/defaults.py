@@ -12,7 +12,7 @@ against response headers and ``exchangeInfo``.
 
 from typing import Optional
 
-from binance.common.constants import (
+from binance.core.common.constants import (
     HEADER_RETRY_AFTER,
     DEFAULT_REQUEST_WEIGHT_LIMIT, DEFAULT_REQUEST_WEIGHT_INTERVAL,
     DEFAULT_WEIGHT_SAFETY_RATIO,
@@ -23,7 +23,7 @@ from binance.common.constants import (
     WS_MAX_MESSAGES_PER_SEC, WS_MESSAGE_WINDOW,
     WS_MAX_STREAMS_PER_CONNECTION,
 )
-from binance.rate_limit.types import (
+from binance.core.rate_limit.types import (
     RateLimitRule, RateLimitScope, RateLimitType, RateLimitKind, EnforceMode
 )
 

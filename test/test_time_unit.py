@@ -8,7 +8,7 @@ import pytest
 
 from binance import Client
 from binance.client import _apply_time_unit
-from binance.common.constants import WS_API_HOST
+from binance.core.common.constants import WS_API_HOST
 
 
 # ---------------------------------------------------------------------------

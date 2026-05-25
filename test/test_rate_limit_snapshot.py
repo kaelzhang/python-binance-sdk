@@ -1,6 +1,6 @@
-from binance.rate_limit.snapshot import RateLimitWindow, RateLimitSnapshot
-from binance.rate_limit import RateLimitScope, RateLimitType, RateLimitSource
-from binance.rate_limit.core import RateLimiter
+from binance.core.rate_limit.snapshot import RateLimitWindow, RateLimitSnapshot
+from binance.core.rate_limit import RateLimitScope, RateLimitType, RateLimitSource
+from binance.core.rate_limit.core import RateLimiter
 
 
 def _w(util):

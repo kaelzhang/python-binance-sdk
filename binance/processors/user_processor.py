@@ -3,14 +3,14 @@ Ref:
 https://developers.binance.com/docs/binance-spot-api-docs/user-data-stream
 """
 
-from binance.common.constants import (
+from binance.core.common.constants import (
     SubType,
     KEY_PAYLOAD,
     KEY_PAYLOAD_TYPE,
     EVENT_STREAM_TERMINATED
 )
 
-from binance.common.exceptions import UserStreamNotSubscribedException
+from binance.core.common.exceptions import UserStreamNotSubscribedException
 
 from binance.handlers.user_handlers import (
     AccountPositionHandlerBase,

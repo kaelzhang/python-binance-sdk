@@ -1,7 +1,7 @@
 import random
 import pytest
 
-from binance.common.sequenced_list import SequencedList
+from binance.core.common.sequenced_list import SequencedList
 
 
 @pytest.fixture

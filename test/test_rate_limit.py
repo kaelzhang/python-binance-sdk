@@ -3,8 +3,8 @@ import pytest
 from aioresponses import aioresponses
 
 from binance import Client, RateLimitException, IPBannedException
-from binance.rate_limit import parse_retry_after, depth_weight
-from binance.rate_limit.types import RateLimitType, RateLimitSource
+from binance.core.rate_limit import parse_retry_after, depth_weight
+from binance.core.rate_limit.types import RateLimitType, RateLimitSource
 
 
 class _Resp:
@@ -71,7 +71,7 @@ async def test_success_captures_used_weight_and_order_count():
 
 def test_default_retry_policy_has_floor_and_ceiling():
     from types import SimpleNamespace
-    from binance.common.constants import DEFAULT_RETRY_POLICY, RETRY_MAX_DELAY
+    from binance.core.common.constants import DEFAULT_RETRY_POLICY, RETRY_MAX_DELAY
 
     delays = []
     for fails in range(1, 12):

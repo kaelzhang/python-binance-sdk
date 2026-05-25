@@ -13,12 +13,12 @@ import pytest
 from aioresponses import aioresponses
 
 from binance import Client, Stream, SubType, UserStreamNotSubscribedException
-from binance.common.exceptions import (
+from binance.core.common.exceptions import (
     APIKeyNotDefinedException,
     InvalidSubTypeParamException,
     StreamDisconnectedException
 )
-from binance.rate_limit import RateLimiter
+from binance.core.rate_limit import RateLimiter
 from binance.handlers.orderbook import OrderBook
 from binance.processors.processors import (
     _get_window,
@@ -499,7 +499,7 @@ async def test_send_raises_on_close_while_awaiting():
     Calls close() and asserts the awaiting send() raises StreamDisconnectedException
     instead of hanging forever.
     """
-    from binance.rate_limit import RateLimiter
+    from binance.core.rate_limit import RateLimiter
 
     stream = Stream.__new__(Stream)
     stream._logger = logger
@@ -553,9 +553,9 @@ async def test_send_raises_on_close_while_awaiting():
 def test_stringenum_str_is_wire_value():
     """Every StringEnum member stringifies to its raw wire value across all
     enum families (not Python's default ``'Class.MEMBER'``)."""
-    from binance.common.constants import SubType, OrderSide
-    from binance.rate_limit.types import RateLimitScope, RateLimitType, RateLimitSource
-    from binance.common.types import StreamName, StreamErrorPhase
+    from binance.core.common.constants import SubType, OrderSide
+    from binance.core.rate_limit.types import RateLimitScope, RateLimitType, RateLimitSource
+    from binance.core.common.types import StreamName, StreamErrorPhase
 
     assert str(SubType.TRADE) == 'trade'
     assert str(OrderSide.BUY) == 'BUY'

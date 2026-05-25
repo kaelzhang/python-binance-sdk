@@ -21,14 +21,14 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 from binance import Client
-from binance.common.constants import SecurityType
-from binance.common.exceptions import (
+from binance.core.common.constants import SecurityType
+from binance.core.common.exceptions import (
     APIKeyNotDefinedException,
     APISecretNotDefinedException,
     StreamSubscribeException,
     StreamRateLimitException,
 )
-from binance.rate_limit.types import RateLimitType, RateLimitSource
+from binance.core.rate_limit.types import RateLimitType, RateLimitSource
 
 
 WS_API_PORT = 9085

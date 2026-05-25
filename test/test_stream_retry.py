@@ -2,7 +2,7 @@ import pytest
 import asyncio
 
 from binance import Stream
-from binance.common.utils import create_future
+from binance.core.common.utils import create_future
 
 from .common import (
     PORT,

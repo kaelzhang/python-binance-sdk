@@ -4,8 +4,8 @@ from typing import (
     Union
 )
 
-from binance.common.constants import SecurityType
-from binance.rate_limit import depth_weight
+from binance.core.common.constants import SecurityType
+from binance.core.rate_limit import depth_weight
 
 # WS-API trading endpoints ref:
 # https://github.com/binance/binance-spot-api-docs/blob/master/web-socket-api.md

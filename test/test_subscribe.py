@@ -21,9 +21,9 @@ from binance import (
     HandlerExceptionHandlerBase,
     UnsupportedSubTypeException
 )
-from binance.common.exceptions import TooManyStreamsException
-from binance.common.utils import create_future
-from binance.rate_limit.types import RateLimitType
+from binance.core.common.exceptions import TooManyStreamsException
+from binance.core.common.utils import create_future
+from binance.core.rate_limit.types import RateLimitType
 
 
 @pytest.fixture

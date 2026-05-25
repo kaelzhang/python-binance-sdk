@@ -8,7 +8,7 @@ from aioretry import (
 from stock_pandas import TimeFrame
 
 from binance.client import Client
-from binance.common.constants import (
+from binance.core.common.constants import (
     SubType,
     SecurityType,
     RequestMethod,
@@ -18,7 +18,7 @@ from binance.common.constants import (
     TimeInForce
 )
 
-from binance.common.exceptions import (
+from binance.core.common.exceptions import (
     UserStreamNotSubscribedException,
     StreamDisconnectedException,
     StreamSubscribeException,
@@ -39,13 +39,13 @@ from binance.common.exceptions import (
     OrderBookFetchAbandonedException
 )
 
-from binance.rate_limit import (
+from binance.core.rate_limit import (
     RateLimiter,
     RateLimitSnapshot,
     RateLimitWindow
 )
 
-from binance.common.types import StreamError, StreamName, StreamErrorPhase
+from binance.core.common.types import StreamError, StreamName, StreamErrorPhase
 
 from binance.handlers.handlers import (
     StreamErrorHandlerBase,

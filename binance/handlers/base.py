@@ -2,8 +2,8 @@ from typing import ClassVar, Dict, Iterable, List, Optional
 
 from stock_pandas import StockDataFrame
 
-from binance.common.exceptions import ReuseHandlerException
-from binance.common.types import Payload
+from binance.core.common.exceptions import ReuseHandlerException
+from binance.core.common.types import Payload
 
 
 class Handler:

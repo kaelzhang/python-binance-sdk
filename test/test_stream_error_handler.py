@@ -15,7 +15,7 @@ import logging
 import pytest
 
 from binance import Client, StreamErrorHandlerBase, SubType
-from binance.common.types import StreamError, StreamName, StreamErrorPhase
+from binance.core.common.types import StreamError, StreamName, StreamErrorPhase
 
 
 # ---------------------------------------------------------------------------

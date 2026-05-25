@@ -25,7 +25,7 @@ from aioretry import (
     retry
 )
 
-from binance.common.utils import (
+from binance.core.common.utils import (
     json_stringify,
     format_msg,
     repr_exception,
@@ -33,13 +33,13 @@ from binance.common.utils import (
     create_future
 )
 
-from binance.common.exceptions import (
+from binance.core.common.exceptions import (
     StreamDisconnectedException,
     StreamSubscribeException,
     StreamRateLimitException
 )
 
-from binance.common.constants import (
+from binance.core.common.constants import (
     DEFAULT_RETRY_POLICY,
     DEFAULT_STREAM_TIMEOUT,
     DEFAULT_STREAM_CLOSE_CODE,
@@ -53,9 +53,9 @@ from binance.common.constants import (
     HTTP_TOO_MANY_REQUESTS
 )
 
-from binance.rate_limit import RateLimiter
+from binance.core.rate_limit import RateLimiter
 
-from binance.common.types import (
+from binance.core.common.types import (
     EventCallback,
     Timeout
 )

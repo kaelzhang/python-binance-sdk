@@ -10,7 +10,7 @@ frequently from a monitoring loop or a pre-trade risk gate.
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from binance.rate_limit.types import RateLimitScope, RateLimitType, RateLimitSource
+from binance.core.rate_limit.types import RateLimitScope, RateLimitType, RateLimitSource
 
 
 @dataclass(frozen=True)

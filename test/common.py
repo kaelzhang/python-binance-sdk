@@ -5,7 +5,7 @@ from pathlib import Path
 from aiohttp import web
 from dotenv import load_dotenv
 
-from binance.common.utils import json_stringify
+from binance.core.common.utils import json_stringify
 
 
 ACCOUNT_INFO = {

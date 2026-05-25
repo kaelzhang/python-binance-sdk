@@ -1,7 +1,7 @@
-from binance.rate_limit.defaults import (
+from binance.core.rate_limit.defaults import (
     parse_retry_after, depth_weight, DEFAULT_RULES
 )
-from binance.rate_limit.types import RateLimitType
+from binance.core.rate_limit.types import RateLimitType
 
 
 class _Resp:

@@ -6,7 +6,7 @@ from binance.apis import WsApiGetters
 from aioretry import RetryPolicy
 
 from binance.subscribe.manager import SubscriptionManager
-from binance.common.constants import (
+from binance.core.common.constants import (
     REST_API_HOST,
     STREAM_HOST,
     WS_API_HOST,
@@ -15,8 +15,8 @@ from binance.common.constants import (
     WS_API_TIME_UNIT_MILLISECOND,
     DEFAULT_RETRY_POLICY, DEFAULT_STREAM_TIMEOUT
 )
-from binance.rate_limit import RateLimiter, RateLimitSnapshot
-from binance.common.types import Timeout
+from binance.core.rate_limit import RateLimiter, RateLimitSnapshot
+from binance.core.common.types import Timeout
 
 from .base import ClientBase
 

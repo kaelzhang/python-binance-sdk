@@ -12,7 +12,7 @@ import time
 import pytest
 
 from binance import Client
-from binance.common.exceptions import StreamSubscribeException
+from binance.core.common.exceptions import StreamSubscribeException
 
 from test.test_ws_api import WSAPIServer
 

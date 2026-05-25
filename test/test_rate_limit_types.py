@@ -1,4 +1,4 @@
-from binance.rate_limit.types import (
+from binance.core.rate_limit.types import (
     RateLimitScope, RateLimitType, RateLimitKind, EnforceMode,
     RateLimitRule, interval_label
 )

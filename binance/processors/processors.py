@@ -26,15 +26,15 @@ from binance.handlers.handlers import (
 
 from binance.handlers.orderbook_handler import OrderBookHandlerBase
 
-from binance.common.constants import (
+from binance.core.common.constants import (
     SubType,
     KLINE_TYPE_PREFIX,
     KEY_STREAM_TYPE,
     KEY_PAYLOAD,
     KEY_PAYLOAD_TYPE
 )
-from binance.common.exceptions import InvalidSubTypeParamException
-from binance.common.utils import normalize_symbol
+from binance.core.common.exceptions import InvalidSubTypeParamException
+from binance.core.common.utils import normalize_symbol
 
 from .base import Processor
 

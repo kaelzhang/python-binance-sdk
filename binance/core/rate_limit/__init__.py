@@ -1,4 +1,4 @@
-from binance.rate_limit.types import (
+from binance.core.rate_limit.types import (
     RateLimitScope,
     RateLimitType,
     RateLimitSource,
@@ -6,10 +6,10 @@ from binance.rate_limit.types import (
     EnforceMode,
     RateLimitRule,
 )
-from binance.rate_limit.bucket import RateLimitBucket
-from binance.rate_limit.snapshot import RateLimitWindow, RateLimitSnapshot
-from binance.rate_limit.core import RateLimiter
-from binance.rate_limit.defaults import (
+from binance.core.rate_limit.bucket import RateLimitBucket
+from binance.core.rate_limit.snapshot import RateLimitWindow, RateLimitSnapshot
+from binance.core.rate_limit.core import RateLimiter
+from binance.core.rate_limit.defaults import (
     parse_retry_after,
     depth_weight,
     DEFAULT_RULES,

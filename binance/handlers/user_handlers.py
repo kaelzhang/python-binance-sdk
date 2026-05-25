@@ -1,4 +1,4 @@
-from binance.common.types import DictPayload
+from binance.core.common.types import DictPayload
 
 from .handlers import Handler
 

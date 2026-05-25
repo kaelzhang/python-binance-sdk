@@ -10,8 +10,8 @@ from binance.processors import (
     BlockTradeProcessor,
     ReferencePriceProcessor,
 )
-from binance.common.constants import SubType
-from binance.common.exceptions import InvalidSubTypeParamException
+from binance.core.common.constants import SubType
+from binance.core.common.exceptions import InvalidSubTypeParamException
 from stock_pandas import TimeFrame
 
 

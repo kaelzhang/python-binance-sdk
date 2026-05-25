@@ -2,7 +2,7 @@ import asyncio
 import pytest
 
 from binance import Stream
-from binance.rate_limit import (
+from binance.core.rate_limit import (
     RateLimiter,
     RateLimitRule,
     RateLimitScope,
@@ -117,8 +117,8 @@ async def test_recycle_closes_socket_without_setting_closing_flag():
 
 @pytest.mark.asyncio
 async def test_ws_api_error_minus_1003_raises_stream_rate_limit():
-    from binance.common.exceptions import StreamRateLimitException
-    from binance.common.utils import create_future
+    from binance.core.common.exceptions import StreamRateLimitException
+    from binance.core.common.utils import create_future
 
     async def on_message(_):
         return None

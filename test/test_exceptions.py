@@ -102,7 +102,7 @@ async def test_user_stream_no_secret():
 
 
 def test_rate_limit_exception_carries_retry_after():
-    from binance.common.exceptions import RateLimitException, IPBannedException
+    from binance.core.common.exceptions import RateLimitException, IPBannedException
 
     class _Resp:
         url = 'https://api.binance.com/api/v3/order'
@@ -118,7 +118,7 @@ def test_rate_limit_exception_carries_retry_after():
 
 
 def test_too_many_streams_and_stream_rate_limit_exceptions():
-    from binance.common.exceptions import (
+    from binance.core.common.exceptions import (
         TooManyStreamsException,
         StreamRateLimitException,
         StreamSubscribeException
@@ -139,8 +139,8 @@ def test_too_many_streams_and_stream_rate_limit_exceptions():
 
 
 def test_rate_limit_reached_exception_message():
-    from binance.common.exceptions import RateLimitReachedException
-    from binance.rate_limit.types import RateLimitScope, RateLimitType
+    from binance.core.common.exceptions import RateLimitReachedException
+    from binance.core.rate_limit.types import RateLimitScope, RateLimitType
     exc = RateLimitReachedException(RateLimitScope.ACCOUNT, RateLimitType.ORDERS, '10s', 7)
     assert exc.scope == RateLimitScope.ACCOUNT
     assert exc.limit_type == RateLimitType.ORDERS
@@ -155,7 +155,7 @@ def test_rate_limit_reached_exception_message():
 def test_status_exception_redacts_signature_and_api_key():
     """StatusException.__str__ must not expose signature/apiKey values."""
     import yarl
-    from binance.common.exceptions import StatusException
+    from binance.core.common.exceptions import StatusException
 
     class _Resp:
         url = yarl.URL(
@@ -175,7 +175,7 @@ def test_status_exception_redacts_signature_and_api_key():
 def test_rate_limit_exception_redacts_signature_and_api_key():
     """RateLimitException.__str__ must not expose signature/apiKey values."""
     import yarl
-    from binance.common.exceptions import RateLimitException
+    from binance.core.common.exceptions import RateLimitException
 
     class _Resp:
         url = yarl.URL(
@@ -194,7 +194,7 @@ def test_rate_limit_exception_redacts_signature_and_api_key():
 def test_ip_banned_exception_redacts_signature_and_api_key():
     """IPBannedException.__str__ must not expose signature/apiKey values."""
     import yarl
-    from binance.common.exceptions import IPBannedException
+    from binance.core.common.exceptions import IPBannedException
 
     class _Resp:
         url = yarl.URL(
@@ -212,14 +212,14 @@ def test_ip_banned_exception_redacts_signature_and_api_key():
 
 def test_redact_url_no_sensitive_params():
     """_redact_url returns the URL unchanged when no sensitive params are present."""
-    from binance.common.exceptions import _redact_url
+    from binance.core.common.exceptions import _redact_url
     url = 'https://api.binance.com/api/v3/time'
     assert _redact_url(url) == url
 
 
 def test_redact_url_replaces_both_params():
     """_redact_url replaces both signature and apiKey values with ***."""
-    from binance.common.exceptions import _redact_url
+    from binance.core.common.exceptions import _redact_url
     url = 'https://api.binance.com/api/v3/order?symbol=X&signature=HMAC123&apiKey=KEY456'
     result = _redact_url(url)
     assert 'HMAC123' not in result
