@@ -5,6 +5,10 @@ test_files = *
 test:
 	STOCK_PANDAS_COW=1 pytest -s -v test/test_$(test_files).py --doctest-modules --cov binance --cov-config=.coveragerc --cov-report term-missing
 
+# For github actions: emit coverage.xml for the Codecov upload step
+test-ci:
+	STOCK_PANDAS_COW=1 pytest -s -v test/test_$(test_files).py --doctest-modules --cov binance --cov-config=.coveragerc --cov-report=xml
+
 lint:
 	@echo "\033[1m>> Running ruff... <<\033[0m"
 	@ruff check $(files)
@@ -36,4 +40,4 @@ publish:
 	make build
 	twine upload --config-file ~/.pypirc -r pypiorg dist/*
 
-.PHONY: test build report install
+.PHONY: test test-ci build report install
