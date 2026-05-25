@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from binance.common.constants import (
     DEFAULT_STREAM_CLOSE_CODE,
     EVENT_SERVER_SHUTDOWN,
+    EVENT_STREAM_TERMINATED,
     SecurityType,
     SubType,
     STREAM_KEY_RATE_LIMITS,
@@ -159,7 +160,7 @@ class SubscriptionManager:
                 await self._data_stream.recycle()
             return
 
-        if event_type == 'eventStreamTerminated':
+        if event_type == EVENT_STREAM_TERMINATED:
             try:
                 await self._recover_user_stream_if_needed()
             except Exception as e:
