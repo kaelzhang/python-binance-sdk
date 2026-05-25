@@ -36,6 +36,8 @@ from binance.common.exceptions import (
 )
 from binance.common.types import (
     StreamError,
+    StreamName,
+    StreamErrorPhase,
     Timeout
 )
 from binance.common.utils import (
@@ -260,8 +262,8 @@ class SubscriptionManager:
                 'WS-API session.logon failed after reconnect: %s',
                 repr_exception(e)))
             error = StreamError(
-                stream='user',
-                phase='logon',
+                stream=StreamName.USER,
+                phase=StreamErrorPhase.LOGON,
                 exception=e,
                 recovering=True
             )
@@ -563,8 +565,8 @@ class SubscriptionManager:
                 'data stream resubscribe failed after reconnect: %s',
                 repr_exception(e)))
             error = StreamError(
-                stream='data',
-                phase='resubscribe',
+                stream=StreamName.DATA,
+                phase=StreamErrorPhase.RESUBSCRIBE,
                 exception=e,
                 recovering=True
             )
@@ -586,8 +588,8 @@ class SubscriptionManager:
                 'user stream resubscribe failed after reconnect: %s',
                 repr_exception(e)))
             error = StreamError(
-                stream='user',
-                phase='resubscribe',
+                stream=StreamName.USER,
+                phase=StreamErrorPhase.RESUBSCRIBE,
                 exception=e,
                 recovering=True
             )

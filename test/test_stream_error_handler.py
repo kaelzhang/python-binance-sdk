@@ -15,7 +15,7 @@ import logging
 import pytest
 
 from binance import Client, StreamErrorHandlerBase, SubType
-from binance.common.types import StreamError
+from binance.common.types import StreamError, StreamName, StreamErrorPhase
 
 
 # ---------------------------------------------------------------------------
@@ -24,16 +24,18 @@ from binance.common.types import StreamError
 
 def test_stream_error_fields():
     exc = RuntimeError('boom')
-    err = StreamError(stream='data', phase='resubscribe', exception=exc, recovering=True)
+    err = StreamError(stream=StreamName.DATA, phase=StreamErrorPhase.RESUBSCRIBE, exception=exc, recovering=True)
     assert err.stream == 'data'
     assert err.phase == 'resubscribe'
     assert err.exception is exc
     assert err.recovering is True
+    assert isinstance(err.stream, StreamName)
+    assert isinstance(err.phase, StreamErrorPhase)
 
 
 def test_stream_error_is_frozen():
     exc = RuntimeError('x')
-    err = StreamError(stream='user', phase='logon', exception=exc, recovering=False)
+    err = StreamError(stream=StreamName.USER, phase=StreamErrorPhase.LOGON, exception=exc, recovering=False)
     with pytest.raises((AttributeError, TypeError)):
         err.stream = 'data'  # type: ignore[misc]
 
@@ -63,7 +65,7 @@ async def test_dispatch_stream_error_delivers_to_handler():
     client.handler(MyHandler())
     ctx = client._get_handler_ctx()
     exc = ValueError('test error')
-    err = StreamError(stream='data', phase='resubscribe', exception=exc, recovering=True)
+    err = StreamError(stream=StreamName.DATA, phase=StreamErrorPhase.RESUBSCRIBE, exception=exc, recovering=True)
     await ctx.dispatch_stream_error(err)
     assert len(received) == 1
     assert received[0] is err
@@ -81,7 +83,7 @@ async def test_dispatch_stream_error_async_handler():
     client.handler(MyHandler())
     ctx = client._get_handler_ctx()
     exc = RuntimeError('network')
-    err = StreamError(stream='user', phase='logon', exception=exc, recovering=True)
+    err = StreamError(stream=StreamName.USER, phase=StreamErrorPhase.LOGON, exception=exc, recovering=True)
     await ctx.dispatch_stream_error(err)
     assert len(received) == 1
     assert received[0].phase == 'logon'
@@ -92,7 +94,7 @@ async def test_dispatch_stream_error_noop_when_no_handler():
     client = Client('key')
     ctx = client._get_handler_ctx()
     # Must not raise; this is the no-op path.
-    err = StreamError(stream='data', phase='resubscribe',
+    err = StreamError(stream=StreamName.DATA, phase=StreamErrorPhase.RESUBSCRIBE,
                       exception=RuntimeError('x'), recovering=True)
     await ctx.dispatch_stream_error(err)  # no-op, no handler registered
 
@@ -112,7 +114,7 @@ async def test_dispatch_stream_error_multiple_handlers():
 
     client.handler(HandlerA(), HandlerB())
     ctx = client._get_handler_ctx()
-    err = StreamError(stream='data', phase='resubscribe',
+    err = StreamError(stream=StreamName.DATA, phase=StreamErrorPhase.RESUBSCRIBE,
                       exception=RuntimeError(), recovering=True)
     await ctx.dispatch_stream_error(err)
     assert ('A', 'data') in results
@@ -163,6 +165,8 @@ async def test_resubscribe_data_failure_logs_and_dispatches(caplog):
     err = received_errors[0]
     assert err.stream == 'data'
     assert err.phase == 'resubscribe'
+    assert isinstance(err.stream, StreamName)
+    assert isinstance(err.phase, StreamErrorPhase)
     assert err.exception is boom
     assert err.recovering is True
     assert recycled == [True], 'Expected data stream to be recycled'
@@ -232,6 +236,8 @@ async def test_on_ws_api_connected_logon_failure_logs_and_dispatches(caplog):
     err = received_errors[0]
     assert err.stream == 'user'
     assert err.phase == 'logon'
+    assert isinstance(err.stream, StreamName)
+    assert isinstance(err.phase, StreamErrorPhase)
     assert err.exception is boom
     assert err.recovering is True
     assert recycled == [True], 'Expected user stream to be recycled'
@@ -300,6 +306,8 @@ async def test_resubscribe_user_failure_logs_and_dispatches(caplog):
     err = received_errors[0]
     assert err.stream == 'user'
     assert err.phase == 'resubscribe'
+    assert isinstance(err.stream, StreamName)
+    assert isinstance(err.phase, StreamErrorPhase)
     assert err.exception is boom
     assert err.recovering is True
     assert recycled == [True], 'Expected user stream to be recycled'
