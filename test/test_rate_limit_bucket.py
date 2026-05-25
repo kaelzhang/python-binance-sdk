@@ -119,3 +119,51 @@ def test_blocked_wait_floors_at_min_when_nothing_to_expire():
     from binance.rate_limit.bucket import _MIN_WAIT
     b = RateLimitBucket(_rule(enforce=EnforceMode.SLEEP, interval=10, limit=10))
     assert b._blocked_wait(time.monotonic()) == _MIN_WAIT
+
+
+@pytest.mark.asyncio
+async def test_sleep_lock_released_during_wait_allows_concurrent_small(monkeypatch):
+    """F-73: a small request must NOT be blocked by a large sleeping waiter.
+
+    Before the fix the lock was held across the asyncio.sleep, so a small
+    request that fits the bucket would be head-of-line blocked by a large
+    one sleeping its window away. After the fix the lock is released before
+    sleep, so the small request acquires the lock and completes immediately.
+    """
+    # Bucket: limit=3, interval=0.3s, SLEEP.  Fill it with 2 units so there
+    # is 1 unit of headroom but not 3 (the large-cost waiter needs 3 + existing
+    # 2 = 5 > limit, so it must sleep).
+    b = RateLimitBucket(_rule(enforce=EnforceMode.SLEEP, interval=0.3, limit=3))
+    # Pre-fill 2 units so only 1 headroom remains.
+    b.record(1)
+    b.record(1)
+
+    start = time.monotonic()
+
+    # Large-cost waiter (cost=3): bucket has only 1 headroom -> must sleep.
+    large_task = asyncio.create_task(b.acquire(3))
+
+    # Yield so large_task runs and is now inside asyncio.sleep (lock released).
+    await asyncio.sleep(0.01)
+
+    # Small waiter (cost=1): fits the 1-unit gap -> must NOT be blocked.
+    small_task = asyncio.create_task(b.acquire(1))
+
+    # The small task must finish well before the large task's window expires.
+    try:
+        await asyncio.wait_for(asyncio.shield(small_task), timeout=0.2)
+    except asyncio.TimeoutError:
+        large_task.cancel()
+        pytest.fail("Small request was head-of-line blocked by large sleeping waiter")
+
+    elapsed = time.monotonic() - start
+    assert elapsed < 0.2, (
+        f"Small request took {elapsed:.3f}s — still blocked by large waiter"
+    )
+
+    # Clean up the still-sleeping large task.
+    large_task.cancel()
+    try:
+        await large_task
+    except (asyncio.CancelledError, Exception):
+        pass

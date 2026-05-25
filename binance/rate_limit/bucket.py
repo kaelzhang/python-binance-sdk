@@ -140,14 +140,14 @@ class RateLimitBucket:
                 int(self._rule.interval_seconds))
         self._pending += 1
         try:
-            async with self._lock:
-                while True:
+            while True:
+                async with self._lock:
                     now = time.monotonic()
                     if self._windowed_used(now) + cost <= self.effective_limit:
-                        self._events.append((time.monotonic(), cost))
+                        self._events.append((now, cost))
                         return
                     if self._rule.enforce == EnforceMode.TRACK:
-                        self._events.append((time.monotonic(), cost))
+                        self._events.append((now, cost))
                         return
                     if self._rule.enforce == EnforceMode.RAISE:
                         raise RateLimitReachedException(
@@ -155,7 +155,8 @@ class RateLimitBucket:
                             self._rule.type.value,
                             self._rule.interval,
                             self._retry_after(now))
-                    await asyncio.sleep(self._blocked_wait(now))
+                    wait = self._blocked_wait(now)
+                await asyncio.sleep(wait)
         finally:
             self._pending -= 1
 
