@@ -180,6 +180,34 @@ class BlockTradeHandlerBase(Handler):
     COLUMNS = BLOCK_TRADE_COLUMNS
 
 
+REFERENCE_PRICE_COLUMNS_MAP = {
+    **STREAM_TYPE_MAP,
+    's': 'symbol',
+    'r': 'reference_price',
+    't': 'engine_time'
+}
+
+REFERENCE_PRICE_COLUMNS = REFERENCE_PRICE_COLUMNS_MAP.keys()
+
+
+class ReferencePriceHandlerBase(Handler):
+    """Base handler for the ``SubType.REFERENCE_PRICE`` (reference price) stream.
+
+    Receives a reference-price event (~1000ms) for the subscribed symbol.
+    Each payload carries the symbol, the reference price (a string, or
+    ``null`` when there is no reference price), and the engine timestamp at
+    which the reference price was valid.  Note: this stream has no separate
+    event-time field.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    human-readable column names (e.g. ``reference_price``, ``engine_time``).
+    """
+
+    COLUMNS_MAP = REFERENCE_PRICE_COLUMNS_MAP
+    COLUMNS = REFERENCE_PRICE_COLUMNS
+
+
 BOOK_TICKER_COLUMNS_MAP = {
     'u': 'update_id',
     's': 'symbol',

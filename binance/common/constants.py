@@ -42,6 +42,7 @@ class SubType(Enum):
         AGG_TRADE: Aggregated trade events (multiple trades at the same price
             and direction collapsed into one event).
         BLOCK_TRADE: Block-trade events (large trades reported as a block).
+        REFERENCE_PRICE: Reference-price events (1000ms; price may be null when there is no reference price).
         BOOK_TICKER: Best bid/ask price and quantity for a symbol.
         AVG_PRICE: Current average price over a rolling window.
         MINI_TICKER: Compact 24-hour rolling-window statistics.
@@ -74,6 +75,7 @@ class SubType(Enum):
     TRADE = 'trade'
     AGG_TRADE = 'aggTrade'
     BLOCK_TRADE = 'blockTrade'
+    REFERENCE_PRICE = 'referencePrice'
     BOOK_TICKER = 'bookTicker'
     AVG_PRICE = 'avgPrice'
     WINDOW_TICKER = 'windowTicker'

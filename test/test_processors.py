@@ -8,6 +8,7 @@ from binance.processors import (
     AllMarketWindowTickersProcessor,
     WindowTickerProcessor,
     BlockTradeProcessor,
+    ReferencePriceProcessor,
 )
 from binance.common.constants import SubType
 from binance.common.exceptions import InvalidSubTypeParamException
@@ -19,6 +20,13 @@ def test_block_trade_processor():
     assert processor.subscribe_param(
         None, SubType.BLOCK_TRADE, 'BTCUSDT'
     ) == 'btcusdt@blockTrade'
+
+
+def test_reference_price_processor():
+    processor = ReferencePriceProcessor(None)
+    assert processor.subscribe_param(
+        None, SubType.REFERENCE_PRICE, 'BTCUSDT'
+    ) == 'btcusdt@referencePrice'
 
 
 def test_mini_ticker_processor():

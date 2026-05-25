@@ -12,6 +12,7 @@ from binance.handlers.handlers import (
     TradeHandlerBase,
     AggTradeHandlerBase,
     BlockTradeHandlerBase,
+    ReferencePriceHandlerBase,
     BookTickerHandlerBase,
     PartialOrderBookHandlerBase,
     AvgPriceHandlerBase,
@@ -201,6 +202,12 @@ class BlockTradeProcessor(Processor):
     """Processor for the blockTrade stream."""
     HANDLER = BlockTradeHandlerBase
     SUB_TYPE = SubType.BLOCK_TRADE
+
+
+class ReferencePriceProcessor(Processor):
+    """Processor for the referencePrice stream."""
+    HANDLER = ReferencePriceHandlerBase
+    SUB_TYPE = SubType.REFERENCE_PRICE
 
 
 class BookTickerProcessor(Processor):

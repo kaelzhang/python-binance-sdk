@@ -53,6 +53,7 @@ from binance.handlers.handlers import (
     TradeHandlerBase,
     AggTradeHandlerBase,
     BlockTradeHandlerBase,
+    ReferencePriceHandlerBase,
     BookTickerHandlerBase,
     PartialOrderBookHandlerBase,
     AvgPriceHandlerBase,

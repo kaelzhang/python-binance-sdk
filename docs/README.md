@@ -112,6 +112,7 @@ And since we subscribe to **THREE** new types of messages, we need to set the ha
 - `TradeHandlerBase`
 - `AggTradeHandlerBase`
 - `BlockTradeHandlerBase`
+- `ReferencePriceHandlerBase`
 - `BookTickerHandlerBase`
 - `PartialOrderBookHandlerBase`
 - `AvgPriceHandlerBase`
@@ -434,6 +435,7 @@ And `interval` should be one of the `TimeFrame` enumerables
 - `SubType.TRADE`
 - `SubType.AGG_TRADE`
 - `SubType.BLOCK_TRADE`
+- `SubType.REFERENCE_PRICE`
 - `SubType.BOOK_TICKER`
 - `SubType.AVG_PRICE`
 - `SubType.MINI_TICKER`

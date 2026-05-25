@@ -19,6 +19,7 @@ from binance import (
     AllMarketMiniTickersHandlerBase,
     AllMarketWindowTickersHandlerBase,
     BlockTradeHandlerBase,
+    ReferencePriceHandlerBase,
 )
 from binance.common.utils import create_future
 
@@ -321,6 +322,16 @@ async def test_block_trade_handler(client):
         'q': '5838',
         'T': 1772506983321,
         'm': True
+    }, expect_symbol)
+
+
+@pytest.mark.asyncio
+async def test_reference_price_handler(client):
+    await run_handler(client, ReferencePriceHandlerBase, {
+        'e': 'referencePrice',
+        's': 'BNBBTC',
+        'r': '1.00',
+        't': 1770313263917
     }, expect_symbol)
 
 
