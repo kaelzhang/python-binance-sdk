@@ -23,6 +23,8 @@ from binance.futures.streams import (  # noqa: F401  (re-exported for public API
     ForceOrderProcessor,
 )
 
+from binance.futures.user_processor import FuturesUserProcessor  # noqa: F401  (re-exported)
+
 
 # ---------------------------------------------------------------------------
 # UM-specific mark price: add the 'ap' (mark price moving average) field.
@@ -92,4 +94,5 @@ class MarkPriceProcessor(_MarkPriceProcessor):
 PROCESSORS = [
     MarkPriceProcessor,
     ForceOrderProcessor,
+    FuturesUserProcessor,
 ]

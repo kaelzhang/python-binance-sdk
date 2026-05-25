@@ -90,6 +90,15 @@ from binance.futures.um.streams import (
     ForceOrderHandlerBase,
 )
 
+from binance.futures.user_handlers import (
+    FuturesAccountUpdateHandlerBase,
+    FuturesOrderUpdateHandlerBase,
+    FuturesMarginCallHandlerBase,
+    FuturesAccountConfigUpdateHandlerBase,
+    FuturesListenKeyExpiredHandlerBase,
+    FuturesEventStreamTerminatedHandlerBase,
+)
+
 from binance.futures.enums import (
     PositionSide,
     FuturesOrderType,
