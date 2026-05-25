@@ -15,7 +15,8 @@ from aioresponses import aioresponses
 from binance import Client, Stream, SubType, UserStreamNotSubscribedException
 from binance.common.exceptions import (
     APIKeyNotDefinedException,
-    InvalidSubTypeParamException
+    InvalidSubTypeParamException,
+    StreamDisconnectedException
 )
 from binance.rate_limit import RateLimiter
 from binance.handlers.orderbook import OrderBook
@@ -338,6 +339,8 @@ async def test_reconnect_handles_connected_task_errors():
     stream = Stream.__new__(Stream)
     stream._logger = logger
     stream._connection_error = False
+    stream._uri = 'ws://fake'
+    stream._message_futures = {}
 
     async def raiser():
         raise RuntimeError('boom')
@@ -352,6 +355,8 @@ async def test_reconnect_handles_connected_task_errors():
     stream2 = Stream.__new__(Stream)
     stream2._logger = logger
     stream2._connection_error = False
+    stream2._uri = 'ws://fake'
+    stream2._message_futures = {}
 
     async def runner():
         await asyncio.sleep(10)
@@ -368,6 +373,8 @@ async def test_close_logs_task_errors():
     stream._logger = logger
     stream._closing = False
     stream._connected_task = None
+    stream._uri = 'ws://fake'
+    stream._message_futures = {}
 
     async def done():
         return None
@@ -430,3 +437,112 @@ async def test_user_stream_subscribe_unsubscribe_close_mocked(monkeypatch):
     methods = [req['method'] for req in sent]
     assert 'userDataStream.subscribe.signature' in methods
     assert 'userDataStream.unsubscribe' in methods
+
+
+# --- subscribe/stream.py: _reject_pending (F-72) ---------------------------
+
+def test_reject_pending_sets_exception_and_clears_futures():
+    """_reject_pending sets exception on all in-flight futures and empties the dict."""
+    stream = Stream.__new__(Stream)
+    stream._logger = logger
+
+    loop = asyncio.new_event_loop()
+    try:
+        future1 = loop.create_future()
+        future2 = loop.create_future()
+        stream._message_futures = {1: future1, 2: future2}
+
+        exc = StreamDisconnectedException('ws://fake')
+        stream._reject_pending(exc)
+
+        assert stream._message_futures == {}
+        assert future1.done() and future1.exception() is exc
+        assert future2.done() and future2.exception() is exc
+    finally:
+        loop.close()
+
+
+def test_reject_pending_noop_when_no_futures():
+    """_reject_pending is a no-op when there are no pending futures."""
+    stream = Stream.__new__(Stream)
+    stream._logger = logger
+    stream._message_futures = {}
+    # Must not raise
+    stream._reject_pending(StreamDisconnectedException('ws://fake'))
+    assert stream._message_futures == {}
+
+
+def test_reject_pending_skips_already_done_futures():
+    """_reject_pending does not double-resolve futures already resolved."""
+    stream = Stream.__new__(Stream)
+    stream._logger = logger
+
+    loop = asyncio.new_event_loop()
+    try:
+        already_done = loop.create_future()
+        already_done.set_result('ok')
+        stream._message_futures = {99: already_done}
+
+        stream._reject_pending(StreamDisconnectedException('ws://fake'))
+        # Future keeps its original result — not overwritten.
+        assert already_done.result() == 'ok'
+    finally:
+        loop.close()
+
+
+@pytest.mark.asyncio
+async def test_send_raises_on_close_while_awaiting():
+    """A send() awaiting a response raises StreamDisconnectedException on close (F-72).
+
+    Injects a fake socket whose ``send`` hangs forever, simulating a connection
+    that drops between sending a request and receiving its correlated response.
+    Calls close() and asserts the awaiting send() raises StreamDisconnectedException
+    instead of hanging forever.
+    """
+    from binance.rate_limit import RateLimiter
+
+    stream = Stream.__new__(Stream)
+    stream._logger = logger
+    stream._uri = 'ws://fake-host'
+    stream._message_futures = {}
+    stream._message_id = 0
+    stream._closing = False
+    stream._conn_task = None
+    stream._connected_task = None
+    stream._rate_limiter = RateLimiter(enabled=False)
+    stream._connection_id = 'default'
+    stream._rate_limiter.register_connection('default')
+
+    # A fake socket whose send() completes (message "sent") but the server
+    # never replies, so the future in _message_futures is never resolved.
+    class FakeSocket:
+        async def send(self, _data):
+            pass  # "sent"; no reply will arrive
+
+        async def close(self, code=4999):
+            pass
+
+    stream._socket = FakeSocket()
+
+    # Inject a minimal conn_task so close() can proceed.
+    async def _noop():
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            return
+
+    stream._conn_task = asyncio.create_task(_noop())
+
+    # Start a send; the future will be added to _message_futures but never resolved.
+    send_task = asyncio.create_task(
+        stream.send({'method': 'no_reply', 'params': {}})
+    )
+    # Yield so send_task advances past `await socket.send(...)` and is now
+    # stuck on `return await future`.
+    await asyncio.sleep(0.05)
+
+    # Closing should call _reject_pending and immediately unblock send_task.
+    await stream.close()
+
+    with pytest.raises(StreamDisconnectedException):
+        await asyncio.wait_for(send_task, timeout=2.0)

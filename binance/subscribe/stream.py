@@ -189,6 +189,21 @@ class Stream:
 
         return await event_callback(*args)
 
+    def _reject_pending(self, exception: Exception) -> None:
+        """Reject every in-flight request future because the connection was lost.
+
+        Without this a caller awaiting :meth:`send` hangs forever when the socket
+        drops between sending a request and receiving its id-correlated response
+        (only :meth:`_handle_message` ever resolves these futures).
+        """
+        if not self._message_futures:
+            return
+        pending = self._message_futures
+        self._message_futures = {}
+        for future in pending.values():
+            if not future.done():
+                future.set_exception(exception)
+
     async def _handle_message(self, msg) -> None:
         # > The id used in the JSON payloads is an unsigned INT used as
         # > an identifier to uniquely identify the messages going back and forth
@@ -354,6 +369,8 @@ class Stream:
             )
         )
 
+        self._reject_pending(StreamDisconnectedException(self._uri))
+
         if self._connected_task is not None:
             self._connected_task.cancel()
 
@@ -395,6 +412,7 @@ class Stream:
         #   is closed by socket.close() or network connection error.
         # So just set up a flag to do the trick
         self._closing = True
+        self._reject_pending(StreamDisconnectedException(self._uri))
 
         tasks = [self._conn_task]
 
