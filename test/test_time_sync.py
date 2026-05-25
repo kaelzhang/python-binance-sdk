@@ -1,8 +1,8 @@
 """Tests for the server-time offset sync feature (prevent -1021 errors).
 
-``sync_time`` and every signed request now travel over the WebSocket API, so
+``_sync_time`` and every signed request now travel over the WebSocket API, so
 these drive the local :class:`WSAPIServer` request/response harness instead of
-mocking REST. ``sync_time()`` resolves via the WS-API ``time`` request
+mocking REST. ``_sync_time()`` resolves via the WS-API ``time`` request
 (``get_server_time``); the lazy arming fires the unsigned ``time`` request once
 before the first signed request, and a ``-1021`` re-arms it.
 """
@@ -31,7 +31,7 @@ def _make_client(server, **kwargs) -> SpotClient:
 
 @pytest.mark.asyncio
 async def test_sync_time_stores_positive_offset_and_sets_flag():
-    """sync_time() computes roughly server_time - local_time and marks synced."""
+    """_sync_time() computes roughly server_time - local_time and marks synced."""
     local_now = int(time.time() * 1000)
     fake_server_time = local_now + 50_000  # server is 50 s ahead
 
@@ -40,16 +40,16 @@ async def test_sync_time_stores_positive_offset_and_sets_flag():
     await server.run()
     try:
         client = _make_client(server)
-        offset = await client.sync_time()
+        offset = await client._sync_time()
 
         # The offset should be close to +50 000 ms; allow +/-2 000 ms of
         # wall-clock drift between the fake_server_time capture above and
-        # sync_time's own time.time() call.
+        # _sync_time's own time.time() call.
         assert abs(offset - 50_000) < 2_000
         assert client._time_offset == offset
         assert client._time_synced is True
 
-        # sync_time issues the public (unsigned) `time` request.
+        # _sync_time issues the public (unsigned) `time` request.
         assert server.received[-1]['method'] == 'time'
         assert 'params' not in server.received[-1]
     finally:
@@ -59,7 +59,7 @@ async def test_sync_time_stores_positive_offset_and_sets_flag():
 
 @pytest.mark.asyncio
 async def test_lazy_auto_sync_on_first_signed_request():
-    """A signed endpoint triggers sync_time once before the first request."""
+    """A signed endpoint triggers _sync_time once before the first request."""
     local_now = int(time.time() * 1000)
 
     server = WSAPIServer(port=_PORT)
@@ -88,7 +88,7 @@ async def test_lazy_auto_sync_on_first_signed_request():
 
 @pytest.mark.asyncio
 async def test_lazy_sync_only_runs_once():
-    """sync_time fires once; subsequent signed requests do not re-sync."""
+    """_sync_time fires once; subsequent signed requests do not re-sync."""
     server = WSAPIServer(port=_PORT)
     server.on('account.status', result={'canTrade': True})
     await server.run()

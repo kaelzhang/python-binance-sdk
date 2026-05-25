@@ -92,7 +92,7 @@ class SubscriptionManager:
     _time_synced: bool
     _recv_window: Optional[int]
     _handler_ctx: Optional[HandlerContext]
-    sync_time: Callable[[], Awaitable]
+    _sync_time: Callable[[], Awaitable]
     # Cross-mixin method defined on ClientBase but used by SubscriptionManager
     _ws_api_signature_params: Callable[..., dict]
 
@@ -417,11 +417,11 @@ class SubscriptionManager:
             raise APISecretNotDefinedException(method)
 
         # Lazily sync the server-time offset before the FIRST signed request
-        # (mirrors the old REST `_request`). `sync_time()` itself issues the
+        # (mirrors the old REST `_request`). `_sync_time()` itself issues the
         # unsigned (NONE) WS-API `time` request, so `need_signed` is False there
         # and this never recurses.
         if need_signed and not self._time_synced:
-            await self.sync_time()
+            await self._sync_time()
 
         request_params = self._ws_api_auth_params(method, request_params, security)
 

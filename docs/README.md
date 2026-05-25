@@ -150,9 +150,7 @@ await spot.create_order(
 )
 ```
 
-### await spot.sync_time() -> int
-
-Syncs the local clock offset against Binance server time by issuing `get_server_time()` and storing `server_time - local_time` (ms). This offset is added to the `timestamp` of every signed request, preventing `-1021` rejections from clock drift. Called automatically before the first signed request and on each `-1021` response. Returns the new offset in milliseconds.
+The client automatically keeps the server-time offset in sync internally — it syncs before the first signed request and re-syncs after any `-1021` response — so users never need to manage it.
 
 ### spot.rate_limit_snapshot() -> RateLimitSnapshot
 

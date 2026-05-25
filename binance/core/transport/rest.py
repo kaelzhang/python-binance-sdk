@@ -159,7 +159,7 @@ class RestTransport:
     _time_offset: int
     _time_synced: bool
     # Provided by BaseClient; re-armed by the signed-request flow below.
-    sync_time: Callable[[], Awaitable]
+    _sync_time: Callable[[], Awaitable]
 
     def _get_session(self) -> ClientSession:
         """Return the shared REST :class:`~aiohttp.ClientSession`, creating it lazily.
@@ -344,7 +344,7 @@ class RestTransport:
             raise APISecretNotDefinedException(uri)
 
         if need_signed and not self._time_synced:
-            await self.sync_time()
+            await self._sync_time()
 
         await self._rate_limiter.acquire_rest(weight=weight, is_order=is_order)
 

@@ -66,7 +66,7 @@ class WSAPIServer:
         # default rateLimits array attached to every success unless overridden
         self.default_rate_limits = None
 
-        # The lazy server-time sync (`sync_time`) issues a public WS-API `time`
+        # The lazy server-time sync (`_sync_time`) issues a public WS-API `time`
         # request before the FIRST signed request on a connection. Pre-register
         # a canned reply so every signed-request test works without having to
         # opt in; individual tests may still override it via `.on('time', ...)`.

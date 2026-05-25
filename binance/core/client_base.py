@@ -3,7 +3,7 @@
 :class:`BaseClient` assembles the REST + WebSocket-API transports and the
 stream :class:`~binance.core.transport.subscription.SubscriptionManager`, and
 provides the construction / lifecycle boilerplate (``start`` / ``close`` /
-``rate_limit_snapshot`` / ``sync_time``) common to every market client. Market
+``rate_limit_snapshot`` / ``_sync_time``) common to every market client. Market
 modules subclass it, bind their :class:`~binance.core.market.MarketSpec`, and
 install their endpoint methods.
 """
@@ -169,16 +169,16 @@ class BaseClient(  # type: ignore[misc]  # diamond mixin: _ws_api_request is a C
         """
         return self._logger
 
-    async def sync_time(self) -> int:
-        """Sync the local clock offset against Binance server time.
+    async def _sync_time(self) -> int:
+        """Internal: sync the local clock offset against Binance server time.
 
         Issues the WebSocket-API ``time`` request (``get_server_time``) and
         stores ``server_time - local_time`` (ms) as an offset that is added to
         the ``timestamp`` of every signed request, preventing ``-1021``
         (timestamp outside recvWindow) rejections from a drifting local clock.
         Called automatically before the first signed request and re-armed
-        whenever a ``-1021`` is seen; you may also call it manually (e.g.
-        periodically). Returns the new offset in milliseconds.
+        whenever a ``-1021`` is seen. This is fully internal — users do not
+        need to call or manage it. Returns the new offset in milliseconds.
 
         ``time`` is a public (``NONE``) request, so this never re-triggers the
         signed-request time-sync arming (no recursion).
