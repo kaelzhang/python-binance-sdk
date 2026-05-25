@@ -610,7 +610,7 @@ async def test_define_ws_getter_params_false_sends_no_params():
             ...
 
     define_ws_getter(
-        Target, 'noparams', 'some.method', params=False,
+        Target, 'noparams', ws_method='some.method', params=False,
         security_type=SecurityType.NONE, weight=2)
 
     captured = {}

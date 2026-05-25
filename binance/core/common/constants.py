@@ -68,6 +68,13 @@ class SubType(StringEnum):
     User data stream:
         USER: Account and order update events for the authenticated user.
             Requires a valid API key to have been configured on the client.
+
+    USDⓈ-M Futures streams (UMFuturesClient only):
+        MARK_PRICE: Mark-price and funding-rate updates for a symbol
+            (``<symbol>@markPrice`` / ``<symbol>@markPrice@1s``).
+            Requires ``symbol``.
+        FORCE_ORDER: Liquidation order events for a symbol
+            (``<symbol>@forceOrder``). Requires ``symbol``.
     """
 
     KLINE = 'kline'
@@ -89,6 +96,10 @@ class SubType(StringEnum):
     ALL_MARKET_WINDOW_TICKERS = 'allMarketWindowTickers'
 
     USER = 'user'
+
+    # USDⓈ-M Futures streams
+    MARK_PRICE = 'markPrice'
+    FORCE_ORDER = 'forceOrder'
 
 
 MSG_PREFIX = '[BinanceSDK] '
