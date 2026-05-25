@@ -47,7 +47,7 @@ from binance.core.rate_limit import (
 
 from binance.core.common.types import StreamError, StreamName, StreamErrorPhase
 
-from binance.handlers.handlers import (
+from binance.spot.handlers import (
     StreamErrorHandlerBase,
     HandlerExceptionHandlerBase,
     TradeHandlerBase,
@@ -65,9 +65,9 @@ from binance.handlers.handlers import (
     AllMarketWindowTickersHandlerBase
 )
 
-from binance.handlers.orderbook_handler import OrderBookHandlerBase
+from binance.spot.orderbook_handler import OrderBookHandlerBase
 
-from binance.handlers.user_handlers import (
+from binance.spot.user_handlers import (
     AccountPositionHandlerBase,
     BalanceUpdateHandlerBase,
     OrderUpdateHandlerBase,
@@ -76,5 +76,5 @@ from binance.handlers.user_handlers import (
     EventStreamTerminatedHandlerBase
 )
 
-from binance.handlers.orderbook import OrderBook
+from binance.spot.orderbook import OrderBook
 from binance.core.transport.stream import Stream

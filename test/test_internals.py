@@ -19,8 +19,8 @@ from binance.core.common.exceptions import (
     StreamDisconnectedException
 )
 from binance.core.rate_limit import RateLimiter
-from binance.handlers.orderbook import OrderBook
-from binance.processors.processors import (
+from binance.spot.orderbook import OrderBook
+from binance.spot.processors import (
     _get_window,
     _get_order_book_interval,
     _get_partial_depth_level

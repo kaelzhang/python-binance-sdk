@@ -6,7 +6,7 @@ import re
 from typing import ClassVar
 from stock_pandas import TimeFrame
 
-from binance.handlers.handlers import (
+from binance.spot.handlers import (
     StreamErrorHandlerBase,
     HandlerExceptionHandlerBase,
     KlineHandlerBase,
@@ -24,7 +24,7 @@ from binance.handlers.handlers import (
     AllMarketWindowTickersHandlerBase
 )
 
-from binance.handlers.orderbook_handler import OrderBookHandlerBase
+from binance.spot.orderbook_handler import OrderBookHandlerBase
 
 from binance.core.common.constants import (
     SubType,

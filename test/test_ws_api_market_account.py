@@ -19,7 +19,7 @@ import pytest
 
 from binance import Client
 from binance.core.common.constants import SecurityType
-from binance.apis.ws_api import (
+from binance.spot.endpoints import (
     WS_APIS,
     _depth_weight,
     _ticker_24hr_weight,

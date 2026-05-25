@@ -65,14 +65,14 @@ dev = [
 [tool.setuptools]
 packages = [
   'binance',
-  'binance.apis',
   'binance.client',
   'binance.core',
   'binance.core.common',
+  'binance.core.handlers',
+  'binance.core.processors',
   'binance.core.rate_limit',
-  'binance.handlers',
-  'binance.processors',
-  'binance.subscribe'
+  'binance.core.transport',
+  'binance.spot'
 ]
 
 [tool.setuptools.dynamic]

@@ -10,19 +10,17 @@ install their endpoint methods.
 
 import time
 from logging import getLogger, Logger
-from typing import Optional
+from typing import ClassVar, Optional
 
 from aioretry import RetryPolicy
 
 from binance.core.auth import Credentials
 from binance.core.common.constants import (
-    REST_API_HOST,
-    STREAM_HOST,
-    WS_API_HOST,
     DEFAULT_RETRY_POLICY,
     DEFAULT_STREAM_TIMEOUT,
 )
 from binance.core.common.types import Timeout
+from binance.core.market import MarketSpec
 from binance.core.rate_limit import RateLimiter, RateLimitSnapshot
 from binance.core.transport.rest import RestTransport
 from binance.core.transport.subscription import SubscriptionManager
@@ -50,17 +48,25 @@ class BaseClient(  # type: ignore[misc]  # diamond mixin: _ws_api_request is a C
 
     Market-specific endpoint methods (``get_klines`` / ``create_order`` / ...)
     are installed onto the concrete subclass by its market module.
+
+    Subclasses MUST bind :attr:`MARKET` to their
+    :class:`~binance.core.market.MarketSpec`; the hosts and default rate-limit
+    rules are taken from it.
     """
+
+    # Bound by each concrete market client (SpotClient / UMFuturesClient).
+    MARKET: ClassVar[MarketSpec]
 
     def __init__(
         self,
         credentials: Optional[Credentials] = None,
         *,
         request_params=None,
-        # so that you can change the hosts for the CN network or for tests
-        rest_host: str = REST_API_HOST,
-        stream_host: str = STREAM_HOST,
-        ws_api_host: str = WS_API_HOST,
+        # Host overrides default to the market's hosts; override for the CN
+        # network or to point tests at a local mock server.
+        rest_host: Optional[str] = None,
+        stream_host: Optional[str] = None,
+        ws_api_host: Optional[str] = None,
         time_unit=None,
         stream_retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
         stream_timeout: Timeout = DEFAULT_STREAM_TIMEOUT,
@@ -104,6 +110,8 @@ class BaseClient(  # type: ignore[misc]  # diamond mixin: _ws_api_request is a C
                 its server-side default (5000 ms).
         """
 
+        market = self.MARKET
+
         self._credentials = credentials or Credentials()
 
         self._used_weight = {}
@@ -111,7 +119,8 @@ class BaseClient(  # type: ignore[misc]  # diamond mixin: _ws_api_request is a C
         if rate_limiter is not None:
             self._rate_limiter = rate_limiter
         else:
-            self._rate_limiter = RateLimiter(enabled=bool(rate_limit_guard))
+            self._rate_limiter = RateLimiter(
+                rules=market.rules, enabled=bool(rate_limit_guard))
         self._time_offset = 0
         self._time_synced = False
         # Shared REST session — lazily opened on first REST call (F-12 / F-42).
@@ -119,14 +128,19 @@ class BaseClient(  # type: ignore[misc]  # diamond mixin: _ws_api_request is a C
         self._request_timeout = float(request_timeout)
 
         self._request_params = request_params
-        self._rest_host = rest_host
+        self._rest_host = rest_host if rest_host is not None else market.rest_host
         # F-48: client-level recvWindow default (None = use server default).
         self._recv_window = (
             min(int(recv_window), 60000) if recv_window is not None else None
         )
 
-        self._stream_host = stream_host
-        self._ws_api_host = _apply_time_unit(ws_api_host, time_unit)
+        self._stream_host = (
+            stream_host if stream_host is not None else market.stream_host
+        )
+        resolved_ws_api_host = (
+            ws_api_host if ws_api_host is not None else market.ws_api_host
+        )
+        self._ws_api_host = _apply_time_unit(resolved_ws_api_host, time_unit)
         self._stream_retry_policy = stream_retry_policy
         self._stream_timeout = stream_timeout
 

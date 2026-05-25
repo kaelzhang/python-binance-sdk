@@ -123,9 +123,6 @@ def NO_RETRY_POLICY(_) -> RetryPolicyStrategy:
 # ==================================================
 
 
-STREAM_HOST = 'wss://stream.binance.com'
-WS_API_HOST = 'wss://ws-api.binance.com/ws-api/v3'
-
 # Seconds of stream silence before the SDK proactively pings to probe a
 # possibly-dead connection. Kept above Binance's 20s server-ping cadence so it
 # only fires as a dead-connection detector, not a redundant keepalive (the
@@ -308,9 +305,6 @@ class TimeInForce(StringEnum):
 
 
 HEADER_API_KEY = 'X-MBX-APIKEY'
-
-REST_API_VERSION = 'v3'
-REST_API_HOST = 'https://api.binance.com'
 
 STREAM_KEY_ID = 'id'
 STREAM_KEY_RESULT = 'result'

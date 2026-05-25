@@ -22,7 +22,7 @@ class StreamErrorHandlerBase(Handler):
 
     When a post-reconnect subscription replay or WS-API ``session.logon``
     fails, the SDK logs the error at ERROR level, schedules a
-    :meth:`~binance.subscribe.stream.Stream.recycle` on the affected stream
+    :meth:`~binance.core.transport.stream.Stream.recycle` on the affected stream
     to trigger a fresh reconnect, and then calls ``receive`` on every
     registered instance of this class.
 

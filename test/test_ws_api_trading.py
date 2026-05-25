@@ -17,7 +17,7 @@ import pytest
 
 from binance import Client
 from binance.core.common.constants import SecurityType
-from binance.apis.ws_api import (
+from binance.spot.endpoints import (
     WS_APIS,
     define_ws_getter,
     _order_test_weight,

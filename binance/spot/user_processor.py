@@ -12,7 +12,7 @@ from binance.core.common.constants import (
 
 from binance.core.common.exceptions import UserStreamNotSubscribedException
 
-from binance.handlers.user_handlers import (
+from binance.spot.user_handlers import (
     AccountPositionHandlerBase,
     BalanceUpdateHandlerBase,
     OrderUpdateHandlerBase,

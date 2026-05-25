@@ -8,7 +8,7 @@ from binance import (
     StreamSubscribeException
 )
 
-from binance.core.common.constants import STREAM_HOST
+from binance.spot.constants import STREAM_HOST
 from binance.core.common.utils import create_future
 
 from .common import (

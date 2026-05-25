@@ -67,7 +67,7 @@ class StreamError:
             ``err.phase == StreamErrorPhase.RESUBSCRIBE``.
         exception: the underlying exception that was raised.
         recovering: ``True`` when the SDK has already scheduled a
-            :meth:`~binance.subscribe.stream.Stream.recycle` on the affected
+            :meth:`~binance.core.transport.stream.Stream.recycle` on the affected
             stream to initiate a fresh reconnect cycle.
     """
     stream: StreamName

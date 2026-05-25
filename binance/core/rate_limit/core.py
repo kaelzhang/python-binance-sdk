@@ -227,7 +227,7 @@ class RateLimiter:
     async def acquire_connection(self) -> None:
         """Account one WebSocket connection attempt against the IP pool.
 
-        Called by a :class:`~binance.subscribe.stream.Stream` before each
+        Called by a :class:`~binance.core.transport.stream.Stream` before each
         connect, so a reconnect storm stays under Binance's 300/5min cap. May
         ``await`` when the guard is enabled (the pool is ``SLEEP``-enforced).
         """

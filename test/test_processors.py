@@ -1,6 +1,6 @@
 import pytest
 
-from binance.processors import (
+from binance.spot.processors import (
     KlineUTC8Processor,
     OrderBookProcessor,
     PartialOrderBookProcessor,
@@ -81,7 +81,7 @@ def test_kline_utc8_processor():
 
 def test_kline_invalid_interval():
     """An invalid kline interval (not in Binance allowlist) raises InvalidSubTypeParamException."""
-    from binance.processors.processors import KlineProcessor
+    from binance.spot.processors import KlineProcessor
     processor = KlineProcessor(None)
 
     # TimeFrame.Y1 ('1y') is a valid TimeFrame but NOT a valid Binance kline interval.
