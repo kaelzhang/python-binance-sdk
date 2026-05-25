@@ -235,6 +235,12 @@ WS_APIS = [
     dict(name='get_my_filters', ws_method='myFilters',
          security_type=SecurityType.USER_DATA, weight=40),
 
+    # ----- session management (NONE) ---------------------------------------
+    dict(name='get_session_status', ws_method='session.status',
+         params=False, security_type=SecurityType.NONE, weight=2),
+    dict(name='get_session_subscriptions', ws_method='session.subscriptions',
+         params=False, security_type=SecurityType.NONE, weight=2),
+
     # ----- order.* ---------------------------------------------------------
     dict(
         name='create_order',
@@ -1175,6 +1181,49 @@ class WsApiGetters:
             dict: Account-specific filter data for the requested symbol.
         """
         ...  # pragma: no cover
+
+    # ----- session management ----------------------------------------------
+
+    def get_session_status(self) -> Awaitable:
+        """Reports which API key is currently authorizing the shared WS-API connection.
+
+        Weight: 2
+
+        Returns:
+            dict: Session status, including the authorizing API key (if any).
+        """
+        ...  # pragma: no cover
+
+    def get_session_subscriptions(self) -> Awaitable:
+        """Lists active user-data subscriptions on the shared WS-API connection.
+
+        Weight: 2
+
+        Returns:
+            list: Active user-data subscription descriptors.
+        """
+        ...  # pragma: no cover
+
+    _ws_api_authenticated: bool
+
+    async def session_logout(self):
+        """Forgets the API key authenticated on the shared WS-API connection.
+
+        Sends ``session.logout`` and clears the local session-auth flag so
+        subsequent signed requests fall back to per-request signing (matching
+        the now-unauthenticated connection). The connection stays open; a later
+        reconnect re-runs ``session.logon`` automatically (Ed25519 only).
+
+        Weight: 2
+
+        Returns:
+            dict: an empty dict ``{}``.
+        """
+        result = await self._ws_api_request(
+            'session.logout', security=SecurityType.NONE, weight=2
+        )
+        self._ws_api_authenticated = False
+        return result
 
     # ----- trading ---------------------------------------------------------
 

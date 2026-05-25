@@ -307,6 +307,12 @@ Trading (signed):
 - `create_opoco(**kwargs)` — One-Pending-One-Cancels-the-Other order list
 - `cancel_oco(**kwargs)` / `get_oco(**kwargs)` / `get_all_oco(**kwargs)` / `get_open_oco(**kwargs)`
 
+Session management (the SDK normally manages the session automatically):
+
+- `get_session_status()` — reports which API key is authorizing the current connection
+- `get_session_subscriptions()` — lists active user-data subscriptions on the connection
+- `session_logout()` — sends `session.logout` and clears the local auth flag so subsequent signed requests fall back to per-request signing
+
 All take keyword arguments matching the [Binance WebSocket API](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-api) parameters and return the parsed `result`.
 
 ### await client.sync_time() -> int
