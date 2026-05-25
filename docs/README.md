@@ -4,12 +4,13 @@
 
 # binance-sdk
 
-`binance-sdk` is an unofficial async Binance SDK for Python 3.9+, now multi-market (Spot + USDⓈ-M Futures). It:
+`binance-sdk` is an unofficial async Binance SDK for Python 3.9+, supporting three markets: **Spot**, **USDⓈ-M Futures** (`UMFuturesClient`), and **COIN-M Futures** (`CMFuturesClient`). It:
 
 - Routes every Spot request/response call over the **Binance WebSocket API** (`wss://ws-api.binance.com`) for low latency, while keeping a generic `get`/`post`/`put`/`delete` REST escape hatch for arbitrary endpoints.
-- Provides a separate **USDⓈ-M Futures** client (`UMFuturesClient`) for REST market-data (open interest, funding rates, mark price) and WebSocket streams (mark price, liquidations).
+- Provides full-surface **USDⓈ-M Futures** (`UMFuturesClient`) and **COIN-M Futures** (`CMFuturesClient`) clients: market-data (open interest, funding rates, mark price), trading (orders, batch orders, position config), account management, WebSocket market-data streams (mark price, liquidations), and futures user-data streams.
+- Futures trading endpoints route over the **Futures WebSocket API** (ws-fapi / ws-dapi) where available; REST otherwise. All signed endpoints require `Credentials`.
 - Returns `StockDataFrame` (from `stock-pandas`) for stream payloads with renamed columns.
-- Uses a first-class `Credentials` object that can be shared across market clients.
+- Uses a first-class `Credentials` object (`SpotClient`, `UMFuturesClient`, `CMFuturesClient` all accept the same `Credentials` instance).
 - Based on Python `async`/`await`.
 - Manages the order book for you (via `OrderBookHandlerBase`), handling WebSocket reconnection and message losses automatically.
 - Supports changing API endpoints (e.g. for faster regional hosts).
@@ -27,7 +28,7 @@ pip install binance-sdk
 `Credentials` is a standalone object that holds an API key plus optional signing material. A single instance may be shared across multiple market clients:
 
 ```python
-from binance import Credentials, SpotClient, UMFuturesClient
+from binance import Credentials, SpotClient, UMFuturesClient, CMFuturesClient
 
 # HMAC (deprecated by Binance; prefer asymmetric keys):
 creds = Credentials(api_key='KEY', api_secret='SECRET')
@@ -41,7 +42,8 @@ creds = Credentials(api_key='KEY', private_key='/path/to/ed25519.pem')
 # Share the same creds across markets, or pass different creds per market,
 # or pass no creds for public-data-only access:
 spot = SpotClient(creds)
-um   = UMFuturesClient(creds)   # same key pair; credentials are optional here
+um   = UMFuturesClient(creds)   # USDⓈ-M Futures: trading + account + streams
+cm   = CMFuturesClient(creds)   # COIN-M Futures:  trading + account + streams
 um_public = UMFuturesClient()   # no creds — public market data only
 ```
 
@@ -178,16 +180,29 @@ Close all stream connections and the shared REST session.
 
 ## UMFuturesClient (USDⓈ-M Futures)
 
-`UMFuturesClient` provides read-only market-data access for USDⓈ-M Perpetual Futures. This release covers market data only — no order placement or account endpoints. Credentials are optional (all endpoints are public).
+`UMFuturesClient` provides the full USDⓈ-M Perpetual Futures surface: market-data, trading, account management, market-data streams, and a futures user-data stream.
 
 ```python
-from binance import UMFuturesClient
+from binance import UMFuturesClient, Credentials, SubType
+from binance.futures.enums import FuturesOrderType, FuturesTimeInForce
 
-um = UMFuturesClient()   # no creds needed for public data
-
+# Public market data — no credentials needed:
+um = UMFuturesClient()
 oi  = await um.get_open_interest(symbol='BTCUSDT')
 fr  = await um.get_funding_rate(symbol='BTCUSDT', limit=10)
 mp  = await um.get_premium_index(symbol='BTCUSDT')
+
+# Trading and account — credentials required:
+um = UMFuturesClient(Credentials(api_key='KEY', api_secret='SECRET'))
+order = await um.create_order(
+    symbol='BTCUSDT',
+    side='BUY',
+    type=FuturesOrderType.LIMIT,
+    timeInForce=FuturesTimeInForce.GTC,
+    quantity='0.001',
+    price='30000',
+)
+balance = await um.get_balance()
 ```
 
 ### REST market-data methods
@@ -199,6 +214,80 @@ All are public (`SecurityType.NONE`), no credentials required:
 - `get_funding_rate(**kwargs)` — historical funding rate data (weight 1). Optional: `symbol`, `startTime`, `endTime`, `limit` (default 100, max 1000).
 - `get_funding_info(**kwargs)` — funding rate cap/floor and interval for all symbols (weight 1).
 - `get_premium_index(**kwargs)` — mark price, index price, and funding rate (weight 1 with `symbol`; 10 for all symbols). Optional: `symbol`.
+
+### Trading & account methods
+
+All signed endpoints require `Credentials`. Order endpoints (`create_order`, `modify_order`, `cancel_order`, `get_order`, `get_account`, `get_balance`) route over the **Futures WebSocket API** (`wss://ws-fapi.binance.com/ws-fapi/v1`). The remaining trading/account/position endpoints use REST (`https://fapi.binance.com`).
+
+**Orders:**
+
+- `create_order(**kwargs)` — place a new order (WS-API, weight 1).
+- `create_test_order(**kwargs)` — test-place an order without submitting it (REST, weight 1).
+- `modify_order(**kwargs)` — modify an existing order (WS-API, weight 1).
+- `cancel_order(**kwargs)` — cancel an active order (WS-API, weight 1).
+- `cancel_all_orders(**kwargs)` — cancel all open orders for a symbol (REST, weight 1). Required: `symbol`.
+- `get_order(**kwargs)` — check order status (WS-API, weight 1).
+- `get_open_orders(**kwargs)` — list open orders (REST, weight 1 with `symbol`, 40 without).
+- `get_all_orders(**kwargs)` — list all orders (active, cancelled, filled) for a symbol (REST, weight 5). Required: `symbol`.
+- `create_batch_orders(**kwargs)` — place multiple orders in one request (REST, weight 5). Required: `batchOrders` list.
+- `cancel_batch_orders(**kwargs)` — cancel multiple orders in one request (REST, weight 5). Required: `symbol`, plus `orderIdList` or `origClientOrderIdList`.
+
+**Account:**
+
+- `get_account(**kwargs)` — account status including balances and positions (WS-API, weight 5).
+- `get_balance(**kwargs)` — per-asset balance records (WS-API, weight 5).
+- `get_position_risk(**kwargs)` — position risk information (REST, weight 5). Optional: `symbol`.
+- `get_user_trades(**kwargs)` — trade history for a symbol (REST, weight 5). Required: `symbol`.
+- `get_commission(**kwargs)` — commission rates for a symbol (REST, weight 20). Required: `symbol`.
+- `get_income(**kwargs)` — income history (REST, weight 30). Optional: `symbol`, `incomeType`, `startTime`, `endTime`, `limit`.
+- `get_leverage_bracket(**kwargs)` — leverage bracket info (REST, weight 1). Optional: `symbol`.
+
+**Position configuration:**
+
+- `set_leverage(**kwargs)` — change initial leverage (REST, weight 1). Required: `symbol`, `leverage`.
+- `set_margin_type(**kwargs)` — change margin type (`ISOLATED`/`CROSSED`) for a symbol (REST, weight 1). Required: `symbol`, `marginType`.
+- `set_position_margin(**kwargs)` — adjust isolated position margin (REST, weight 1). Required: `symbol`, `amount`, `type` (1=add, 2=reduce).
+- `get_position_mode(**kwargs)` — get current position mode (one-way vs hedge) (REST, weight 30).
+- `set_position_mode(**kwargs)` — change position mode (REST, weight 1). Required: `dualSidePosition` bool.
+- `get_multi_assets_mode(**kwargs)` — get multi-assets margin mode (REST, weight 30). USDⓈ-M only.
+- `set_multi_assets_mode(**kwargs)` — change multi-assets margin mode (REST, weight 1). USDⓈ-M only.
+
+### Futures user-data stream
+
+Subscribe to account events (fills, balance changes, margin calls, config changes):
+
+```python
+from binance import (
+    UMFuturesClient, Credentials, SubType,
+    FuturesAccountUpdateHandlerBase,
+    FuturesOrderUpdateHandlerBase,
+    FuturesMarginCallHandlerBase,
+    FuturesAccountConfigUpdateHandlerBase,
+    FuturesListenKeyExpiredHandlerBase,
+    FuturesEventStreamTerminatedHandlerBase,
+)
+
+um = UMFuturesClient(Credentials(api_key='KEY', api_secret='SECRET'))
+
+class MyOrderUpdate(FuturesOrderUpdateHandlerBase):
+    def receive(self, payload):
+        # payload is the raw Binance ORDER_TRADE_UPDATE dict
+        print(payload['o']['s'], payload['o']['X'])
+
+um.handler(MyOrderUpdate())
+await um.subscribe(SubType.USER)
+```
+
+The futures user-data stream uses the **listenKey flow**: the SDK calls `userDataStream.start` over the WS-API connection to obtain a listenKey, then opens a dedicated `fstream` connection (`wss://fstream.binance.com/ws/<listenKey>`) for the events, sends periodic `userDataStream.ping` keepalives (every 50 min), and automatically re-obtains the key and reconnects on `listenKeyExpired`. All of this is managed internally.
+
+Handler bases to subclass (from `binance`):
+
+- `FuturesAccountUpdateHandlerBase` — `ACCOUNT_UPDATE` (balance + position snapshot on order/transfer)
+- `FuturesOrderUpdateHandlerBase` — `ORDER_TRADE_UPDATE` (order lifecycle: new/partial/filled/cancelled)
+- `FuturesMarginCallHandlerBase` — `MARGIN_CALL` (position risk ratio exceeds maintenance margin)
+- `FuturesAccountConfigUpdateHandlerBase` — `ACCOUNT_CONFIG_UPDATE` (leverage or multi-assets mode change)
+- `FuturesListenKeyExpiredHandlerBase` — `listenKeyExpired` (key expired; SDK auto-recovers)
+- `FuturesEventStreamTerminatedHandlerBase` — SDK-synthesized event when the dedicated fstream drops
 
 ### Futures streams: SubType.MARK_PRICE and SubType.FORCE_ORDER
 
@@ -238,6 +327,143 @@ await um.subscribe(SubType.FORCE_ORDER, 'btcusdt')
 ```
 
 `UMFuturesClient` accepts the same constructor kwargs as `SpotClient` (see above), plus an optional `Credentials` first argument.
+
+## CMFuturesClient (COIN-M Futures)
+
+`CMFuturesClient` provides the full COIN-M (coin-margined) Futures surface. The API surface mirrors `UMFuturesClient` exactly — same method names, same enums — with the following market-specific differences:
+
+- REST host: `https://dapi.binance.com` (dapi, not fapi).
+- Stream host: `wss://dstream.binance.com` (dstream, not fstream).
+- WS-API host: `wss://ws-dapi.binance.com/ws-dapi/v1`.
+- Symbols are contract codes like `'BTCUSD_PERP'` (not `'BTCUSDT'`).
+- `get_open_interest_hist` uses `pair` + `contractType` instead of `symbol`.
+- `get_premium_index` accepts `symbol` or `pair`; always returns a list.
+- `get_position_risk` filters by `marginAsset` or `pair` (not `symbol`).
+- `get_leverage_bracket` filters by `pair` (not `symbol`).
+- **No `get_multi_assets_mode` / `set_multi_assets_mode`** — USDⓈ-M only.
+- No 10-second ORDERS pool (only 1-minute ORDERS pool).
+
+```python
+from binance import CMFuturesClient, Credentials, SubType
+from binance.futures.enums import FuturesOrderType, FuturesTimeInForce
+
+# Public market data — no credentials needed:
+cm = CMFuturesClient()
+oi  = await cm.get_open_interest(symbol='BTCUSD_PERP')
+fr  = await cm.get_funding_rate(symbol='BTCUSD_PERP', limit=10)
+oih = await cm.get_open_interest_hist(
+    pair='BTCUSD', contractType='PERPETUAL', period='1h'
+)
+mp  = await cm.get_premium_index(symbol='BTCUSD_PERP')
+
+# Trading and account — credentials required:
+cm = CMFuturesClient(Credentials(api_key='KEY', api_secret='SECRET'))
+order = await cm.create_order(
+    symbol='BTCUSD_PERP',
+    side='BUY',
+    type=FuturesOrderType.LIMIT,
+    timeInForce=FuturesTimeInForce.GTC,
+    quantity='1',       # number of contracts, not base-asset quantity
+    price='30000',
+)
+balance  = await cm.get_balance()
+position = await cm.get_position_risk(pair='BTCUSD')
+```
+
+### COIN-M trading & account methods
+
+Same method names as USDⓈ-M (see above). Key differences:
+
+- Order endpoints route over `wss://ws-dapi.binance.com/ws-dapi/v1`.
+- REST endpoints use `https://dapi.binance.com/dapi/v1/…`.
+- `quantity` counts contracts, not base-asset units.
+
+### COIN-M user-data stream
+
+```python
+from binance import (
+    CMFuturesClient, Credentials, SubType,
+    FuturesAccountUpdateHandlerBase,
+    FuturesOrderUpdateHandlerBase,
+    FuturesMarginCallHandlerBase,
+    FuturesAccountConfigUpdateHandlerBase,
+    FuturesListenKeyExpiredHandlerBase,
+    FuturesEventStreamTerminatedHandlerBase,
+)
+
+cm = CMFuturesClient(Credentials(api_key='KEY', api_secret='SECRET'))
+
+class MyCMOrderUpdate(FuturesOrderUpdateHandlerBase):
+    def receive(self, payload):
+        print(payload['o']['s'], payload['o']['X'])
+
+cm.handler(MyCMOrderUpdate())
+await cm.subscribe(SubType.USER)
+```
+
+Same handler bases and same listenKey flow as USDⓈ-M; events arrive on `wss://dstream.binance.com/ws/<listenKey>`.
+
+### COIN-M market-data streams
+
+```python
+cm = CMFuturesClient()
+cm.handler(MyMarkPrice())          # MarkPriceHandlerBase (no mark_price_avg column for COIN-M)
+await cm.subscribe(SubType.MARK_PRICE, 'btcusd_perp')
+
+cm.handler(MyForceOrder())         # ForceOrderHandlerBase
+await cm.subscribe(SubType.FORCE_ORDER, 'btcusd_perp')
+```
+
+`CMFuturesClient` accepts the same constructor kwargs as `SpotClient`.
+
+## Futures enums
+
+Import from `binance` or `binance.futures.enums`. Use these for futures order parameters. The shared `OrderSide` (`BUY`/`SELL`) is at the top level (`from binance import OrderSide`).
+
+### `PositionSide`
+
+Position direction for futures orders and positions.
+
+- `PositionSide.BOTH` — one-way (non-hedge) mode: the single net position.
+- `PositionSide.LONG` — hedge mode long position.
+- `PositionSide.SHORT` — hedge mode short position.
+
+### `FuturesOrderType`
+
+Futures order execution type (extends Spot `OrderType`).
+
+- `FuturesOrderType.LIMIT`
+- `FuturesOrderType.MARKET`
+- `FuturesOrderType.STOP` — stop-limit (triggered by `stopPrice`; requires `price`)
+- `FuturesOrderType.STOP_MARKET` — stop-market (triggered by `stopPrice`)
+- `FuturesOrderType.TAKE_PROFIT` — take-profit limit (triggered by `stopPrice`; requires `price`)
+- `FuturesOrderType.TAKE_PROFIT_MARKET` — take-profit market (triggered by `stopPrice`)
+- `FuturesOrderType.TRAILING_STOP_MARKET` — trailing-stop market (activated by `callbackRate`)
+
+### `FuturesTimeInForce`
+
+Time-in-force values for futures orders (extends Spot `TimeInForce`).
+
+- `FuturesTimeInForce.GTC` — Good Till Cancelled
+- `FuturesTimeInForce.IOC` — Immediate Or Cancel
+- `FuturesTimeInForce.FOK` — Fill Or Kill
+- `FuturesTimeInForce.GTX` — Good Till Crossing (post-only)
+- `FuturesTimeInForce.GTD` — Good Till Date (expires at `goodTillDate`)
+- `FuturesTimeInForce.RPI` — Retail Price Improvement
+
+### `WorkingType`
+
+Price type used to trigger conditional (stop/take-profit) orders.
+
+- `WorkingType.MARK_PRICE` — use the mark price (default for most stop orders)
+- `WorkingType.CONTRACT_PRICE` — use the last traded price
+
+### `MarginType`
+
+Margin mode for a futures position.
+
+- `MarginType.ISOLATED` — each position has its own isolated margin
+- `MarginType.CROSSED` — all available balance is used as shared margin
 
 ## Handling messages
 
@@ -417,24 +643,30 @@ Spot stream handler bases:
 - `HandlerExceptionHandlerBase` — handles exceptions raised inside other handlers
 - `StreamErrorHandlerBase` — handles resubscribe/logon failures after reconnect
 
-## SubType (USDⓈ-M Futures)
+## SubType (Futures)
 
-Futures streams are only available on `UMFuturesClient`.
+Futures streams are available on both `UMFuturesClient` and `CMFuturesClient`.
 
 ### `SubType.MARK_PRICE` — mark-price and funding-rate updates
 
-- Required param: `symbol` (lowercase, e.g. `'btcusdt'`)
+- Required param: `symbol` (lowercase, e.g. `'btcusdt'` / `'btcusd_perp'`)
 - Optional second param: `'1s'` for the 1-second update variant (default is 3 s)
 - Wire stream: `<symbol>@markPrice` / `<symbol>@markPrice@1s`
 - Handler base: `MarkPriceHandlerBase`
-- Payload columns: `type`, `event_time`, `symbol`, `mark_price`, `mark_price_avg`, `index_price`, `est_settle_price`, `funding_rate`, `next_funding_time`
+- Payload columns: `type`, `event_time`, `symbol`, `mark_price`, `mark_price_avg` (USDⓈ-M only), `index_price`, `est_settle_price`, `funding_rate`, `next_funding_time`
 
 ### `SubType.FORCE_ORDER` — liquidation order events
 
-- Required param: `symbol` (lowercase, e.g. `'btcusdt'`)
+- Required param: `symbol` (lowercase, e.g. `'btcusdt'` / `'btcusd_perp'`)
 - Wire stream: `<symbol>@forceOrder`
 - Handler base: `ForceOrderHandlerBase`
 - Payload columns: `type`, `event_time`, `symbol`, `side`, `order_type`, `time_in_force`, `orig_quantity`, `price`, `avg_price`, `order_status`, `last_filled_qty`, `acc_filled_qty`, `trade_time`
+
+### `SubType.USER` — futures user-data stream
+
+- No params required.
+- Available on `UMFuturesClient` and `CMFuturesClient` when `Credentials` are provided.
+- Uses the listenKey flow (see [Futures user-data stream](#futures-user-data-stream) above); not the Spot `userDataStream.subscribe` flow.
 
 Possible subscribe exceptions (both markets):
 
