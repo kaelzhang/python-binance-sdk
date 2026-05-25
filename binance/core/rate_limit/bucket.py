@@ -1,9 +1,9 @@
 """Per-pool runtime state and enforcement.
 
 :class:`RateLimitBucket` is the live counter for a single
-:class:`~binance.rate_limit.types.RateLimitRule`: a sliding window for
+:class:`~binance.core.rate_limit.types.RateLimitRule`: a sliding window for
 ``WEIGHT``/``COUNT`` pools or a current-count ceiling for ``CAP`` pools. The
-:class:`~binance.rate_limit.core.RateLimiter` owns one bucket per pool and drives
+:class:`~binance.core.rate_limit.core.RateLimiter` owns one bucket per pool and drives
 them; application code normally goes through the limiter, not buckets directly.
 """
 

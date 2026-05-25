@@ -3,7 +3,7 @@
 These enums and the :class:`RateLimitRule` dataclass describe *what* each
 Binance rate-limit pool is and *how* the core should treat it. They are pure
 data; the live counters and runtime behaviour live in
-:mod:`binance.rate_limit.bucket` and :mod:`binance.rate_limit.core`.
+:mod:`binance.core.rate_limit.bucket` and :mod:`binance.core.rate_limit.core`.
 """
 
 from dataclasses import dataclass
@@ -86,7 +86,7 @@ class EnforceMode(StringEnum):
 
     - ``SLEEP`` -- block (``await``) until the window frees enough headroom.
     - ``RAISE`` -- fail fast, raising
-      :class:`~binance.common.exceptions.RateLimitReachedException` immediately
+      :class:`~binance.core.common.exceptions.RateLimitReachedException` immediately
       instead of waiting (used for ORDERS, where a delayed order can be worse
       than a rejected one).
     - ``TRACK`` -- never block or raise; only record usage. This is what every
@@ -137,9 +137,9 @@ class RateLimitRule:
     """Immutable description of one rate-limit pool.
 
     A rule is the static *configuration* of a pool; the live counters live in a
-    :class:`~binance.rate_limit.bucket.RateLimitBucket` built from it. The
+    :class:`~binance.core.rate_limit.bucket.RateLimitBucket` built from it. The
     default rules for every Binance pool are in
-    :mod:`binance.rate_limit.defaults`.
+    :mod:`binance.core.rate_limit.defaults`.
 
     Attributes:
         scope: Who shares this budget (see :class:`RateLimitScope`).

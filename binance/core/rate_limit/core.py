@@ -1,12 +1,12 @@
 """The unified rate-limit core.
 
 :class:`RateLimiter` is the single source of truth for every Binance rate-limit
-pool. It owns one :class:`~binance.rate_limit.bucket.RateLimitBucket` per shared
+pool. It owns one :class:`~binance.core.rate_limit.bucket.RateLimitBucket` per shared
 IP/account pool plus per-connection message/stream buckets, gates the REST and
 WebSocket transports proactively (``acquire_*``), reconciles against response
 headers and ``exchangeInfo``, and exposes a read-only
-:class:`~binance.rate_limit.snapshot.RateLimitSnapshot` for monitoring. A
-``Client`` keeps one private instance, surfaced only through
+:class:`~binance.core.rate_limit.snapshot.RateLimitSnapshot` for monitoring. A
+market client keeps one private instance, surfaced only through
 ``client.rate_limit_snapshot()``.
 """
 
@@ -201,7 +201,7 @@ class RateLimiter:
         raw-requests pool, and -- when ``is_order`` -- one unit from each
         account orders pool. When the guard is enabled this may ``await``
         (weight/raw are ``SLEEP``) or raise
-        :class:`~binance.common.exceptions.RateLimitReachedException` (orders
+        :class:`~binance.core.common.exceptions.RateLimitReachedException` (orders
         are ``RAISE``); when disabled it only records usage.
 
         Args:

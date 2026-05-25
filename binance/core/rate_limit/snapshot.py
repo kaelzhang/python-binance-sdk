@@ -1,8 +1,8 @@
 """Read-only structures returned for rate-limit monitoring.
 
 A :class:`RateLimitSnapshot` (with its per-pool :class:`RateLimitWindow`
-entries) is what :meth:`binance.client.Client.rate_limit_snapshot` and
-:meth:`binance.rate_limit.core.RateLimiter.snapshot` hand back. Both are frozen
+entries) is what :meth:`binance.core.client_base.BaseClient.rate_limit_snapshot` and
+:meth:`binance.core.rate_limit.core.RateLimiter.snapshot` hand back. Both are frozen
 dataclasses: they perform no I/O and are safe to store, compare, or poll
 frequently from a monitoring loop or a pre-trade risk gate.
 """
@@ -18,11 +18,11 @@ class RateLimitWindow:
     """A point-in-time view of a single rate-limit pool.
 
     Attributes:
-        scope: :class:`~binance.rate_limit.types.RateLimitScope` member —
+        scope: :class:`~binance.core.rate_limit.types.RateLimitScope` member —
             compare with the member, e.g. ``w.scope == RateLimitScope.IP``.
             ``str(w.scope)`` yields the wire string (``'ip'``, ``'account'``,
             or ``'connection'``).
-        type: :class:`~binance.rate_limit.types.RateLimitType` member — compare
+        type: :class:`~binance.core.rate_limit.types.RateLimitType` member — compare
             with the member, e.g. ``w.type == RateLimitType.REQUEST_WEIGHT``.
             ``str(w.type)`` yields the wire string (e.g. ``'request_weight'``,
             ``'orders'``, ``'ws_streams'``).
@@ -40,7 +40,7 @@ class RateLimitWindow:
             when an authoritative header reports usage above the effective cap.
         pending: Number of callers currently blocked or queued waiting on this
             pool. Only nonzero for ``SLEEP``-mode pools under contention.
-        source: :class:`~binance.rate_limit.types.RateLimitSource` member —
+        source: :class:`~binance.core.rate_limit.types.RateLimitSource` member —
             compare with the member, e.g. ``w.source == RateLimitSource.HEADER``.
             ``str(w.source)`` yields ``'header'`` when ``used`` reflects an
             authoritative Binance response header (reconciled and trustworthy),
@@ -62,8 +62,8 @@ class RateLimitWindow:
 class RateLimitSnapshot:
     """An immutable, point-in-time view of every rate-limit pool.
 
-    Returned by :meth:`binance.client.Client.rate_limit_snapshot` (and
-    :meth:`binance.rate_limit.core.RateLimiter.snapshot`). It captures no
+    Returned by :meth:`binance.core.client_base.BaseClient.rate_limit_snapshot` (and
+    :meth:`binance.core.rate_limit.core.RateLimiter.snapshot`). It captures no
     network state of its own -- everything is local -- so it is cheap to take
     and safe to poll.
 
