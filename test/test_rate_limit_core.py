@@ -1,3 +1,4 @@
+import asyncio
 import time
 import pytest
 
@@ -223,3 +224,113 @@ def test_snapshot_window_fields_and_max_utilization():
     assert 0.0 <= weight.utilization <= 1.0
     assert snap.max_utilization >= weight.utilization
     assert snap.at > 0
+
+
+# ---------------------------------------------------------------------------
+# F-74 — _await_retry_after blocks acquire paths during 429/418 ban window
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_acquire_request_waits_out_retry_after_ban():
+    """After a 429 ban, acquire_request blocks until the ban elapses (F-74).
+
+    Monkey-patches _retry_after so a short (0.1s) measured wait is used instead
+    of the integer-rounded real window, keeping the test fast.
+    """
+    rl = RateLimiter()
+    deadline = time.time() + 0.1
+    original = rl._retry_after
+
+    def _fake_retry_after():
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            return None
+        return remaining  # float; asyncio.sleep accepts floats
+
+    rl._retry_after = _fake_retry_after
+
+    start = time.monotonic()
+    await rl.acquire_request(weight=1, is_order=False)
+    elapsed = time.monotonic() - start
+
+    rl._retry_after = original
+    assert elapsed >= 0.09, (
+        f"acquire_request returned in {elapsed:.3f}s — "
+        "did not wait out the retry-after ban"
+    )
+
+
+@pytest.mark.asyncio
+async def test_acquire_connection_waits_out_retry_after_ban():
+    """After a 429 ban, acquire_connection blocks until the ban elapses (F-74)."""
+    rl = RateLimiter()
+    deadline = time.time() + 0.1
+
+    def _fake_retry_after():
+        remaining = deadline - time.time()
+        return remaining if remaining > 0 else None
+
+    rl._retry_after = _fake_retry_after
+
+    start = time.monotonic()
+    await rl.acquire_connection()
+    elapsed = time.monotonic() - start
+
+    assert elapsed >= 0.09, (
+        f"acquire_connection returned in {elapsed:.3f}s — "
+        "did not wait out the retry-after ban"
+    )
+
+
+@pytest.mark.asyncio
+async def test_acquire_message_waits_out_retry_after_ban():
+    """After a 429 ban, acquire_message blocks until the ban elapses (F-74)."""
+    rl = RateLimiter()
+    deadline = time.time() + 0.1
+    rl.register_connection('c1')
+
+    def _fake_retry_after():
+        remaining = deadline - time.time()
+        return remaining if remaining > 0 else None
+
+    rl._retry_after = _fake_retry_after
+
+    start = time.monotonic()
+    await rl.acquire_message('c1')
+    elapsed = time.monotonic() - start
+
+    assert elapsed >= 0.09, (
+        f"acquire_message returned in {elapsed:.3f}s — "
+        "did not wait out the retry-after ban"
+    )
+
+
+@pytest.mark.asyncio
+async def test_disabled_limiter_does_not_block_on_retry_after():
+    """A disabled limiter must NOT block on retry-after (guard-disabled path, F-74)."""
+    rl = RateLimiter(enabled=False)
+    # A large ban; _await_retry_after must short-circuit when disabled.
+    def _always_ban():
+        return 60  # always returns 60s remaining
+
+    rl._retry_after = _always_ban
+
+    start = time.monotonic()
+    await rl.acquire_request(weight=1, is_order=False)
+    elapsed = time.monotonic() - start
+
+    # Must return essentially immediately (well under the 60s ban).
+    assert elapsed < 1.0, (
+        f"Disabled limiter blocked for {elapsed:.3f}s on retry-after"
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_ban_acquire_request_returns_immediately():
+    """Without a ban, acquire_request returns without delay (F-74 no-ban path)."""
+    rl = RateLimiter()
+    # No ban: _retry_after returns None immediately.
+    start = time.monotonic()
+    await rl.acquire_request(weight=1, is_order=False)
+    elapsed = time.monotonic() - start
+    assert elapsed < 0.5

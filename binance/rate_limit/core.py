@@ -10,6 +10,7 @@ headers and ``exchangeInfo``, and exposes a read-only
 ``client.rate_limit_snapshot()``.
 """
 
+import asyncio
 import time
 from typing import Dict, Iterable, List, Optional
 
@@ -167,6 +168,19 @@ class RateLimiter:
             return None
         return remaining
 
+    async def _await_retry_after(self) -> None:
+        """Block until any active server-imposed 429/418 back-off elapses.
+
+        A 429/418 is an IP-level ban; sending into it is futile and can escalate
+        the ban, so every acquire path waits it out first (guard enabled only).
+        """
+        if not self._enabled:
+            return
+        remaining = self._retry_after()
+        while remaining is not None:
+            await asyncio.sleep(remaining)
+            remaining = self._retry_after()
+
     # ---- proactive enforcement: REST + WS-API ------------------------
     async def _consume(self, limit_type: RateLimitType, cost: int) -> None:
         for bucket in self._buckets_of(limit_type):
@@ -197,6 +211,7 @@ class RateLimiter:
             RateLimitReachedException: If an order would exceed an orders pool
                 (guard enabled).
         """
+        await self._await_retry_after()
         await self._consume(RateLimitType.REQUEST_WEIGHT, weight)
         await self._consume(RateLimitType.RAW_REQUESTS, 1)
         if is_order:
@@ -214,6 +229,7 @@ class RateLimiter:
         connect, so a reconnect storm stays under Binance's 300/5min cap. May
         ``await`` when the guard is enabled (the pool is ``SLEEP``-enforced).
         """
+        await self._await_retry_after()
         await self._consume(RateLimitType.WS_CONNECTIONS, 1)
 
     def register_connection(self, connection_id: str) -> None:
@@ -250,6 +266,7 @@ class RateLimiter:
         Args:
             connection_id: The sending connection's id.
         """
+        await self._await_retry_after()
         self.register_connection(connection_id)
         bucket = self._connections[connection_id][RateLimitType.WS_MESSAGES]
         if self._enabled:
