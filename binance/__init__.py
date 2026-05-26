@@ -68,7 +68,8 @@ from binance.spot.handlers import (
     MiniTickerHandlerBase,
     TickerHandlerBase,
     AllMarketMiniTickersHandlerBase,
-    AllMarketWindowTickersHandlerBase
+    AllMarketWindowTickersHandlerBase,
+    AllMarketTickersHandlerBase,
 )
 
 from binance.spot.orderbook_handler import OrderBookHandlerBase
@@ -88,6 +89,37 @@ from binance.core.transport.stream import Stream
 from binance.futures.um.streams import (
     MarkPriceHandlerBase,
     ForceOrderHandlerBase,
+    # UM-only handler bases
+    AllMarketMarkPriceHandlerBase,
+    CompositeIndexHandlerBase,
+    AssetIndexHandlerBase,
+    AllAssetIndexHandlerBase,
+    TradingSessionHandlerBase,
+)
+
+from binance.futures.streams import (
+    # Shared futures handler bases
+    AggTradeHandlerBase as FuturesAggTradeHandlerBase,
+    KlineHandlerBase as FuturesKlineHandlerBase,
+    MiniTickerHandlerBase as FuturesMiniTickerHandlerBase,
+    TickerHandlerBase as FuturesTickerHandlerBase,
+    BookTickerHandlerBase as FuturesBookTickerHandlerBase,
+    PartialOrderBookHandlerBase as FuturesPartialOrderBookHandlerBase,
+    OrderBookHandlerBase as FuturesOrderBookHandlerBase,
+    ContinuousKlineHandlerBase as FuturesContinuousKlineHandlerBase,
+    ContractInfoHandlerBase as FuturesContractInfoHandlerBase,
+    AllMarketMarkPriceHandlerBase as FuturesAllMarketMarkPriceHandlerBase,
+    AllMarketLiquidationHandlerBase as FuturesAllMarketLiquidationHandlerBase,
+    AllMarketMiniTickersHandlerBase as FuturesAllMarketMiniTickersHandlerBase,
+    AllMarketTickersHandlerBase as FuturesAllMarketTickersHandlerBase,
+    AllMarketBookTickerHandlerBase as FuturesAllMarketBookTickerHandlerBase,
+)
+
+from binance.futures.cm.streams import (
+    ForceOrderHandlerBase as CMForceOrderHandlerBase,
+    IndexPriceHandlerBase,
+    IndexPriceKlineHandlerBase,
+    MarkPriceKlineHandlerBase,
 )
 
 from binance.futures.user_handlers import (
