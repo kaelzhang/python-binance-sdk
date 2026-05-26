@@ -15,6 +15,16 @@ Event types confirmed from official Binance USDⓈ-M Futures docs (2026-05-25):
   (task spec; payload: ac{s,l} for leverage, ai{j} for multi-assets mode)
 - ``listenKeyExpired``:  connection key expired; payload confirmed from docs
   Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-User-Data-Stream-Expired
+- ``TRADE_LITE``:        low-latency fill event (**UM only** — not delivered on CM)
+  Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Trade-Lite
+- ``STRATEGY_UPDATE``:  algo/strategy lifecycle (UM + CM)
+  Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-STRATEGY-UPDATE
+- ``GRID_UPDATE``:       grid trading update (UM + CM; deprecated by Binance)
+  Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-GRID-UPDATE
+- ``CONDITIONAL_ORDER_TRIGGER_REJECT``: TP/SL trigger rejected (**UM only** — not delivered on CM)
+  Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Conditional-Order-Trigger-Reject
+- ``ALGO_UPDATE``:       algo order status update (**UM only** — not delivered on CM)
+  Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Algo-Order-Update
 """
 
 from binance.core.common.types import DictPayload
@@ -254,6 +264,194 @@ class FuturesEventStreamTerminatedHandlerBase(FuturesSimpleHandler):
     pass
 
 
+class FuturesTradeLiteHandlerBase(FuturesSimpleHandler):
+    """Base handler for the ``TRADE_LITE`` futures user-data-stream event.
+
+    **UM only** — not delivered on CM streams.  CM clients may register this
+    handler but it will never fire.
+
+    Low-latency fill event that provides faster trade notifications than
+    ``ORDER_TRADE_UPDATE`` at the cost of fewer fields.
+
+    Payload structure (confirmed from Binance USDⓈ-M docs, 2026-05-25)::
+
+        {
+            "e": "TRADE_LITE",
+            "E": <event_time>,
+            "T": <transaction_time>,
+            "s": "<symbol>",
+            "q": "<original_qty>",
+            "p": "<original_price>",
+            "m": <is_maker>,
+            "c": "<client_order_id>",
+            "S": "BUY" | "SELL",
+            "L": "<last_filled_price>",
+            "l": "<last_filled_qty>",
+            "t": <trade_id>,
+            "i": <order_id>
+        }
+
+    Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Trade-Lite
+
+    Subclass and override ``receive(payload)`` to handle the event.
+    The raw Binance payload dict is passed unchanged.
+    """
+
+    pass
+
+
+class FuturesStrategyUpdateHandlerBase(FuturesSimpleHandler):
+    """Base handler for the ``STRATEGY_UPDATE`` futures user-data-stream event.
+
+    Delivered on both UM and CM streams.  Fires on algo/strategy lifecycle
+    state changes (NEW, WORKING, CANCELLED, EXPIRED) and parameter updates.
+
+    Payload structure (confirmed from Binance USDⓈ-M + COIN-M docs, 2026-05-25)::
+
+        {
+            "e": "STRATEGY_UPDATE",
+            "T": <transaction_time>,
+            "E": <event_time>,
+            "su": {
+                "si": <strategy_id>,
+                "st": "<strategy_type>",   # e.g. "GRID"
+                "ss": "<strategy_status>", # NEW | WORKING | CANCELLED | EXPIRED
+                "s":  "<symbol>",
+                "ut": <update_time>,
+                "c":  <op_code>            # 8001-8015
+            }
+        }
+
+    Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-STRATEGY-UPDATE
+
+    Subclass and override ``receive(payload)`` to handle the event.
+    The raw Binance payload dict is passed unchanged.
+    """
+
+    pass
+
+
+class FuturesGridUpdateHandlerBase(FuturesSimpleHandler):
+    """Base handler for the ``GRID_UPDATE`` futures user-data-stream event.
+
+    Delivered on both UM and CM streams.  Fires on grid trading order
+    executions.  **Deprecated** by Binance but still delivered.
+
+    Payload structure (confirmed from Binance USDⓈ-M + COIN-M docs, 2026-05-25)::
+
+        {
+            "e": "GRID_UPDATE",
+            "T": <transaction_time>,
+            "E": <event_time>,
+            "gu": {
+                "si": <strategy_id>,
+                "st": "<strategy_type>",   # e.g. "GRID"
+                "ss": "<strategy_status>", # e.g. "WORKING"
+                "s":  "<symbol>",
+                "r":  "<realized_pnl>",
+                "up": "<unmatched_avg_price>",
+                "uq": "<unmatched_qty>",
+                "uf": "<unmatched_fee>",
+                "mp": "<matched_pnl>",
+                "ut": <update_time>
+            }
+        }
+
+    Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-GRID-UPDATE
+
+    Subclass and override ``receive(payload)`` to handle the event.
+    The raw Binance payload dict is passed unchanged.
+    """
+
+    pass
+
+
+class FuturesConditionalOrderTriggerRejectHandlerBase(FuturesSimpleHandler):
+    """Base handler for the ``CONDITIONAL_ORDER_TRIGGER_REJECT`` futures event.
+
+    **UM only** — not delivered on CM streams.  CM clients may register this
+    handler but it will never fire.
+
+    Fires when a triggered TP/SL (conditional) order is rejected after
+    triggering, e.g. because it would have been a FOK order that couldn't fill.
+
+    Payload structure (confirmed from Binance USDⓈ-M docs, 2026-05-25)::
+
+        {
+            "e": "CONDITIONAL_ORDER_TRIGGER_REJECT",
+            "E": <event_time>,
+            "T": <transaction_time>,
+            "or": {
+                "s": "<symbol>",
+                "i": <order_id>,
+                "r": "<rejection_reason>"
+            }
+        }
+
+    Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Conditional-Order-Trigger-Reject
+
+    Subclass and override ``receive(payload)`` to handle the event.
+    The raw Binance payload dict is passed unchanged.
+    """
+
+    pass
+
+
+class FuturesAlgoUpdateHandlerBase(FuturesSimpleHandler):
+    """Base handler for the ``ALGO_UPDATE`` futures user-data-stream event.
+
+    **UM only** — not delivered on CM streams.  CM clients may register this
+    handler but it will never fire.
+
+    Fires on algo order status changes (NEW, CANCELED, TRIGGERING, TRIGGERED,
+    FINISHED, REJECTED, EXPIRED).
+
+    Payload structure (confirmed from Binance USDⓈ-M docs, 2026-05-25)::
+
+        {
+            "e": "ALGO_UPDATE",
+            "T": <transaction_time>,
+            "E": <event_time>,
+            "o": {
+                "caid": "<client_algo_id>",
+                "aid":  <algo_id>,
+                "at":   "<algo_type>",        # e.g. "CONDITIONAL"
+                "o":    "<order_type>",        # e.g. "TAKE_PROFIT"
+                "s":    "<symbol>",
+                "S":    "BUY" | "SELL",
+                "ps":   "<position_side>",
+                "f":    "<time_in_force>",
+                "q":    "<original_qty>",
+                "X":    "<status>",            # NEW | CANCELED | TRIGGERING |
+                                               #  TRIGGERED | FINISHED |
+                                               #  REJECTED | EXPIRED
+                "ai":   "<algo_info>",
+                "ap":   "<avg_price>",
+                "aq":   "<executed_qty>",
+                "act":  "<algo_cancel_type>",
+                "tp":   "<trigger_price>",
+                "p":    "<order_price>",
+                "V":    "<stp_mode>",
+                "wt":   "<working_type>",
+                "pm":   "<price_match_mode>",
+                "cp":   <close_all>,
+                "pP":   <price_protection>,
+                "R":    <reduce_only>,
+                "tt":   <trailing_type>,
+                "gtd":  <gtd_cancel_time>,
+                "rm":   "<reject_message>"
+            }
+        }
+
+    Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Algo-Order-Update
+
+    Subclass and override ``receive(payload)`` to handle the event.
+    The raw Binance payload dict is passed unchanged.
+    """
+
+    pass
+
+
 __all__ = [
     'FuturesAccountUpdateHandlerBase',
     'FuturesOrderUpdateHandlerBase',
@@ -261,4 +459,9 @@ __all__ = [
     'FuturesAccountConfigUpdateHandlerBase',
     'FuturesListenKeyExpiredHandlerBase',
     'FuturesEventStreamTerminatedHandlerBase',
+    'FuturesTradeLiteHandlerBase',
+    'FuturesStrategyUpdateHandlerBase',
+    'FuturesGridUpdateHandlerBase',
+    'FuturesConditionalOrderTriggerRejectHandlerBase',
+    'FuturesAlgoUpdateHandlerBase',
 ]

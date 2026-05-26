@@ -129,6 +129,11 @@ from binance.futures.user_handlers import (
     FuturesAccountConfigUpdateHandlerBase,
     FuturesListenKeyExpiredHandlerBase,
     FuturesEventStreamTerminatedHandlerBase,
+    FuturesTradeLiteHandlerBase,
+    FuturesStrategyUpdateHandlerBase,
+    FuturesGridUpdateHandlerBase,
+    FuturesConditionalOrderTriggerRejectHandlerBase,
+    FuturesAlgoUpdateHandlerBase,
 )
 
 from binance.futures.enums import (

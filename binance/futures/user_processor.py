@@ -29,6 +29,11 @@ from binance.futures.user_handlers import (
     FuturesAccountConfigUpdateHandlerBase,
     FuturesListenKeyExpiredHandlerBase,
     FuturesEventStreamTerminatedHandlerBase,
+    FuturesTradeLiteHandlerBase,
+    FuturesStrategyUpdateHandlerBase,
+    FuturesGridUpdateHandlerBase,
+    FuturesConditionalOrderTriggerRejectHandlerBase,
+    FuturesAlgoUpdateHandlerBase,
 )
 
 from binance.core.handlers.base import Handler
@@ -42,14 +47,19 @@ class FuturesUserProcessor(Processor):
     ``UserProcessor`` interface so the shared ``_subscribe_user_only`` core
     machinery works unchanged for both Spot and futures clients.
 
-    The five routed event types (confirmed from USDⓈ-M Futures docs, 2026-05-25):
+    The routed event types (confirmed from USDⓈ-M Futures docs, 2026-05-25):
 
-    - ``ACCOUNT_UPDATE``:          balance + position update
-    - ``ORDER_TRADE_UPDATE``:      order lifecycle event
-    - ``MARGIN_CALL``:             margin-ratio warning
-    - ``ACCOUNT_CONFIG_UPDATE``:   leverage or multi-assets-mode change
-    - ``listenKeyExpired``:        listen-key expiry notification
-    - ``eventStreamTerminated``:   SDK-synthesized stream-termination sentinel
+    - ``ACCOUNT_UPDATE``:                    balance + position update
+    - ``ORDER_TRADE_UPDATE``:                order lifecycle event
+    - ``MARGIN_CALL``:                       margin-ratio warning
+    - ``ACCOUNT_CONFIG_UPDATE``:             leverage or multi-assets-mode change
+    - ``listenKeyExpired``:                  listen-key expiry notification
+    - ``eventStreamTerminated``:             SDK-synthesized stream-termination sentinel
+    - ``TRADE_LITE``:                        low-latency fill (UM only)
+    - ``STRATEGY_UPDATE``:                   algo/strategy lifecycle (UM + CM)
+    - ``GRID_UPDATE``:                       grid trading update (UM + CM)
+    - ``CONDITIONAL_ORDER_TRIGGER_REJECT``:  TP/SL trigger rejected (UM only)
+    - ``ALGO_UPDATE``:                       algo order status (UM only)
     """
 
     SUB_TYPE = SubType.USER
@@ -61,6 +71,11 @@ class FuturesUserProcessor(Processor):
         'ACCOUNT_CONFIG_UPDATE',
         'listenKeyExpired',
         EVENT_STREAM_TERMINATED,
+        'TRADE_LITE',
+        'STRATEGY_UPDATE',
+        'GRID_UPDATE',
+        'CONDITIONAL_ORDER_TRIGGER_REJECT',
+        'ALGO_UPDATE',
     )
 
     HANDLERS = (
@@ -70,6 +85,11 @@ class FuturesUserProcessor(Processor):
         FuturesAccountConfigUpdateHandlerBase,
         FuturesListenKeyExpiredHandlerBase,
         FuturesEventStreamTerminatedHandlerBase,
+        FuturesTradeLiteHandlerBase,
+        FuturesStrategyUpdateHandlerBase,
+        FuturesGridUpdateHandlerBase,
+        FuturesConditionalOrderTriggerRejectHandlerBase,
+        FuturesAlgoUpdateHandlerBase,
     )
 
     def __init__(self, *args) -> None:
