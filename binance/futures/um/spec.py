@@ -2,6 +2,7 @@
 
 from binance.core.market import MarketSpec
 
+from binance.futures.orderbook import FuturesOrderBook
 from binance.futures.um.constants import (
     UM_REST_HOST,
     UM_STREAM_HOST,
@@ -25,4 +26,5 @@ UM_MARKET = MarketSpec(
     exception_processor=ExceptionProcessor,
     stream_error_processor=StreamErrorProcessor,
     endpoints=WS_API_ENDPOINTS + REST_ENDPOINTS,
+    orderbook_impl=FuturesOrderBook,
 )

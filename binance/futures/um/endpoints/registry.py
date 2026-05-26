@@ -38,6 +38,7 @@ from binance.core.getters import define_getter
 from binance.futures.um.constants import UM_REST_HOST
 from binance.futures.um.endpoints.getters import UMFuturesGetters
 from binance.futures.um.endpoints.weights import (
+    _depth_weight,
     _premium_index_weight,
     _um_open_orders_weight,
 )
@@ -131,6 +132,14 @@ REST_ENDPOINTS = [
         rest_url=UM_REST_HOST + '/fapi/v1/openInterest',
         security_type=SecurityType.NONE,
         weight=1,
+    ),
+    dict(
+        name='get_orderbook',
+        transport='rest',
+        method=RequestMethod.GET,
+        rest_url=UM_REST_HOST + '/fapi/v1/depth',
+        security_type=SecurityType.NONE,
+        weight=_depth_weight,
     ),
     dict(
         name='get_open_interest_hist',

@@ -40,7 +40,6 @@ from binance.futures.streams import (  # noqa: F401  (re-exported for public API
     FUTURES_TICKER_COLUMNS_MAP,
     FUTURES_BOOK_TICKER_COLUMNS_MAP,
     FUTURES_PARTIAL_ORDER_BOOK_COLUMNS_MAP,
-    FUTURES_ORDER_BOOK_COLUMNS_MAP,
     FUTURES_CONTINUOUS_KLINE_COLUMNS_MAP,
     CONTRACT_INFO_COLUMNS_MAP,
     # Handler bases (shared)

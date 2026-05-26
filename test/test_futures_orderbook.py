@@ -335,3 +335,27 @@ async def test_refetch_resets_post_snapshot_flag() -> None:
         'U': 2100, 'u': 2200, 'pu': 1999,
         'b': [], 'a': [],
     }) is False
+
+
+# ---------------------------------------------------------------------------
+# Wiring sanity: ``MarketSpec.orderbook_impl`` (R9d)
+#
+# Locks in the wiring step that lets the unified high-level
+# :class:`~binance.OrderBookHandlerBase` materialise the right concrete
+# :class:`~binance.core.orderbook.OrderBook` subclass per market.  The
+# handler itself looks up ``client.MARKET.orderbook_impl`` to build the
+# book; if either futures client forgot to inject ``FuturesOrderBook``,
+# the handler would fall back to the abstract sentinel and raise
+# ``TypeError`` only at first ``orderbook(...)`` call -- this test
+# surfaces that regression at import time instead.
+# ---------------------------------------------------------------------------
+
+
+def test_um_market_spec_uses_futures_orderbook() -> None:
+    from binance import UMFuturesClient
+    assert UMFuturesClient.MARKET.orderbook_impl is FuturesOrderBook
+
+
+def test_cm_market_spec_uses_futures_orderbook() -> None:
+    from binance import CMFuturesClient
+    assert CMFuturesClient.MARKET.orderbook_impl is FuturesOrderBook

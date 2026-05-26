@@ -14,3 +14,24 @@ def _premium_index_weight(kwargs) -> int:
 def _um_open_orders_weight(kwargs) -> int:
     """`openOrders` weight: 1 when scoped to a ``symbol``, else 40."""
     return 1 if 'symbol' in kwargs else 40
+
+
+def _depth_weight(kwargs) -> int:
+    """`GET /fapi/v1/depth` weight depends on the ``limit`` parameter.
+
+    Per Binance UM docs:
+      limit 5/10/20/50 -> weight 2
+      limit 100        -> weight 5
+      limit 500        -> weight 10
+      limit 1000       -> weight 20
+
+    Defaults to limit=500 (Binance docs default).
+    """
+    limit = kwargs.get('limit', 500)
+    if limit <= 50:
+        return 2
+    if limit <= 100:
+        return 5
+    if limit <= 500:
+        return 10
+    return 20

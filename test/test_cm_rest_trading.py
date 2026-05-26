@@ -18,7 +18,11 @@ from aioresponses import aioresponses
 
 from binance import CMFuturesClient, Credentials
 from binance.core.rate_limit.types import RateLimitType
-from binance.futures.cm.endpoints import REST_ENDPOINTS, _cm_open_orders_weight
+from binance.futures.cm.endpoints import (
+    REST_ENDPOINTS,
+    _cm_open_orders_weight,
+    _depth_weight,
+)
 
 
 DAPI = 'https://dapi.binance.com'
@@ -286,6 +290,35 @@ def test_cm_open_orders_weight_with_symbol():
 
 def test_cm_open_orders_weight_without_symbol():
     assert _cm_open_orders_weight({}) == 40
+
+
+# ---------------------------------------------------------------------------
+# `_depth_weight`: CM ``/dapi/v1/depth`` -- weight depends on ``limit``.
+# Same table as USDⓈ-M per Binance docs:
+#   limit 5/10/20/50 -> 2; limit 100 -> 5; limit 500 -> 10; limit 1000 -> 20
+# Default limit (no kwarg) is 500 -> weight 10.
+# ---------------------------------------------------------------------------
+
+def test_cm_depth_weight_default_limit():
+    """No ``limit`` kwarg -> defaults to 500 -> weight 10."""
+    assert _depth_weight({}) == 10
+
+
+def test_cm_depth_weight_limit_50_and_below():
+    for limit in (5, 10, 20, 50):
+        assert _depth_weight({'limit': limit}) == 2
+
+
+def test_cm_depth_weight_limit_100():
+    assert _depth_weight({'limit': 100}) == 5
+
+
+def test_cm_depth_weight_limit_500():
+    assert _depth_weight({'limit': 500}) == 10
+
+
+def test_cm_depth_weight_limit_1000():
+    assert _depth_weight({'limit': 1000}) == 20
 
 
 # ---------------------------------------------------------------------------

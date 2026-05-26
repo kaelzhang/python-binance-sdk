@@ -13,6 +13,24 @@ class UMMarketDataGetters:
 
     # ----- REST: market data ------------------------------------------------
 
+    def get_orderbook(self, **kwargs) -> Awaitable:
+        """Get the USDⓈ-M futures order book depth snapshot.
+
+        Used by the high-level :class:`~binance.OrderBookHandlerBase` to seed
+        a local order book before consuming the diff stream.
+
+        Args:
+            symbol (str): The trading pair (e.g. ``'BTCUSDT'``).
+            limit (int, optional): Number of price levels per side. Valid
+                values: 5, 10, 20, 50, 100, 500, 1000. Defaults to 500.
+
+        Returns:
+            dict: ``{'lastUpdateId': int, 'E': int, 'T': int, 'bids': [...], 'asks': [...]}``
+
+        Endpoint: ``GET /fapi/v1/depth``  Weight: depends on ``limit`` (see ``_depth_weight``).
+        """
+        ...  # pragma: no cover
+
     def get_open_interest(self, **kwargs) -> Awaitable:
         """Gets the present open interest for a symbol.
 

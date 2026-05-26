@@ -1,8 +1,10 @@
 """Book ticker, partial depth, and diff depth stream handlers and processors.
 
 Hosts ``BookTickerHandlerBase``, ``PartialOrderBookHandlerBase``,
-``OrderBookHandlerBase``, ``AllMarketBookTickerHandlerBase`` and their
-processors.  The depth-parameter helpers and ``FUTURES_DEPTH_LEVELS`` /
+``AllMarketBookTickerHandlerBase`` and their processors, plus the diff-depth
+:class:`OrderBookProcessor` which routes events to the unified
+:class:`~binance.core.handlers.orderbook.OrderBookHandlerBase`.  The
+depth-parameter helpers and ``FUTURES_DEPTH_LEVELS`` /
 ``FUTURES_DEPTH_SPEEDS`` constants live in
 :mod:`binance.futures.streams._common`.
 """
@@ -12,7 +14,6 @@ from typing import ClassVar, List, Optional
 
 from binance.core.common.constants import (
     SubType,
-    STREAM_TYPE_MAP,
     KEY_STREAM_TYPE,
     KEY_PAYLOAD,
 )
@@ -20,6 +21,7 @@ from binance.core.common.exceptions import InvalidSubTypeParamException
 from binance.core.common.types import DictPayload
 from binance.core.common.utils import normalize_symbol
 from binance.core.handlers.base import Handler
+from binance.core.handlers.orderbook import OrderBookHandlerBase
 from binance.core.processors.base import Processor
 
 from binance.futures.streams._common import (
@@ -157,40 +159,15 @@ class PartialOrderBookHandlerBase(Handler):
 #   pu previous final update id
 #   b  bids to be updated [ [price, qty], ... ]
 #   a  asks to be updated [ [price, qty], ... ]
+#
+# Diff events are routed to the unified
+# :class:`~binance.core.handlers.orderbook.OrderBookHandlerBase` (via the
+# processor below), which maintains a local order book using the per-market
+# :class:`~binance.core.orderbook.OrderBook` subclass injected through
+# ``MarketSpec.orderbook_impl`` (``FuturesOrderBook`` for both UM and CM).
+# No raw diff-event handler is exposed: the user-facing API consumes the
+# high-level local-orderbook view exclusively.
 # ---------------------------------------------------------------------------
-
-FUTURES_ORDER_BOOK_COLUMNS_MAP = {
-    **STREAM_TYPE_MAP,
-    'E': 'event_time',
-    'T': 'transaction_time',
-    's': 'symbol',
-    'U': 'first_update_id',
-    'u': 'final_update_id',
-    'pu': 'prev_final_update_id',
-}
-
-FUTURES_ORDER_BOOK_COLUMNS = FUTURES_ORDER_BOOK_COLUMNS_MAP.keys()
-
-
-class OrderBookHandlerBase(Handler):
-    """Base handler for the futures ``SubType.ORDER_BOOK`` (diff depth) stream.
-
-    Shared across USDⓈ-M and COIN-M markets.  Each payload carries the update IDs
-    needed to maintain a local order book (``first_update_id``, ``final_update_id``,
-    ``prev_final_update_id``) plus the ``bids`` and ``asks`` diff arrays.
-
-    The base ``receive`` converts the metadata fields into a ``StockDataFrame``.
-    The raw ``bids`` and ``asks`` diff arrays are accessible from the original payload.
-
-    Subclass this and override ``receive(payload)`` to maintain your local book.
-
-    Docs:
-    - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Diff-Book-Depth-Streams
-    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams
-    """
-
-    COLUMNS_MAP = FUTURES_ORDER_BOOK_COLUMNS_MAP
-    COLUMNS = FUTURES_ORDER_BOOK_COLUMNS
 
 
 FUTURES_BOOK_TICKER_STREAM_SUFFIX = f'@{SubType.BOOK_TICKER}'
@@ -262,7 +239,12 @@ class PartialOrderBookProcessor(Processor):
 
 
 class OrderBookProcessor(Processor):
-    """Processor for the futures diff depth stream (``<symbol>@depth[@speed]``).
+    """Processor for the futures ``SubType.ORDER_BOOK`` (diff depth) stream.
+
+    Routes diff events to the unified
+    :class:`~binance.core.handlers.orderbook.OrderBookHandlerBase` which
+    maintains a local order book using :class:`FuturesOrderBook` (the
+    per-market sync algorithm injected via ``MarketSpec.orderbook_impl``).
 
     Shared by both USDⓈ-M and COIN-M markets.
     """

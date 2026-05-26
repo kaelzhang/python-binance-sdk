@@ -63,6 +63,7 @@ from binance.futures.cm.constants import CM_REST_HOST
 from binance.futures.cm.endpoints.getters import CMFuturesGetters
 from binance.futures.cm.endpoints.weights import (
     _cm_open_orders_weight,
+    _depth_weight,
     _premium_index_weight,
 )
 
@@ -132,6 +133,14 @@ REST_ENDPOINTS = [
         rest_url=CM_REST_HOST + '/dapi/v1/openInterest',
         security_type=SecurityType.NONE,
         weight=1,
+    ),
+    dict(
+        name='get_orderbook',
+        transport='rest',
+        method=RequestMethod.GET,
+        rest_url=CM_REST_HOST + '/dapi/v1/depth',
+        security_type=SecurityType.NONE,
+        weight=_depth_weight,
     ),
     dict(
         name='get_open_interest_hist',

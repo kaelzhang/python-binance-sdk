@@ -17,7 +17,11 @@ from aioresponses import aioresponses
 
 from binance import UMFuturesClient, Credentials
 from binance.core.rate_limit.types import RateLimitType
-from binance.futures.um.endpoints import REST_ENDPOINTS, _um_open_orders_weight
+from binance.futures.um.endpoints import (
+    REST_ENDPOINTS,
+    _depth_weight,
+    _um_open_orders_weight,
+)
 
 
 FAPI = 'https://fapi.binance.com'
@@ -297,6 +301,35 @@ def test_um_open_orders_weight_with_symbol():
 
 def test_um_open_orders_weight_without_symbol():
     assert _um_open_orders_weight({}) == 40
+
+
+# ---------------------------------------------------------------------------
+# `_depth_weight`: UM ``/fapi/v1/depth`` -- weight depends on ``limit``.
+# Table per Binance UM docs:
+#   limit 5/10/20/50 -> 2; limit 100 -> 5; limit 500 -> 10; limit 1000 -> 20
+# Default limit (no kwarg) is 500 per Binance docs -> weight 10.
+# ---------------------------------------------------------------------------
+
+def test_um_depth_weight_default_limit():
+    """No ``limit`` kwarg -> defaults to 500 -> weight 10."""
+    assert _depth_weight({}) == 10
+
+
+def test_um_depth_weight_limit_50_and_below():
+    for limit in (5, 10, 20, 50):
+        assert _depth_weight({'limit': limit}) == 2
+
+
+def test_um_depth_weight_limit_100():
+    assert _depth_weight({'limit': 100}) == 5
+
+
+def test_um_depth_weight_limit_500():
+    assert _depth_weight({'limit': 500}) == 10
+
+
+def test_um_depth_weight_limit_1000():
+    assert _depth_weight({'limit': 1000}) == 20
 
 
 # ---------------------------------------------------------------------------

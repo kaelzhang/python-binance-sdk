@@ -10,6 +10,7 @@ with real coroutines via ``define_getter``.
 # Weight helpers (used by registry and tests).
 from binance.futures.cm.endpoints.weights import (
     _cm_open_orders_weight,
+    _depth_weight,
     _premium_index_weight,
 )
 
@@ -32,5 +33,6 @@ __all__ = [
     'CMFuturesGetters',
     # Weight helpers
     '_cm_open_orders_weight',
+    '_depth_weight',
     '_premium_index_weight',
 ]

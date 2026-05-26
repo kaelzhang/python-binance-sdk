@@ -29,7 +29,6 @@ from binance import (
     FuturesTickerHandlerBase,
     FuturesBookTickerHandlerBase,
     FuturesPartialOrderBookHandlerBase,
-    FuturesOrderBookHandlerBase,
     FuturesContinuousKlineHandlerBase,
     FuturesContractInfoHandlerBase,
     AllMarketMarkPriceHandlerBase,
@@ -449,19 +448,13 @@ async def test_futures_partial_order_book_handler(um_client):
 
 # ===========================================================================
 # SHARED: OrderBook (diff depth)
+#
+# The diff-depth events are routed to the unified core
+# :class:`~binance.OrderBookHandlerBase` (R9d wiring) which maintains a local
+# :class:`~binance.futures.orderbook.FuturesOrderBook`. The local-book
+# semantics are covered by ``test_futures_orderbook.py``; here we only
+# exercise the ``OrderBookProcessor`` ``subscribe_param`` branches.
 # ===========================================================================
-
-DIFF_DEPTH_PAYLOAD = {
-    'e': 'depthUpdate',
-    'E': 1638747660000,
-    'T': 1638747659999,
-    's': 'BTCUSDT',
-    'U': 100,
-    'u': 105,
-    'pu': 99,
-    'b': [['50000.0', '1.0']],
-    'a': [['50001.0', '0.0']],
-}
 
 
 def test_futures_order_book_subscribe_param_default():
@@ -483,18 +476,11 @@ def test_futures_order_book_subscribe_param_invalid_speed():
         proc.subscribe_param(True, SubType.ORDER_BOOK, 'BTCUSDT', 250)
 
 
-@pytest.mark.asyncio
-async def test_futures_order_book_handler_columns(um_client):
-    df = await run_handler(
-        um_client, FuturesOrderBookHandlerBase, DIFF_DEPTH_PAYLOAD, 'btcusdt@depth'
-    )
-    row = df.iloc[0]
-    assert row['type'] == 'depthUpdate'
-    assert row['event_time'] == 1638747660000
-    assert row['symbol'] == 'BTCUSDT'
-    assert row['first_update_id'] == 100
-    assert row['final_update_id'] == 105
-    assert row['prev_final_update_id'] == 99
+# Note: the raw futures ``OrderBookHandlerBase`` has been replaced by the
+# unified high-level :class:`~binance.OrderBookHandlerBase` (R9d). The diff
+# events on this stream now drive a local :class:`FuturesOrderBook`; column
+# conversion of raw diff events is no longer part of the public surface,
+# so the former ``test_futures_order_book_handler_columns`` was removed.
 
 
 # ===========================================================================

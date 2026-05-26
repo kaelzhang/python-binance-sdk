@@ -81,10 +81,8 @@ from binance.futures.streams.ticker import (
 from binance.futures.streams.book import (
     FUTURES_BOOK_TICKER_COLUMNS_MAP,
     FUTURES_PARTIAL_ORDER_BOOK_COLUMNS_MAP,
-    FUTURES_ORDER_BOOK_COLUMNS_MAP,
     BookTickerHandlerBase,
     PartialOrderBookHandlerBase,
-    OrderBookHandlerBase,
     AllMarketBookTickerHandlerBase,
     BookTickerProcessor,
     PartialOrderBookProcessor,
@@ -110,7 +108,6 @@ __all__ = [
     'FUTURES_TICKER_COLUMNS_MAP',
     'FUTURES_BOOK_TICKER_COLUMNS_MAP',
     'FUTURES_PARTIAL_ORDER_BOOK_COLUMNS_MAP',
-    'FUTURES_ORDER_BOOK_COLUMNS_MAP',
     'FUTURES_CONTINUOUS_KLINE_COLUMNS_MAP',
     'CONTRACT_INFO_COLUMNS_MAP',
     # Constants
@@ -127,7 +124,6 @@ __all__ = [
     'TickerHandlerBase',
     'BookTickerHandlerBase',
     'PartialOrderBookHandlerBase',
-    'OrderBookHandlerBase',
     'ContinuousKlineHandlerBase',
     'ContractInfoHandlerBase',
     'AllMarketMarkPriceHandlerBase',

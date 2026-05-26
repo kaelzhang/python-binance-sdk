@@ -9,6 +9,7 @@ with real coroutines via ``define_getter``.
 
 # Weight helpers (used by registry and tests).
 from binance.futures.um.endpoints.weights import (
+    _depth_weight,
     _premium_index_weight,
     _um_open_orders_weight,
 )
@@ -31,6 +32,7 @@ __all__ = [
     # Combined getter mixin
     'UMFuturesGetters',
     # Weight helpers
+    '_depth_weight',
     '_premium_index_weight',
     '_um_open_orders_weight',
 ]

@@ -105,7 +105,6 @@ from binance.futures.streams import (
     TickerHandlerBase as FuturesTickerHandlerBase,
     BookTickerHandlerBase as FuturesBookTickerHandlerBase,
     PartialOrderBookHandlerBase as FuturesPartialOrderBookHandlerBase,
-    OrderBookHandlerBase as FuturesOrderBookHandlerBase,
     ContinuousKlineHandlerBase as FuturesContinuousKlineHandlerBase,
     ContractInfoHandlerBase as FuturesContractInfoHandlerBase,
     AllMarketMarkPriceHandlerBase as FuturesAllMarketMarkPriceHandlerBase,
