@@ -12,6 +12,12 @@ Transport confirmed 2026-05-25:
 - WS-API host: wss://ws-dapi.binance.com/ws-dapi/v1
 - Methods: order.place, order.modify, order.cancel, order.status,
            account.status, account.balance
+
+CM WS-API additions (2026-05-26):
+- account.position added (C-W1 confirmed gap).
+- v2/account.balance and v2/account.status NOT added (unconfirmed for CM).
+- positionSide.dual.get NOT added (not documented on ws-dapi for CM).
+- algoOrder.place/cancel NOT added (CM algo orders not on ws-dapi).
 """
 
 import pytest
@@ -205,6 +211,31 @@ async def test_cm_get_balance_via_account_balance():
 
 
 # ---------------------------------------------------------------------------
+# get_position: is_order=False, weight=5, ws_method='account.position'
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_cm_get_position_via_account_position():
+    server = WSAPIServer(port=_PORT)
+    server.on('account.position', result=[{'symbol': 'BTCUSD_PERP', 'positionAmt': '10'}])
+    await server.run()
+    try:
+        client = _make_client(server)
+        result = await client.get_position(pair='BTCUSD')
+        assert result == [{'symbol': 'BTCUSD_PERP', 'positionAmt': '10'}]
+        sent = server.received[0]
+        assert sent['method'] == 'account.position'
+        assert sent['params']['pair'] == 'BTCUSD'
+        assert sent['params']['apiKey'] == 'K'
+        assert 'signature' in sent['params']
+        assert _orders_used(client) == 0
+        assert _weight_used(client) == 5
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+# ---------------------------------------------------------------------------
 # Declarative registry: WS_API_ENDPOINTS matches the spec.
 # ---------------------------------------------------------------------------
 
@@ -219,6 +250,7 @@ def test_cm_ws_api_endpoints_registry_matches_spec():
         'get_order': ('order.status', SecurityType.USER_DATA, False, 1),
         'get_account': ('account.status', SecurityType.USER_DATA, False, 5),
         'get_balance': ('account.balance', SecurityType.USER_DATA, False, 5),
+        'get_position': ('account.position', SecurityType.USER_DATA, False, 5),
     }
 
     assert set(expected) == set(by_name)

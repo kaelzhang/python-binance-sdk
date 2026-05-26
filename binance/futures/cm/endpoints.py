@@ -115,6 +115,13 @@ WS_API_ENDPOINTS = [
         security_type=SecurityType.USER_DATA,
         weight=5,
     ),
+    dict(
+        name='get_position',
+        transport='ws_api',
+        ws_method='account.position',
+        security_type=SecurityType.USER_DATA,
+        weight=5,
+    ),
 ]
 
 # REST endpoint specs for COIN-M Futures market-data (read-only: funding /
@@ -290,7 +297,8 @@ class CMFuturesGetters:
     - **WS-API** (trading / account): coroutines that issue a single
       id-correlated request over the shared WS-API connection via
       :meth:`_ws_api_request` — ``create_order``, ``modify_order``,
-      ``cancel_order``, ``get_order``, ``get_account``, ``get_balance``.
+      ``cancel_order``, ``get_order``, ``get_account``, ``get_balance``,
+      ``get_position``.
     - **REST** (market-data + trading/account/position): coroutines that issue
       an HTTP request via :meth:`_request` (RestTransport) and return the
       decoded JSON response.
@@ -413,6 +421,23 @@ class CMFuturesGetters:
 
         Returns:
             list: Per-asset balance records.
+        """
+        ...  # pragma: no cover
+
+    def get_position(self, **kwargs) -> Awaitable:
+        """Gets COIN-M Futures position information over the WebSocket API.
+
+        Distinct from REST ``get_position_risk`` (``/dapi/v1/positionRisk``);
+        this uses WS-API ``account.position`` for a no-REST-round-trip query.
+        Weight: 5.
+
+        Args:
+            marginAsset (:obj:`str`, optional): The margin asset (e.g. ``'BTC'``).
+            pair (:obj:`str`, optional): The underlying pair (e.g. ``'BTCUSD'``).
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            list: Position information records.
         """
         ...  # pragma: no cover
 
