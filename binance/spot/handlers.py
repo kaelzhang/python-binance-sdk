@@ -435,3 +435,41 @@ class AllMarketWindowTickersHandlerBase(Handler):
     # def _receive(self, payload: ListPayload):
     #     return super()._receive(
     #         payload, None)
+
+
+# NOTE: !bookTicker@arr is DEPRECATED by Binance (announced 2021-11-05, removed 2022).
+# Do NOT implement a handler or processor for this stream; the endpoint no longer exists
+# on the Binance Spot data-stream servers.
+
+class AllMarketTickersHandlerBase(Handler):
+    """Base handler for the ``SubType.ALL_MARKET_TICKERS`` (all-market 24hr full ticker) stream.
+
+    Receives an array of full 24-hour rolling-window statistics events for all
+    actively traded symbols on the exchange, pushed as a batch on the
+    ``!ticker@arr`` stream.  Each element of the payload shares the same fields
+    as ``TickerHandlerBase``: OHLC, volume, price change, weighted average
+    price, best bid/ask, stat open/close times, first/last trade IDs, and total
+    trade count.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+    The base ``receive`` converts each element into a row of a
+    ``StockDataFrame`` with the same human-readable columns as
+    ``TickerHandlerBase``.
+
+    Example::
+
+        from binance import SpotClient, SubType
+        from binance.spot.handlers import AllMarketTickersHandlerBase
+
+        class MyHandler(AllMarketTickersHandlerBase):
+            def receive(self, payload):
+                df = super().receive(payload)
+                print(df[['symbol', 'last_price', 'percent']])
+
+        client = SpotClient()
+        client.handler(MyHandler())
+        await client.subscribe(SubType.ALL_MARKET_TICKERS)
+    """
+
+    COLUMNS_MAP = TICKER_COLUMNS_MAP
+    COLUMNS = TICKER_COLUMNS

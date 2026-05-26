@@ -24,6 +24,7 @@ from binance.spot.processors import (
     TickerProcessor,
     AllMarketMiniTickersProcessor,
     AllMarketWindowTickersProcessor,
+    AllMarketTickersProcessor,
 )
 
 from binance.spot.user_processor import UserProcessor
@@ -45,5 +46,6 @@ PROCESSORS = [
     TickerProcessor,
     AllMarketMiniTickersProcessor,
     AllMarketWindowTickersProcessor,
+    AllMarketTickersProcessor,
     UserProcessor,
 ]

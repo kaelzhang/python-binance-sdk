@@ -64,17 +64,33 @@ class SubType(StringEnum):
         ALL_MARKET_MINI_TICKERS: Mini-ticker events for every symbol.
         ALL_MARKET_WINDOW_TICKERS: Window-ticker events for every symbol
             (optional `window` argument as above).
+        ALL_MARKET_TICKERS: Full 24hr ticker for every symbol (``!ticker@arr``).
+        ALL_MARKET_BOOK_TICKER: Best bid/ask for every symbol (``!bookTicker@arr``
+            on Spot, ``!bookTicker`` on futures).
 
     User data stream:
         USER: Account and order update events for the authenticated user.
             Requires a valid API key to have been configured on the client.
 
-    USDⓈ-M Futures streams (UMFuturesClient only):
-        MARK_PRICE: Mark-price and funding-rate updates for a symbol
-            (``<symbol>@markPrice`` / ``<symbol>@markPrice@1s``).
-            Requires ``symbol``.
-        FORCE_ORDER: Liquidation order events for a symbol
-            (``<symbol>@forceOrder``). Requires ``symbol``.
+    USDⓈ-M / COIN-M Futures streams (per-symbol):
+        MARK_PRICE: Mark-price and funding-rate updates for a symbol.
+        FORCE_ORDER: Liquidation order events for a symbol.
+        CONTINUOUS_KLINE: Continuous-contract kline (requires pair, contract_type, interval).
+
+    Futures all-market streams:
+        ALL_MARKET_MARK_PRICE: All-market mark price array (``!markPrice@arr[@1s]``).
+        ALL_MARKET_LIQUIDATION: All-market liquidation order array (``!forceOrder@arr``).
+
+    UM-only streams:
+        COMPOSITE_INDEX: Composite index composition (``<symbol>@compositeIndex``).
+        CONTRACT_INFO: Contract specification change events (``!contractInfo``).
+        ASSET_INDEX: Multi-assets mode asset index (``<asset>@assetIndex`` / ``!assetIndex@arr``).
+        TRADING_SESSION: US equity/commodity session events (``tradingSession``).
+
+    CM-only streams:
+        INDEX_PRICE: Spot index price for the pair (``<pair>@indexPrice[@1s]``).
+        INDEX_PRICE_KLINE: Index price kline (``<pair>@indexPriceKline_<interval>``).
+        MARK_PRICE_KLINE: Mark price kline (``<symbol>@markPriceKline_<interval>``).
     """
 
     KLINE = 'kline'
@@ -95,11 +111,73 @@ class SubType(StringEnum):
     ALL_MARKET_MINI_TICKERS = 'allMarketMiniTickers'
     ALL_MARKET_WINDOW_TICKERS = 'allMarketWindowTickers'
 
+    # All-market arrays shared across Spot / UM / CM (wire names are internal SDK keys)
+    ALL_MARKET_TICKERS = 'allMarketTickers'
+    """All-market 24hr full ticker array (``!ticker@arr``).
+    Delivers a full ``24hrTicker`` payload for every symbol on the exchange.
+    Spot: ``!ticker@arr`` · UM: ``!ticker@arr`` · CM: ``!ticker@arr``.
+    """
+    ALL_MARKET_BOOK_TICKER = 'allMarketBookTicker'
+    """All-market book ticker stream.
+    Spot: ``!bookTicker@arr`` · UM/CM: ``!bookTicker`` (no ``@arr`` suffix).
+    Delivers the best bid/ask for every symbol whenever it changes.
+    """
+    ALL_MARKET_MARK_PRICE = 'allMarketMarkPrice'
+    """All-market mark-price array for futures (``!markPrice@arr[@1s]``).
+    Delivers a ``markPriceUpdate`` payload for every futures symbol.
+    Supported by UM and CM markets.
+    """
+    ALL_MARKET_LIQUIDATION = 'allMarketLiquidation'
+    """All-market liquidation order array (``!forceOrder@arr``).
+    Delivers a ``forceOrder`` payload for every liquidation across the market.
+    Supported by UM and CM markets.
+    """
+
     USER = 'user'
 
-    # USDⓈ-M Futures streams
+    # USDⓈ-M / COIN-M Futures streams (per-symbol, shared wire names)
     MARK_PRICE = 'markPrice'
     FORCE_ORDER = 'forceOrder'
+
+    # Futures kline streams
+    CONTINUOUS_KLINE = 'continuousKline'
+    """Continuous-contract candlestick stream (``<pair>_<contractType>@continuousKline_<interval>``).
+    Available on both USDⓈ-M and COIN-M markets.  Requires ``pair``, ``contract_type``,
+    and ``interval`` subscription parameters.
+    """
+
+    # UM-only futures streams
+    COMPOSITE_INDEX = 'compositeIndex'
+    """Composite index symbol information stream (``<symbol>@compositeIndex``).
+    USDⓈ-M only: delivers index composition and weighting for composite-index symbols.
+    """
+    CONTRACT_INFO = 'contractInfo'
+    """Contract info change events (``!contractInfo``).
+    Delivers contract specification changes (listing, settlement, bracket updates).
+    Available on both USDⓈ-M and COIN-M markets.
+    """
+    ASSET_INDEX = 'assetIndex'
+    """Multi-assets mode asset index stream (``<asset>@assetIndex`` or ``!assetIndex@arr``).
+    USDⓈ-M only: delivers asset index prices used for cross-margin calculations.
+    """
+    TRADING_SESSION = 'tradingSession'
+    """Trading session stream (``tradingSession``).
+    USDⓈ-M only: delivers US equity/commodity session events (EquityUpdate / CommodityUpdate).
+    """
+
+    # CM-only futures streams
+    INDEX_PRICE = 'indexPrice'
+    """Index price stream (``<pair>@indexPrice[@1s]``).
+    COIN-M only: delivers spot index price updates for the underlying pair.
+    """
+    INDEX_PRICE_KLINE = 'indexPriceKline'
+    """Index price kline stream (``<pair>@indexPriceKline_<interval>``).
+    COIN-M only: candlestick bars built from the underlying spot index price.
+    """
+    MARK_PRICE_KLINE = 'markPriceKline'
+    """Mark price kline stream (``<symbol>@markPriceKline_<interval>``).
+    COIN-M only: candlestick bars built from the futures mark price.
+    """
 
 
 MSG_PREFIX = '[BinanceSDK] '

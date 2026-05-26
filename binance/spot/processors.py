@@ -19,7 +19,8 @@ from binance.spot.handlers import (
     MiniTickerHandlerBase,
     TickerHandlerBase,
     AllMarketMiniTickersHandlerBase,
-    AllMarketWindowTickersHandlerBase
+    AllMarketWindowTickersHandlerBase,
+    AllMarketTickersHandlerBase,
 )
 
 from binance.core.processors.framework import (  # noqa: F401  re-exported for backward compatibility
@@ -357,3 +358,25 @@ class AllMarketWindowTickersProcessor(AllMarketMiniTickersProcessor):
     def subscribe_param(self, _, t, *args) -> str:
         window = _get_window(t, args)
         return f'{self.STREAM_TYPE_PREFIX}{window}@arr'
+
+
+class AllMarketTickersProcessor(AllMarketMiniTickersProcessor):
+    """Processor for the all-market 24hr full ticker array stream (``!ticker@arr``).
+
+    Delivers a full ``24hrTicker`` payload for every symbol on the exchange
+    as a single batch push.  The stream name is the literal string
+    ``!ticker@arr`` (no symbol parameter).
+    """
+
+    HANDLER = AllMarketTickersHandlerBase
+    SUB_TYPE = SubType.ALL_MARKET_TICKERS
+    STREAM_TYPE_PREFIX = '!ticker@arr'
+
+    def subscribe_param(self, _, t, *args) -> str:
+        if len(args) != 0:
+            raise InvalidSubTypeParamException(
+                t,
+                'symbol',
+                '`SubType.ALL_MARKET_TICKERS` expects no parameters'
+            )
+        return self.STREAM_TYPE_PREFIX
