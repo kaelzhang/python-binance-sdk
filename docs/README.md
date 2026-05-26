@@ -217,6 +217,8 @@ All are public (`SecurityType.NONE`), no credentials required:
 
 All signed endpoints require `Credentials`. Order endpoints (`create_order`, `modify_order`, `cancel_order`, `get_order`, `get_account`, `get_balance`) route over the **Futures WebSocket API** (`wss://ws-fapi.binance.com/ws-fapi/v1`). The remaining trading/account/position endpoints use REST (`https://fapi.binance.com`).
 
+> **v1 → v2 upgrade:** `get_account` / `get_balance` now use the v2 WS-API methods (`v2/account.status`, `v2/account.balance`) which return a richer field set. The v1 methods have been dropped.
+
 **Orders:**
 
 - `create_order(**kwargs)` — place a new order (WS-API, weight 1).
@@ -232,8 +234,9 @@ All signed endpoints require `Credentials`. Order endpoints (`create_order`, `mo
 
 **Account:**
 
-- `get_account(**kwargs)` — account status including balances and positions (WS-API, weight 5).
-- `get_balance(**kwargs)` — per-asset balance records (WS-API, weight 5).
+- `get_account(**kwargs)` — account status including balances and positions (WS-API `v2/account.status`, weight 5).
+- `get_balance(**kwargs)` — per-asset balance records (WS-API `v2/account.balance`, weight 5).
+- `get_position(**kwargs)` — position information (WS-API `account.position`, weight 5).
 - `get_position_risk(**kwargs)` — position risk information (REST, weight 5). Optional: `symbol`.
 - `get_user_trades(**kwargs)` — trade history for a symbol (REST, weight 5). Required: `symbol`.
 - `get_commission(**kwargs)` — commission rates for a symbol (REST, weight 20). Required: `symbol`.
@@ -245,10 +248,15 @@ All signed endpoints require `Credentials`. Order endpoints (`create_order`, `mo
 - `set_leverage(**kwargs)` — change initial leverage (REST, weight 1). Required: `symbol`, `leverage`.
 - `set_margin_type(**kwargs)` — change margin type (`ISOLATED`/`CROSSED`) for a symbol (REST, weight 1). Required: `symbol`, `marginType`.
 - `set_position_margin(**kwargs)` — adjust isolated position margin (REST, weight 1). Required: `symbol`, `amount`, `type` (1=add, 2=reduce).
-- `get_position_mode(**kwargs)` — get current position mode (one-way vs hedge) (REST, weight 30).
+- `get_position_mode(**kwargs)` — get current position mode (one-way vs hedge) (WS-API `positionSide.dual.get`, weight 30).
 - `set_position_mode(**kwargs)` — change position mode (REST, weight 1). Required: `dualSidePosition` bool.
 - `get_multi_assets_mode(**kwargs)` — get multi-assets margin mode (REST, weight 30). USDⓈ-M only.
 - `set_multi_assets_mode(**kwargs)` — change multi-assets margin mode (REST, weight 1). USDⓈ-M only.
+
+**Algo orders (USDⓈ-M only):**
+
+- `create_algo_order(**kwargs)` — place a TWAP or VP algo order (WS-API `algoOrder.place`, weight 0).
+- `cancel_algo_order(**kwargs)` — cancel an active algo order (WS-API `algoOrder.cancel`, weight 0).
 
 ### Futures user-data stream
 
@@ -286,43 +294,77 @@ Handler bases to subclass (from `binance`):
 - `FuturesAccountConfigUpdateHandlerBase` — `ACCOUNT_CONFIG_UPDATE` (leverage or multi-assets mode change)
 - `FuturesListenKeyExpiredHandlerBase` — `listenKeyExpired` (key expired; SDK auto-recovers)
 - `FuturesEventStreamTerminatedHandlerBase` — SDK-synthesized event when the dedicated fstream drops
+- `FuturesTradeLiteHandlerBase` — `TRADE_LITE` (low-latency fill; fewer fields than `ORDER_TRADE_UPDATE`; **UM only**)
+- `FuturesStrategyUpdateHandlerBase` — `STRATEGY_UPDATE` (algo/TWAP strategy lifecycle; UM + CM)
+- `FuturesGridUpdateHandlerBase` — `GRID_UPDATE` (grid trading order events; UM + CM; deprecated by Binance but still delivered)
+- `FuturesConditionalOrderTriggerRejectHandlerBase` — `CONDITIONAL_ORDER_TRIGGER_REJECT` (TP/SL trigger rejected; **UM only**)
+- `FuturesAlgoUpdateHandlerBase` — `ALGO_UPDATE` (algo order status change; **UM only**)
 
-### Futures streams: SubType.MARK_PRICE and SubType.FORCE_ORDER
+### Futures market-data streams
+
+Both `UMFuturesClient` and `CMFuturesClient` support a full set of market-data streams. All handler bases are importable from `binance`.
+
+**Quick example — UM kline stream:**
 
 ```python
 from binance import (
     UMFuturesClient, SubType,
-    MarkPriceHandlerBase, ForceOrderHandlerBase
+    FuturesKlineHandlerBase
 )
 
 um = UMFuturesClient()
 
-# Mark price stream — <symbol>@markPrice (every 3 s by default)
-# Pass '1s' as second param for the 1-second variant.
-class MyMarkPrice(MarkPriceHandlerBase):
+class MyKline(FuturesKlineHandlerBase):
     def receive(self, payload):
         df = super().receive(payload)
-        # df columns: type, event_time, symbol, mark_price, mark_price_avg,
-        #             index_price, est_settle_price, funding_rate, next_funding_time
-        print(df['mark_price'], df['funding_rate'])
+        # df columns: type, event_time, open_time, close_time, symbol, interval,
+        #             open, high, low, close, volume, quote_volume,
+        #             taker_volume, taker_quote_volume, total_trades, is_closed
+        if df['is_closed']:
+            print(df['symbol'], df['close'])
 
-um.handler(MyMarkPrice())
-await um.subscribe(SubType.MARK_PRICE, 'btcusdt')
-# For 1-second updates:
-await um.subscribe(SubType.MARK_PRICE, 'btcusdt', '1s')
-
-# Force order (liquidation) stream — <symbol>@forceOrder
-class MyForceOrder(ForceOrderHandlerBase):
-    def receive(self, payload):
-        df = super().receive(payload)
-        # df columns: type, event_time, symbol, side, order_type, time_in_force,
-        #             orig_quantity, price, avg_price, order_status,
-        #             last_filled_qty, acc_filled_qty, trade_time
-        print(df['symbol'], df['price'])
-
-um.handler(MyForceOrder())
-await um.subscribe(SubType.FORCE_ORDER, 'btcusdt')
+um.handler(MyKline())
+await um.subscribe(SubType.KLINE, 'btcusdt', '1m')
 ```
+
+**Shared streams (available on both UM and CM):**
+
+| SubType | Wire stream | Handler base | Notes |
+|---------|-------------|--------------|-------|
+| `SubType.MARK_PRICE` | `<symbol>@markPrice[@1s]` | `MarkPriceHandlerBase` | Columns: `mark_price`, `mark_price_avg` (UM only), `index_price`, `funding_rate`, `next_funding_time` |
+| `SubType.FORCE_ORDER` | `<symbol>@forceOrder` | `ForceOrderHandlerBase` | Liquidation orders; CM adds `pair` column |
+| `SubType.AGG_TRADE` | `<symbol>@aggTrade` | `FuturesAggTradeHandlerBase` | No buyer/seller order IDs (unlike Spot) |
+| `SubType.KLINE` | `<symbol>@kline_<interval>` | `FuturesKlineHandlerBase` | Accepts `TimeFrame` or interval string |
+| `SubType.CONTINUOUS_KLINE` | `<pair>_<ct>@continuousKline_<interval>` | `FuturesContinuousKlineHandlerBase` | Requires `pair`, `contract_type`, `interval` params |
+| `SubType.MINI_TICKER` | `<symbol>@miniTicker` | `FuturesMiniTickerHandlerBase` | |
+| `SubType.TICKER` | `<symbol>@ticker` | `FuturesTickerHandlerBase` | |
+| `SubType.BOOK_TICKER` | `<symbol>@bookTicker` | `FuturesBookTickerHandlerBase` | No `e` event field; routing by stream name |
+| `SubType.PARTIAL_ORDER_BOOK` | `<symbol>@depth<N>[@speed]` | `FuturesPartialOrderBookHandlerBase` | Levels: 5/10/20; speed: 100/500 ms; `receive` returns `(bids_df, asks_df)` |
+| `SubType.ORDER_BOOK` | `<symbol>@depth[@speed]` | `FuturesOrderBookHandlerBase` | Diff depth; speed: 100/500 ms |
+| `SubType.CONTRACT_INFO` | `!contractInfo` | `FuturesContractInfoHandlerBase` | No params; contract spec changes |
+| `SubType.ALL_MARKET_MARK_PRICE` | `!markPrice@arr[@1s]` | `FuturesAllMarketMarkPriceHandlerBase` | Optional `'1s'` param; UM subclass adds `mark_price_avg` |
+| `SubType.ALL_MARKET_LIQUIDATION` | `!forceOrder@arr` | `FuturesAllMarketLiquidationHandlerBase` | All-market liquidation array; no params |
+| `SubType.ALL_MARKET_MINI_TICKERS` | `!miniTicker@arr` | `FuturesAllMarketMiniTickersHandlerBase` | No params |
+| `SubType.ALL_MARKET_TICKERS` | `!ticker@arr` | `FuturesAllMarketTickersHandlerBase` | No params |
+| `SubType.ALL_MARKET_BOOK_TICKER` | `!bookTicker` | `FuturesAllMarketBookTickerHandlerBase` | No `@arr` suffix (unlike Spot); no params |
+
+**UM-only streams:**
+
+| SubType | Wire stream | Handler base | Notes |
+|---------|-------------|--------------|-------|
+| `SubType.COMPOSITE_INDEX` | `<symbol>@compositeIndex` | `CompositeIndexHandlerBase` | Index composition for composite-index symbols |
+| `SubType.ASSET_INDEX` | `<asset>@assetIndex` or `!assetIndex@arr` | `AssetIndexHandlerBase` / `AllAssetIndexHandlerBase` | Multi-assets mode; no params for `!assetIndex@arr` |
+| `SubType.TRADING_SESSION` | `tradingSession` | `TradingSessionHandlerBase` | US equity/commodity session events; no params |
+
+**CM-only streams:**
+
+| SubType | Wire stream | Handler base | Notes |
+|---------|-------------|--------------|-------|
+| `SubType.INDEX_PRICE` | `<pair>@indexPrice[@1s]` | `IndexPriceHandlerBase` | Spot index price for the underlying pair |
+| `SubType.INDEX_PRICE_KLINE` | `<pair>@indexPriceKline_<interval>` | `IndexPriceKlineHandlerBase` | Index price klines |
+| `SubType.MARK_PRICE_KLINE` | `<symbol>@markPriceKline_<interval>` | `MarkPriceKlineHandlerBase` | Mark price klines |
+
+Note: COIN-M symbols contain underscores (e.g. `'btcusd_perp'`); pass them lowercase to subscribe calls.
 
 `UMFuturesClient` accepts the same constructor kwargs as `SpotClient` (see above), plus an optional `Credentials` first argument.
 
@@ -375,6 +417,11 @@ Same method names as USDⓈ-M (see above). Key differences:
 - Order endpoints route over `wss://ws-dapi.binance.com/ws-dapi/v1`.
 - REST endpoints use `https://dapi.binance.com/dapi/v1/…`.
 - `quantity` counts contracts, not base-asset units.
+- `get_account` / `get_balance` use v1 WS-API methods (`account.status`, `account.balance`) — COIN-M does not have the v2 variants.
+- `get_position` is available via WS-API `account.position`.
+- `get_position_mode` uses REST (no `positionSide.dual.get` WS-API equivalent on COIN-M).
+- No `create_algo_order` / `cancel_algo_order` (algo orders are USDⓈ-M only).
+- No `get_multi_assets_mode` / `set_multi_assets_mode` (USDⓈ-M only).
 
 ### COIN-M user-data stream
 
@@ -401,18 +448,9 @@ await cm.subscribe(SubType.USER)
 
 Same handler bases and same listenKey flow as USDⓈ-M; events arrive on `wss://dstream.binance.com/ws/<listenKey>`.
 
-### COIN-M market-data streams
-
-```python
-cm = CMFuturesClient()
-cm.handler(MyMarkPrice())          # MarkPriceHandlerBase (no mark_price_avg column for COIN-M)
-await cm.subscribe(SubType.MARK_PRICE, 'btcusd_perp')
-
-cm.handler(MyForceOrder())         # ForceOrderHandlerBase
-await cm.subscribe(SubType.FORCE_ORDER, 'btcusd_perp')
-```
-
 `CMFuturesClient` accepts the same constructor kwargs as `SpotClient`.
+
+See the [Futures market-data streams](#futures-market-data-streams) table in the USDⓈ-M section for the full stream list; all shared streams and CM-only streams apply. The CM-only streams (`SubType.INDEX_PRICE`, `SubType.INDEX_PRICE_KLINE`, `SubType.MARK_PRICE_KLINE`) are available exclusively on `CMFuturesClient`.
 
 ## Futures enums
 
@@ -585,10 +623,13 @@ And `interval` should be one of the `TimeFrame` enumerables.
 - `SubType.WINDOW_TICKER` (with `symbol`; one of `TimeFrame.H1/H4/D1`)
 - `SubType.ALL_MARKET_WINDOW_TICKERS` (one of `TimeFrame.H1/H4/D1`)
 
-### `Subtype` with no param
+### `SubType`s with no param
 
 - `SubType.ALL_MARKET_MINI_TICKERS`
+- `SubType.ALL_MARKET_TICKERS` — full 24hr ticker for every symbol (`!ticker@arr`); handler base: `AllMarketTickersHandlerBase`
 - `SubType.USER`
+
+> **`!bookTicker@arr` is not supported.** Binance has deprecated this stream; use per-symbol `SubType.BOOK_TICKER` instead.
 
 ### Full multi-subscribe example
 
@@ -631,6 +672,7 @@ Spot stream handler bases:
 - `MiniTickerHandlerBase`
 - `TickerHandlerBase`
 - `AllMarketMiniTickersHandlerBase`
+- `AllMarketTickersHandlerBase`
 - `AllMarketWindowTickersHandlerBase`
 - `AccountPositionHandlerBase`
 - `BalanceUpdateHandlerBase`
@@ -645,20 +687,39 @@ Spot stream handler bases:
 
 Futures streams are available on both `UMFuturesClient` and `CMFuturesClient`.
 
-### `SubType.MARK_PRICE` — mark-price and funding-rate updates
+### Per-symbol streams (UM + CM)
 
-- Required param: `symbol` (lowercase, e.g. `'btcusdt'` / `'btcusd_perp'`)
-- Optional second param: `'1s'` for the 1-second update variant (default is 3 s)
-- Wire stream: `<symbol>@markPrice` / `<symbol>@markPrice@1s`
-- Handler base: `MarkPriceHandlerBase`
-- Payload columns: `type`, `event_time`, `symbol`, `mark_price`, `mark_price_avg` (USDⓈ-M only), `index_price`, `est_settle_price`, `funding_rate`, `next_funding_time`
+- `SubType.MARK_PRICE` — `<symbol>@markPrice[@1s]`; optional `'1s'` param; handler: `MarkPriceHandlerBase` (adds `mark_price_avg` on UM)
+- `SubType.FORCE_ORDER` — `<symbol>@forceOrder`; handler: `ForceOrderHandlerBase` (adds `pair` on CM)
+- `SubType.AGG_TRADE` — `<symbol>@aggTrade`; handler: `FuturesAggTradeHandlerBase`
+- `SubType.KLINE` — `<symbol>@kline_<interval>`; params: `symbol`, `interval`; handler: `FuturesKlineHandlerBase`
+- `SubType.CONTINUOUS_KLINE` — `<pair>_<ct>@continuousKline_<interval>`; params: `pair`, `contract_type`, `interval`; handler: `FuturesContinuousKlineHandlerBase`
+- `SubType.MINI_TICKER` — `<symbol>@miniTicker`; handler: `FuturesMiniTickerHandlerBase`
+- `SubType.TICKER` — `<symbol>@ticker`; handler: `FuturesTickerHandlerBase`
+- `SubType.BOOK_TICKER` — `<symbol>@bookTicker`; handler: `FuturesBookTickerHandlerBase` (no `e` field)
+- `SubType.PARTIAL_ORDER_BOOK` — `<symbol>@depth<N>[@<speed>ms]`; params: `symbol`, `level` (5/10/20), optional `speed` (100/500); handler: `FuturesPartialOrderBookHandlerBase`
+- `SubType.ORDER_BOOK` — `<symbol>@depth[@<speed>ms]`; params: `symbol`, optional `speed` (100/500); handler: `FuturesOrderBookHandlerBase`
 
-### `SubType.FORCE_ORDER` — liquidation order events
+### All-market streams (UM + CM, no params)
 
-- Required param: `symbol` (lowercase, e.g. `'btcusdt'` / `'btcusd_perp'`)
-- Wire stream: `<symbol>@forceOrder`
-- Handler base: `ForceOrderHandlerBase`
-- Payload columns: `type`, `event_time`, `symbol`, `side`, `order_type`, `time_in_force`, `orig_quantity`, `price`, `avg_price`, `order_status`, `last_filled_qty`, `acc_filled_qty`, `trade_time`
+- `SubType.ALL_MARKET_MARK_PRICE` — `!markPrice@arr[@1s]`; optional `'1s'` param; handler: `FuturesAllMarketMarkPriceHandlerBase`
+- `SubType.ALL_MARKET_LIQUIDATION` — `!forceOrder@arr`; handler: `FuturesAllMarketLiquidationHandlerBase`
+- `SubType.ALL_MARKET_MINI_TICKERS` — `!miniTicker@arr`; handler: `FuturesAllMarketMiniTickersHandlerBase`
+- `SubType.ALL_MARKET_TICKERS` — `!ticker@arr`; handler: `FuturesAllMarketTickersHandlerBase`
+- `SubType.ALL_MARKET_BOOK_TICKER` — `!bookTicker` (no `@arr` suffix); handler: `FuturesAllMarketBookTickerHandlerBase`
+- `SubType.CONTRACT_INFO` — `!contractInfo`; handler: `FuturesContractInfoHandlerBase`
+
+### UM-only streams
+
+- `SubType.COMPOSITE_INDEX` — `<symbol>@compositeIndex`; handler: `CompositeIndexHandlerBase`
+- `SubType.ASSET_INDEX` — `<asset>@assetIndex` or `!assetIndex@arr`; handlers: `AssetIndexHandlerBase` / `AllAssetIndexHandlerBase`
+- `SubType.TRADING_SESSION` — `tradingSession`; no params; handler: `TradingSessionHandlerBase`
+
+### CM-only streams
+
+- `SubType.INDEX_PRICE` — `<pair>@indexPrice[@1s]`; handler: `IndexPriceHandlerBase`
+- `SubType.INDEX_PRICE_KLINE` — `<pair>@indexPriceKline_<interval>`; handler: `IndexPriceKlineHandlerBase`
+- `SubType.MARK_PRICE_KLINE` — `<symbol>@markPriceKline_<interval>`; handler: `MarkPriceKlineHandlerBase`
 
 ### `SubType.USER` — futures user-data stream
 
