@@ -467,11 +467,13 @@ class ReuseHandlerException(Exception):
 class OrderBookFetchAbandonedException(Exception):
     """Raised when the managed order-book snapshot fetch is permanently abandoned.
 
-    `OrderBookHandlerBase` bootstraps the local order book by fetching a REST
-    snapshot before replaying buffered WebSocket depth updates.  If every
-    snapshot attempt fails and the configured `stream_retry_policy` signals
-    that retrying should be abandoned (by returning `abandon=True`), this
-    exception is raised instead of making further attempts.
+    `OrderBookHandlerBase` bootstraps the local order book by fetching a depth
+    snapshot before replaying buffered WebSocket depth updates.  The snapshot
+    transport is venue-specific (Spot uses WS-API ``depth``; Futures uses REST
+    ``GET /fapi/v1/depth`` for USDⓈ-M and ``GET /dapi/v1/depth`` for COIN-M).
+    If every snapshot attempt fails and the configured `stream_retry_policy`
+    signals that retrying should be abandoned (by returning `abandon=True`),
+    this exception is raised instead of making further attempts.
 
     Attributes:
         symbol: The trading pair symbol (e.g. 'BTCUSDT') whose order-book
