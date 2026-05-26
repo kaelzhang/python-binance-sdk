@@ -4,7 +4,7 @@
 
 # binance-sdk
 
-`binance-sdk` is an unofficial async Binance SDK for Python 3.9+, supporting three markets: **Spot**, **USDⓈ-M Futures** (`UMFuturesClient`), and **COIN-M Futures** (`CMFuturesClient`). It:
+`binance-sdk` is an unofficial async Binance SDK for Python 3.11+, supporting three markets: **Spot**, **USDⓈ-M Futures** (`UMFuturesClient`), and **COIN-M Futures** (`CMFuturesClient`). It:
 
 - Routes every Spot request/response call over the **Binance WebSocket API** (`wss://ws-api.binance.com`) for low latency, while keeping a generic `get`/`post`/`put`/`delete` REST escape hatch for arbitrary endpoints.
 - Provides full-surface **USDⓈ-M Futures** (`UMFuturesClient`) and **COIN-M Futures** (`CMFuturesClient`) clients: market-data (open interest, funding rates, mark price), trading (orders, batch orders, position config), account management, WebSocket market-data streams (mark price, liquidations), and futures user-data streams.
