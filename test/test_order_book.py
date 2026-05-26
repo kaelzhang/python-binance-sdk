@@ -7,13 +7,17 @@ from binance import (
     OrderBook,
     OrderBookFetchAbandonedException
 )
+from binance.spot.orderbook import SpotOrderBook
 
 from test.test_ws_api import WSAPIServer
 
 
 def test_order_book_no_client():
-    orderbook = OrderBook('BTCUSDT')
+    orderbook = SpotOrderBook('BTCUSDT')
     assert not orderbook._fetching
+    # The publicly re-exported ``OrderBook`` is the abstract base; the
+    # spot-concrete subclass we instantiated must be a subclass of it.
+    assert isinstance(orderbook, OrderBook)
 
 
 def test_orderbook_handler_per_symbol_limit():
@@ -30,6 +34,29 @@ def test_orderbook_handler_per_symbol_limit():
     # The book is cached; a later get returns the same instance unchanged.
     assert handler.orderbook('BTCUSDT') is custom
     assert custom._limit == 500
+
+
+def test_pending_orderbook_attribute_before_materialise_raises():
+    """Forwarding wrapper raises ``AttributeError`` for live-book attributes
+    that are read before ``set_client`` materialises the real book.
+
+    The wrapper is only meant to act as an opaque reference between
+    ``handler.orderbook(symbol)`` and the subsequent
+    ``client.handler(handler)`` call; touching live-book state before then
+    is a programming error and should surface as such, not silently
+    return ``None``.
+    """
+    from binance.core.handlers.orderbook import _PendingOrderBook
+
+    pending = _PendingOrderBook('BTCUSDT', 500)
+
+    # The two slot fields are readable directly.
+    assert pending._symbol == 'BTCUSDT'
+    assert pending._limit == 500
+
+    # Any other ``OrderBook`` attribute raises until ``_materialise``.
+    with pytest.raises(AttributeError, match='before the handler was bound'):
+        _ = pending.ready
 
 
 @pytest.mark.asyncio
@@ -90,7 +117,7 @@ async def test_order_book():
 
         preset_10()
 
-        orderbook = OrderBook('BTCUSDT', client)
+        orderbook = SpotOrderBook('BTCUSDT', client)
 
         assert not orderbook.ready
         await orderbook.updated()

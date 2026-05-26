@@ -28,7 +28,7 @@ from binance.core.processors.framework import (  # noqa: F401  re-exported for b
     ExceptionProcessor,
 )
 
-from binance.spot.orderbook_handler import OrderBookHandlerBase
+from binance.core.handlers.orderbook import OrderBookHandlerBase
 
 from binance.core.common.constants import (
     SubType,

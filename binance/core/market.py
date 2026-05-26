@@ -4,12 +4,16 @@ A :class:`MarketSpec` is the small bundle of facts a market (Spot, USDⓈ-M
 Futures, …) hands to the shared :class:`~binance.core.client_base.BaseClient`:
 the connection hosts, the endpoint registry used to install the market's getter
 methods, the stream processor set (SubType routing + the framework
-exception / stream-error processors), and the market's default rate-limit rules.
+exception / stream-error processors), the market's default rate-limit rules,
+and the concrete :class:`~binance.core.orderbook.OrderBook` subclass used by
+:class:`~binance.core.handlers.orderbook.OrderBookHandlerBase` to build the
+local order book for that venue.
 """
 
 from dataclasses import dataclass, field
 from typing import List, Tuple, Type
 
+from binance.core.orderbook import OrderBook
 from binance.core.processors.base import Processor
 from binance.core.rate_limit import RateLimitRule
 
@@ -32,6 +36,15 @@ class MarketSpec:
         endpoints: the endpoint registry passed to
             :func:`~binance.core.getters.define_getter` to install the market's
             getter methods. Each entry is a ``dict`` of getter settings.
+        orderbook_impl: the concrete :class:`~binance.core.orderbook.OrderBook`
+            subclass used by
+            :class:`~binance.core.handlers.orderbook.OrderBookHandlerBase` to
+            build the local order book.  Each market supplies its own
+            implementation (e.g. ``SpotOrderBook`` for spot,
+            ``FuturesOrderBook`` for USDⓈ-M / COIN-M futures).  Defaults to the
+            abstract :class:`~binance.core.orderbook.OrderBook` as a sentinel:
+            constructing it raises :class:`TypeError`, surfacing markets that
+            forgot to override.
     """
 
     rest_host: str
@@ -42,3 +55,9 @@ class MarketSpec:
     exception_processor: Type[Processor]
     stream_error_processor: Type[Processor]
     endpoints: List[dict] = field(default_factory=list)
+    # The default is the abstract base itself (used as a sentinel "not
+    # overridden"); concrete markets supply their own subclass.  Mypy would
+    # normally reject assigning an abstract class to a ``Type[OrderBook]``,
+    # but the sentinel value is intentional and surfaces a clear ``TypeError``
+    # at first instantiation if a market forgets to override.
+    orderbook_impl: Type[OrderBook] = OrderBook  # type: ignore[type-abstract]

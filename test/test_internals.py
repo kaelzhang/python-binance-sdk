@@ -19,7 +19,7 @@ from binance.core.common.exceptions import (
     StreamDisconnectedException
 )
 from binance.core.rate_limit import RateLimiter
-from binance.spot.orderbook import OrderBook
+from binance.spot.orderbook import SpotOrderBook
 from binance.spot.processors import (
     _get_window,
     _get_order_book_interval,
@@ -179,7 +179,10 @@ def test_processor_param_validation_errors():
 # --- handlers/orderbook.py: background fetch exception handler -------------
 
 def test_orderbook_handle_fetch_exception():
-    book = OrderBook.__new__(OrderBook)
+    # ``_handle_fetch_exception`` lives on the abstract ``OrderBook`` base
+    # but ABC instantiation is blocked; drive it via the spot-concrete
+    # subclass which inherits the method verbatim.
+    book = SpotOrderBook.__new__(SpotOrderBook)
 
     class FakeLogger:
         def error(self, *args, **kwargs):

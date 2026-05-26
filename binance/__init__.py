@@ -72,7 +72,7 @@ from binance.spot.handlers import (
     AllMarketTickersHandlerBase,
 )
 
-from binance.spot.orderbook_handler import OrderBookHandlerBase
+from binance.core.handlers.orderbook import OrderBookHandlerBase
 
 from binance.spot.user_handlers import (
     AccountPositionHandlerBase,
@@ -83,7 +83,7 @@ from binance.spot.user_handlers import (
     EventStreamTerminatedHandlerBase
 )
 
-from binance.spot.orderbook import OrderBook
+from binance.core.orderbook import OrderBook
 from binance.core.transport.stream import Stream
 
 from binance.futures.um.streams import (
