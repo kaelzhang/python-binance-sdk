@@ -1,0 +1,310 @@
+"""USDⓈ-M Futures endpoint registry and stub-to-getter injection.
+
+Maps every public python method name on :class:`UMFuturesGetters` to its
+Binance WebSocket-API method name OR REST URL, security level, request
+weight, and whether it consumes the account ORDERS pool. Importing this
+module triggers the ``define_getter`` loop at the bottom, which patches each
+stub on the combined :class:`UMFuturesGetters` class with a real coroutine.
+
+Each entry's ``weight`` may be an ``int`` OR a callable ``(kwargs) -> int``
+for endpoints whose weight depends on the request params (see ``weights.py``).
+
+Covers two groups of endpoints:
+
+**Market data** (``SecurityType.NONE``, REST GET):
+All on ``https://fapi.binance.com``.
+
+Confirmed weights (2026-05-25) via live ``x-mbx-used-weight-1m`` response
+headers and official Binance developer docs:
+
+- ``GET /fapi/v1/openInterest``         weight 1
+- ``GET /futures/data/openInterestHist`` weight 1 (shared 500/5min pool with rate-limit headers absent on data sub-path; 0 documented but behaves as 1)
+- ``GET /fapi/v1/fundingRate``           shares 500/5min/IP pool with fundingInfo; counted as weight 1 in REQUEST_WEIGHT
+- ``GET /fapi/v1/fundingInfo``           same shared pool; weight 1
+- ``GET /fapi/v1/premiumIndex``          weight 1 (symbol given), 10 (all symbols)
+
+**Trading / account / position** (signed, WS-API + REST):
+WS-API endpoints go through the shared ``wss://ws-fapi.binance.com/ws-fapi/v1``
+connection; REST endpoints use ``https://fapi.binance.com``.
+
+Ref:
+- https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data
+- https://developers.binance.com/docs/derivatives/usds-margined-futures/trade
+- https://developers.binance.com/docs/derivatives/usds-margined-futures/account
+"""
+
+from binance.core.common.constants import SecurityType, RequestMethod
+from binance.core.getters import define_getter
+from binance.futures.um.constants import UM_REST_HOST
+from binance.futures.um.endpoints.getters import UMFuturesGetters
+from binance.futures.um.endpoints.weights import (
+    _premium_index_weight,
+    _um_open_orders_weight,
+)
+
+
+# WS-API endpoint specs for USDⓈ-M Futures trading / account (signed).
+WS_API_ENDPOINTS = [
+    dict(
+        name='create_order',
+        transport='ws_api',
+        ws_method='order.place',
+        security_type=SecurityType.TRADE,
+        weight=1,
+        is_order=True,
+    ),
+    dict(
+        name='modify_order',
+        transport='ws_api',
+        ws_method='order.modify',
+        security_type=SecurityType.TRADE,
+        weight=1,
+        is_order=True,
+    ),
+    dict(
+        name='cancel_order',
+        transport='ws_api',
+        ws_method='order.cancel',
+        security_type=SecurityType.TRADE,
+        weight=1,
+    ),
+    dict(
+        name='get_order',
+        transport='ws_api',
+        ws_method='order.status',
+        security_type=SecurityType.USER_DATA,
+        weight=1,
+    ),
+    dict(
+        name='get_account',
+        transport='ws_api',
+        ws_method='v2/account.status',
+        security_type=SecurityType.USER_DATA,
+        weight=5,
+    ),
+    dict(
+        name='get_balance',
+        transport='ws_api',
+        ws_method='v2/account.balance',
+        security_type=SecurityType.USER_DATA,
+        weight=5,
+    ),
+    dict(
+        name='get_position',
+        transport='ws_api',
+        ws_method='account.position',
+        security_type=SecurityType.USER_DATA,
+        weight=5,
+    ),
+    dict(
+        name='get_position_mode',
+        transport='ws_api',
+        ws_method='positionSide.dual.get',
+        security_type=SecurityType.USER_DATA,
+        weight=30,
+    ),
+    dict(
+        name='create_algo_order',
+        transport='ws_api',
+        ws_method='algoOrder.place',
+        security_type=SecurityType.TRADE,
+        weight=0,
+        # algoOrder draws from a separate algo-orders quota, NOT the standard
+        # ORDERS pool; is_order=False to avoid double-counting.
+        is_order=False,
+    ),
+    dict(
+        name='cancel_algo_order',
+        transport='ws_api',
+        ws_method='algoOrder.cancel',
+        security_type=SecurityType.TRADE,
+        weight=0,
+    ),
+]
+
+# REST endpoint specs for USDⓈ-M Futures market-data (P4 scope: funding /
+# open-interest / mark-price).
+REST_ENDPOINTS = [
+    dict(
+        name='get_open_interest',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/openInterest',
+        security_type=SecurityType.NONE,
+        weight=1,
+    ),
+    dict(
+        name='get_open_interest_hist',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/futures/data/openInterestHist',
+        security_type=SecurityType.NONE,
+        # Documented weight is 0 on the /futures/data sub-path; we treat it as
+        # 1 to stay consistent with the REQUEST_WEIGHT accounting model (a
+        # request that costs 0 would never be tracked).
+        weight=1,
+    ),
+    dict(
+        name='get_funding_rate',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/fundingRate',
+        security_type=SecurityType.NONE,
+        weight=1,
+    ),
+    dict(
+        name='get_funding_info',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/fundingInfo',
+        security_type=SecurityType.NONE,
+        weight=1,
+    ),
+    dict(
+        name='get_premium_index',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/premiumIndex',
+        security_type=SecurityType.NONE,
+        weight=_premium_index_weight,
+    ),
+    # ----- Trading -----------------------------------------------------------
+    dict(
+        name='create_test_order',
+        transport='rest',
+        method=RequestMethod.POST,
+        rest_url=UM_REST_HOST + '/fapi/v1/order/test',
+        security_type=SecurityType.TRADE,
+        weight=1,
+    ),
+    dict(
+        name='cancel_all_orders',
+        transport='rest',
+        method=RequestMethod.DELETE,
+        rest_url=UM_REST_HOST + '/fapi/v1/allOpenOrders',
+        security_type=SecurityType.TRADE,
+        weight=1,
+    ),
+    dict(
+        name='get_open_orders',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/openOrders',
+        security_type=SecurityType.USER_DATA,
+        weight=_um_open_orders_weight,
+    ),
+    dict(
+        name='get_all_orders',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/allOrders',
+        security_type=SecurityType.USER_DATA,
+        weight=5,
+    ),
+    dict(
+        name='create_batch_orders',
+        transport='rest',
+        method=RequestMethod.POST,
+        rest_url=UM_REST_HOST + '/fapi/v1/batchOrders',
+        security_type=SecurityType.TRADE,
+        weight=5,
+    ),
+    dict(
+        name='cancel_batch_orders',
+        transport='rest',
+        method=RequestMethod.DELETE,
+        rest_url=UM_REST_HOST + '/fapi/v1/batchOrders',
+        security_type=SecurityType.TRADE,
+        weight=5,
+    ),
+    # ----- Account / Position ------------------------------------------------
+    dict(
+        name='get_position_risk',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v3/positionRisk',
+        security_type=SecurityType.USER_DATA,
+        weight=5,
+    ),
+    dict(
+        name='get_user_trades',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/userTrades',
+        security_type=SecurityType.USER_DATA,
+        weight=5,
+    ),
+    dict(
+        name='get_commission',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/commissionRate',
+        security_type=SecurityType.USER_DATA,
+        weight=20,
+    ),
+    dict(
+        name='get_income',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/income',
+        security_type=SecurityType.USER_DATA,
+        weight=30,
+    ),
+    dict(
+        name='get_leverage_bracket',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/leverageBracket',
+        security_type=SecurityType.USER_DATA,
+        weight=1,
+    ),
+    dict(
+        name='set_leverage',
+        transport='rest',
+        method=RequestMethod.POST,
+        rest_url=UM_REST_HOST + '/fapi/v1/leverage',
+        security_type=SecurityType.TRADE,
+        weight=1,
+    ),
+    dict(
+        name='set_margin_type',
+        transport='rest',
+        method=RequestMethod.POST,
+        rest_url=UM_REST_HOST + '/fapi/v1/marginType',
+        security_type=SecurityType.TRADE,
+        weight=1,
+    ),
+    dict(
+        name='set_position_margin',
+        transport='rest',
+        method=RequestMethod.POST,
+        rest_url=UM_REST_HOST + '/fapi/v1/positionMargin',
+        security_type=SecurityType.TRADE,
+        weight=1,
+    ),
+    dict(
+        name='set_position_mode',
+        transport='rest',
+        method=RequestMethod.POST,
+        rest_url=UM_REST_HOST + '/fapi/v1/positionSide/dual',
+        security_type=SecurityType.TRADE,
+        weight=1,
+    ),
+    dict(
+        name='get_multi_assets_mode',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/multiAssetsMargin',
+        security_type=SecurityType.USER_DATA,
+        weight=30,
+    ),
+    dict(
+        name='set_multi_assets_mode',
+        transport='rest',
+        method=RequestMethod.POST,
+        rest_url=UM_REST_HOST + '/fapi/v1/multiAssetsMargin',
+        security_type=SecurityType.TRADE,
+        weight=1,
+    ),
+]
+
+
+# Neither VSCode Python language server nor Jedi server could handle class
+# methods which are dynamically added by `setattr`, see:
+# https://jedi.readthedocs.io/en/latest/docs/features.html#not-supported
+#
+# So we declare those methods (as stubs) in the per-mixin modules first, then
+# override them here at import time.
+
+for _getter_spec in WS_API_ENDPOINTS:
+    define_getter(UMFuturesGetters, **_getter_spec)  # type: ignore[arg-type]
+
+for _getter_spec in REST_ENDPOINTS:
+    define_getter(UMFuturesGetters, **_getter_spec)  # type: ignore[arg-type]
