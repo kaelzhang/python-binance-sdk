@@ -914,6 +914,20 @@ client = SpotClient(creds)
 
 Constructor kwargs `api_key`, `api_secret`, `private_key`, and `private_key_pass` have moved into `Credentials`. All other constructor kwargs (`stream_retry_policy`, `rate_limit_guard`, `rate_limiter`, etc.) remain on the client constructor, unchanged.
 
+## Testing
+
+The default `pytest test/` suite is fully hermetic — it only talks to local mock servers and never reaches the real Binance endpoints, so it is safe to run on any network (including CI) without credentials.
+
+### Live smoke tests
+
+A small opt-in suite at `test/test_live.py` exercises real Binance endpoints (Spot / UM / CM stream + WS-API time, plus a Spot `get_account` if `API_KEY` / `API_SECRET` are configured in `.env` / `.env.*`). All live tests are skipped by default — set `BINANCE_LIVE=1` to enable:
+
+```sh
+BINANCE_LIVE=1 pytest test/test_live.py -v
+```
+
+Live tests do NOT place orders or modify any account state. Binance geo-blocks some regions / cloud-provider IPs (HTTP 451) — the suite fails fast on unreachable hosts so you can diagnose connectivity early. On a network that requires an HTTP/SOCKS proxy to reach Binance, also set `BINANCE_LIVE_TEST=1` so the test session preserves your proxy environment variables (see `test/conftest.py`).
+
 ## License
 
 [MIT](../LICENSE)

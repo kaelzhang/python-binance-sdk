@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 
+import pytest
 from aiohttp import WSMsgType, web
 from dotenv import load_dotenv
 
@@ -271,3 +272,17 @@ def get_api_credentials():
     """
     load_env_files()
     return os.environ.get('API_KEY'), os.environ.get('API_SECRET')
+
+
+# `BINANCE_LIVE` opts in to the live-API smoke suite in `test/test_live.py`.
+# Accepted truthy values: '1', 'true', 'yes' (case-insensitive). Anything else
+# (including unset) keeps the live tests skipped so default `pytest test/`
+# runs remain fully hermetic.
+LIVE_TESTS_ENABLED = os.environ.get('BINANCE_LIVE', '').lower() in (
+    '1', 'true', 'yes'
+)
+
+live = pytest.mark.skipif(
+    not LIVE_TESTS_ENABLED,
+    reason='set BINANCE_LIVE=1 to run live-API smoke tests',
+)

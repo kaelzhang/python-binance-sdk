@@ -96,6 +96,9 @@ exclude = ['(^|/)no_track/']
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
+markers = [
+    "live: tests that hit the real Binance API (skipped unless BINANCE_LIVE=1)",
+]
 # A test must never hang forever: kill any test that runs longer than this
 # many seconds and dump the stack of where it was stuck, so failures are
 # diagnosable from the output instead of freezing the whole run.
