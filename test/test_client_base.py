@@ -132,22 +132,28 @@ async def test_force_params():
 # directly against a raw URL, since no public method routes to REST anymore.
 # ---------------------------------------------------------------------------
 
-_TIME_URL = 'https://api.binance.com/api/v3/time'
 _ACCOUNT_URL = 'https://api.binance.com/api/v3/account'
 _ACCOUNT_URL_RE = re.compile(r'https://api\.binance\.com/api/v3/account(\?.*)?$')
 _EXCHANGE_INFO_URL = 'https://api.binance.com/api/v3/exchangeInfo'
 
 
 @pytest.mark.asyncio
-async def test_signed_rest_escape_hatch_signs_and_lazy_syncs():
+async def test_signed_rest_escape_hatch_signs_and_lazy_syncs(monkeypatch):
     """A signed REST GET signs the query (apiKey header + signature) and lazily
-    syncs the server-time offset before the first signed request."""
+    syncs the server-time offset before the first signed request.
+
+    Since R6 the lazy sync travels over the WS-API (not REST `/api/v3/time`),
+    so we mock ``_sync_time`` directly to keep this test fully hermetic.
+    """
     client = SpotClient(Credentials(api_key='k', api_secret='s'))
     assert client._time_synced is False
 
+    async def _fake_sync(self=None):
+        client._time_synced = True
+        return 0
+    monkeypatch.setattr(client, '_sync_time', _fake_sync)
+
     with aioresponses() as m:
-        # The lazy time-sync hits GET /api/v3/time.
-        m.get(_TIME_URL, payload={'serverTime': 1_700_000_000_000})
         m.get(_ACCOUNT_URL_RE, payload={'canTrade': True})
 
         result = await client.get(
@@ -157,7 +163,7 @@ async def test_signed_rest_escape_hatch_signs_and_lazy_syncs():
         )
 
     assert result == {'canTrade': True}
-    # The lazy sync ran on the REST path.
+    # The lazy sync ran (mocked).
     assert client._time_synced is True
 
 
