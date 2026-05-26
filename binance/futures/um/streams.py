@@ -1,26 +1,76 @@
 """USDⓈ-M Futures stream wiring: handlers, processors, and the PROCESSORS list.
 
 USDⓈ-M reuses the shared futures handler bases and processors from
-:mod:`binance.futures.streams`.  This module adds the USDⓈ-M-specific
-``ap`` (mark price moving average) field to the mark-price column map, which is
-present in USDⓈ-M but absent from COIN-M.
+:mod:`binance.futures.streams`.  This module:
+1. Adds the USDⓈ-M-specific ``ap`` (mark price moving average) field to the
+   mark-price column map.
+2. Provides UM-only handler bases and processors for streams that do NOT exist
+   on COIN-M: ``compositeIndex``, ``contractInfo``, ``assetIndex``, ``tradingSession``.
+3. Registers the complete UM PROCESSORS list.
 
-Confirmed payload field mappings (2026-05-25) against official Binance docs:
-- Mark Price stream: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Mark-Price-Stream
-- Liquidation Order stream: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Liquidation-Order-Streams
-
-UM-specific vs CM:
+Confirmed UM vs CM payload differences (2026-05-26):
 - Mark Price: UM has ``ap`` (mark price moving average); CM does NOT.
-- Force Order: UM does NOT have ``ps`` (pair) in nested ``o``; CM DOES.
+- Force Order nested 'o': UM does NOT have ``ps`` (pair); CM DOES.
+- All-market Mark Price: UM array elements include ``ap``; CM does NOT.
+- compositeIndex, assetIndex, tradingSession: UM-only (verified against dstream docs).
+- contractInfo: present on both UM and CM (shared base in binance.futures.streams).
+
+UM-only streams:
+- compositeIndex: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Composite-Index-Symbol-Information-Streams
+- contractInfo: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Contract-Info-Stream
+- assetIndex: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Multi-Assets-Mode-Asset-Index
+- tradingSession: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Trading-Session-Stream
 """
 
+from typing import ClassVar
+
+from binance.core.common.constants import SubType, KEY_STREAM_TYPE, KEY_PAYLOAD
+from binance.core.common.exceptions import InvalidSubTypeParamException
+from binance.core.handlers.base import Handler
+from binance.core.processors.base import Processor
+from binance.core.common.utils import normalize_symbol
+
 from binance.futures.streams import (  # noqa: F401  (re-exported for public API)
-    MarkPriceHandlerBase as _MarkPriceHandlerBase,
-    ForceOrderHandlerBase,
-    FORCE_ORDER_COLUMNS_MAP_BASE,
+    # Column maps
     MARK_PRICE_COLUMNS_MAP_BASE,
-    MarkPriceProcessor as _MarkPriceProcessor,
+    FORCE_ORDER_COLUMNS_MAP_BASE,
+    FUTURES_AGG_TRADE_COLUMNS_MAP,
+    FUTURES_KLINE_COLUMNS_MAP,
+    FUTURES_MINI_TICKER_COLUMNS_MAP,
+    FUTURES_TICKER_COLUMNS_MAP,
+    FUTURES_BOOK_TICKER_COLUMNS_MAP,
+    FUTURES_PARTIAL_ORDER_BOOK_COLUMNS_MAP,
+    FUTURES_ORDER_BOOK_COLUMNS_MAP,
+    FUTURES_CONTINUOUS_KLINE_COLUMNS_MAP,
+    CONTRACT_INFO_COLUMNS_MAP,
+    # Handler bases (shared)
+    ForceOrderHandlerBase,
+    ContinuousKlineHandlerBase,
+    ContractInfoHandlerBase,
+    AllMarketLiquidationHandlerBase,
+    AllMarketMiniTickersHandlerBase,
+    AllMarketTickersHandlerBase,
+    AllMarketBookTickerHandlerBase,
+    # Processors (shared, used in PROCESSORS list below)
     ForceOrderProcessor,
+    AggTradeProcessor,
+    KlineProcessor,
+    MiniTickerProcessor,
+    TickerProcessor,
+    BookTickerProcessor,
+    PartialOrderBookProcessor,
+    OrderBookProcessor,
+    ContinuousKlineProcessor,
+    ContractInfoProcessor,
+    AllMarketLiquidationProcessor,
+    AllMarketMiniTickersProcessor,
+    AllMarketTickersProcessor,
+    AllMarketBookTickerProcessor,
+    # handler base aliases (re-exported under shared names)
+    MarkPriceHandlerBase as _MarkPriceHandlerBase,
+    AllMarketMarkPriceHandlerBase as _AllMarketMarkPriceHandlerBase,
+    MarkPriceProcessor as _MarkPriceProcessor,
+    AllMarketMarkPriceProcessor as _AllMarketMarkPriceProcessor,
 )
 
 from binance.futures.user_processor import FuturesUserProcessor  # noqa: F401  (re-exported)
@@ -91,8 +141,316 @@ class MarkPriceProcessor(_MarkPriceProcessor):
     HANDLER = MarkPriceHandlerBase
 
 
+# ---------------------------------------------------------------------------
+# UM-specific all-market mark price: array elements include 'ap'.
+# ---------------------------------------------------------------------------
+
+ALL_MARKET_MARK_PRICE_COLUMNS_MAP = MARK_PRICE_COLUMNS_MAP
+ALL_MARKET_MARK_PRICE_COLUMNS = MARK_PRICE_COLUMNS
+
+
+class AllMarketMarkPriceHandlerBase(_AllMarketMarkPriceHandlerBase):
+    """Base handler for the USDⓈ-M ``SubType.ALL_MARKET_MARK_PRICE`` stream (``!markPrice@arr[@1s]``).
+
+    Extends the shared base with the USDⓈ-M-specific ``ap`` (mark price moving average)
+    column.  COIN-M all-market mark-price elements do NOT include ``ap``.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+    """
+
+    COLUMNS_MAP = ALL_MARKET_MARK_PRICE_COLUMNS_MAP
+    COLUMNS = ALL_MARKET_MARK_PRICE_COLUMNS
+
+
+class AllMarketMarkPriceProcessor(_AllMarketMarkPriceProcessor):
+    """Processor for the USDⓈ-M all-market mark price stream (``!markPrice@arr[@1s]``).
+
+    Uses the USDⓈ-M :class:`AllMarketMarkPriceHandlerBase` (which includes ``ap``).
+    """
+
+    HANDLER = AllMarketMarkPriceHandlerBase
+
+
+# ---------------------------------------------------------------------------
+# UM-only: CompositeIndex
+# Wire stream: <symbol>@compositeIndex
+# Confirmed UM-only (2026-05-26): dstream (COIN-M) docs do not list this stream.
+# Event type: 'compositeIndex'
+# Confirmed fields from UM docs:
+#   e  'compositeIndex'
+#   E  event time
+#   s  symbol (composite index symbol, e.g. 'DEFIUSDT')
+#   p  price
+#   C  composition list
+#   c  baseAsset  (in each composition element)
+#   w  weightInQuantity
+#   W  weightInPercentage
+#   b  baseAssetPrice
+# The column map covers the top-level fields; the 'C' composition list
+# is passed through as-is in the raw payload.
+# ---------------------------------------------------------------------------
+
+COMPOSITE_INDEX_COLUMNS_MAP = {
+    'e': 'type',
+    'E': 'event_time',
+    's': 'symbol',
+    'p': 'price',
+}
+
+COMPOSITE_INDEX_COLUMNS = COMPOSITE_INDEX_COLUMNS_MAP.keys()
+
+
+class CompositeIndexHandlerBase(Handler):
+    """Base handler for the USDⓈ-M ``SubType.COMPOSITE_INDEX`` stream (``<symbol>@compositeIndex``).
+
+    USDⓈ-M only: not present on COIN-M.  Delivers the current index composition
+    and price for composite index symbols (e.g. ``DEFIUSDT``).  The payload includes
+    a ``C`` (composition) list with each constituent's weight and base asset price.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+
+    Docs:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Composite-Index-Symbol-Information-Streams
+    """
+
+    COLUMNS_MAP = COMPOSITE_INDEX_COLUMNS_MAP
+    COLUMNS = COMPOSITE_INDEX_COLUMNS
+
+
+class CompositeIndexProcessor(Processor):
+    """Processor for the USDⓈ-M composite index stream (``<symbol>@compositeIndex``).
+
+    USDⓈ-M only.
+    """
+
+    HANDLER = CompositeIndexHandlerBase
+    SUB_TYPE = SubType.COMPOSITE_INDEX
+    PAYLOAD_TYPE = 'compositeIndex'
+
+
+# ---------------------------------------------------------------------------
+# UM-only: AssetIndex
+# Wire streams:
+#   !assetIndex@arr   — all-asset index array
+#   <asset>@assetIndex — per-asset index
+# Confirmed UM-only (2026-05-26): multi-assets mode is a UM feature only.
+# Event type: 'assetIndexUpdate'
+# Confirmed fields from UM docs:
+#   e  'assetIndexUpdate'
+#   E  event time
+#   s  asset (e.g. 'ETH')
+#   i  index price
+#   b  bid buffer
+#   a  ask buffer
+#   B  bid rate
+#   A  ask rate
+#   q  auto-exchange bid buffer
+#   g  auto-exchange ask buffer
+#   Q  auto-exchange bid rate
+#   G  auto-exchange ask rate
+# ---------------------------------------------------------------------------
+
+ASSET_INDEX_COLUMNS_MAP = {
+    'e': 'type',
+    'E': 'event_time',
+    's': 'asset',
+    'i': 'index_price',
+    'b': 'bid_buffer',
+    'a': 'ask_buffer',
+    'B': 'bid_rate',
+    'A': 'ask_rate',
+    'q': 'auto_exchange_bid_buffer',
+    'g': 'auto_exchange_ask_buffer',
+    'Q': 'auto_exchange_bid_rate',
+    'G': 'auto_exchange_ask_rate',
+}
+
+ASSET_INDEX_COLUMNS = ASSET_INDEX_COLUMNS_MAP.keys()
+
+
+class AssetIndexHandlerBase(Handler):
+    """Base handler for the USDⓈ-M ``SubType.ASSET_INDEX`` stream.
+
+    USDⓈ-M only: the multi-assets mode asset index stream.
+    Supports two subscription forms:
+    - ``<asset>@assetIndex`` (per-asset, requires ``asset`` parameter).
+    - ``!assetIndex@arr`` (all-asset array, no parameter required).
+
+    Delivers the asset index price plus bid/ask buffers and rates used in
+    multi-assets margin mode calculations.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+
+    Docs:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Multi-Assets-Mode-Asset-Index
+    """
+
+    COLUMNS_MAP = ASSET_INDEX_COLUMNS_MAP
+    COLUMNS = ASSET_INDEX_COLUMNS
+
+
+class AssetIndexProcessor(Processor):
+    """Processor for the USDⓈ-M per-asset index stream (``<asset>@assetIndex``).
+
+    USDⓈ-M only.  Requires an ``asset`` string parameter (e.g. ``'ETH'``).
+    """
+
+    HANDLER = AssetIndexHandlerBase
+    SUB_TYPE = SubType.ASSET_INDEX
+    PAYLOAD_TYPE = 'assetIndexUpdate'
+
+    def subscribe_param(self, _, t, *args) -> str:
+        """Return ``<asset>@assetIndex``."""
+        asset = self._get_param_symbol(t, args)
+        return f'{normalize_symbol(asset)}@assetIndex'
+
+
+ALL_ASSET_INDEX_STREAM = '!assetIndex@arr'
+
+
+class AllAssetIndexHandlerBase(Handler):
+    """Base handler for the USDⓈ-M all-asset index array stream (``!assetIndex@arr``).
+
+    Distinct from :class:`AssetIndexHandlerBase` so that the processor dispatch
+    framework can route ``!assetIndex@arr`` (via :class:`AllAssetIndexProcessor`)
+    independently from the per-asset ``<asset>@assetIndex`` stream (via
+    :class:`AssetIndexProcessor`).  Both handlers use the same column mapping.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+
+    Docs:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Multi-Assets-Mode-Asset-Index
+    """
+
+    COLUMNS_MAP = ASSET_INDEX_COLUMNS_MAP
+    COLUMNS = ASSET_INDEX_COLUMNS
+
+
+class AllAssetIndexProcessor(Processor):
+    """Processor for the USDⓈ-M all-asset index array stream (``!assetIndex@arr``).
+
+    USDⓈ-M only.  No parameter required.  Uses :class:`AllAssetIndexHandlerBase`.
+    """
+
+    HANDLER = AllAssetIndexHandlerBase
+    SUB_TYPE = SubType.ASSET_INDEX
+    STREAM_TYPE_NAME: ClassVar[str] = ALL_ASSET_INDEX_STREAM
+
+    def supports_subtype(self, t):
+        # Both AssetIndexProcessor and AllAssetIndexProcessor share SUB_TYPE.ASSET_INDEX.
+        # The distinction is that AllAssetIndexProcessor matches !assetIndex@arr by name.
+        # supports_subtype is True for both; is_message_type differentiates at dispatch time.
+        return t == self.SUB_TYPE
+
+    def is_message_type(self, msg):
+        stream_type = msg.get(KEY_STREAM_TYPE)
+
+        if stream_type == self.STREAM_TYPE_NAME:
+            return True, msg.get(KEY_PAYLOAD)
+
+        return False, None
+
+    def subscribe_param(self, _, t, *args) -> str:
+        if len(args) != 0:
+            raise InvalidSubTypeParamException(
+                t, 'asset',
+                'All-asset index array (``!assetIndex@arr``) expects no parameters'
+            )
+        return self.STREAM_TYPE_NAME
+
+
+# ---------------------------------------------------------------------------
+# UM-only: TradingSession
+# Wire stream: tradingSession  (no symbol prefix, no @arr suffix)
+# Confirmed UM-only (2026-05-26): US equities/commodities session events.
+# Event types: 'EquityUpdate' or 'CommodityUpdate'
+# Confirmed fields from UM docs (approximate; session stream is lightly documented):
+#   e  event type ('EquityUpdate' or 'CommodityUpdate')
+#   E  event time
+#   T  session open/close state
+# ---------------------------------------------------------------------------
+
+TRADING_SESSION_COLUMNS_MAP = {
+    'e': 'type',
+    'E': 'event_time',
+    'T': 'session_state',
+}
+
+TRADING_SESSION_COLUMNS = TRADING_SESSION_COLUMNS_MAP.keys()
+
+TRADING_SESSION_STREAM = 'tradingSession'
+TRADING_SESSION_PAYLOAD_TYPES = ('EquityUpdate', 'CommodityUpdate')
+
+
+class TradingSessionHandlerBase(Handler):
+    """Base handler for the USDⓈ-M ``SubType.TRADING_SESSION`` stream.
+
+    USDⓈ-M only: delivers US equity and commodity market session state events.
+    The event type field is either ``'EquityUpdate'`` or ``'CommodityUpdate'``.
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+
+    Docs:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Trading-Session-Stream
+    """
+
+    COLUMNS_MAP = TRADING_SESSION_COLUMNS_MAP
+    COLUMNS = TRADING_SESSION_COLUMNS
+
+
+class TradingSessionProcessor(Processor):
+    """Processor for the USDⓈ-M trading session stream (``tradingSession``).
+
+    USDⓈ-M only.  Matches both ``EquityUpdate`` and ``CommodityUpdate`` event types.
+    """
+
+    HANDLER = TradingSessionHandlerBase
+    SUB_TYPE = SubType.TRADING_SESSION
+    PAYLOAD_TYPES = TRADING_SESSION_PAYLOAD_TYPES
+    STREAM_TYPE_NAME: ClassVar[str] = TRADING_SESSION_STREAM
+
+    def is_message_type(self, msg):
+        from binance.core.common.constants import KEY_PAYLOAD, KEY_PAYLOAD_TYPE
+        payload = msg.get(KEY_PAYLOAD)
+
+        if (
+            payload is not None
+            and type(payload) is dict
+            and payload.get(KEY_PAYLOAD_TYPE) in self.PAYLOAD_TYPES
+        ):
+            return True, payload
+
+        return False, None
+
+    def subscribe_param(self, _, t, *args) -> str:
+        if len(args) != 0:
+            raise InvalidSubTypeParamException(
+                t, 'symbol',
+                '`SubType.TRADING_SESSION` expects no parameters'
+            )
+        return self.STREAM_TYPE_NAME
+
+
 PROCESSORS = [
     MarkPriceProcessor,
+    AllMarketMarkPriceProcessor,
+    AggTradeProcessor,
+    KlineProcessor,
+    ContinuousKlineProcessor,
+    MiniTickerProcessor,
+    AllMarketMiniTickersProcessor,
+    TickerProcessor,
+    AllMarketTickersProcessor,
+    BookTickerProcessor,
+    AllMarketBookTickerProcessor,
     ForceOrderProcessor,
+    AllMarketLiquidationProcessor,
+    PartialOrderBookProcessor,
+    OrderBookProcessor,
+    CompositeIndexProcessor,
+    ContractInfoProcessor,
+    AssetIndexProcessor,
+    AllAssetIndexProcessor,
+    TradingSessionProcessor,
     FuturesUserProcessor,
 ]
