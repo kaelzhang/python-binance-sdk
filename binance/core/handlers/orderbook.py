@@ -89,10 +89,12 @@ class _PendingOrderBook:
     __slots__ = ('_symbol', '_limit', '_real')
 
     def __init__(self, symbol: str, limit: int) -> None:
-        # Object identity (``handler.orderbook(s) is handler.orderbook(s)``)
-        # is preserved across calls before AND after set_client because the
-        # handler keeps the same wrapper in ``_orderbooks[symbol]`` and only
-        # populates ``_real`` in-place during ``set_client``.
+        # Note: a reference captured BEFORE ``set_client`` (this wrapper) and
+        # one fetched AFTER (the real ``OrderBook``) are not ``is``-identical,
+        # but both observe the same live state because the wrapper forwards
+        # every attribute to ``_real`` once materialised. Two pre-``set_client``
+        # calls for the same symbol still return the same wrapper, and two
+        # post-``set_client`` calls still return the same real book.
         self._symbol = symbol
         self._limit = limit
         self._real: Optional[OrderBook] = None

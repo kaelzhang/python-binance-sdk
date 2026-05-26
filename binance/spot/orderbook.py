@@ -26,6 +26,7 @@ from binance.core.orderbook import (
 # module (e.g. ``from binance.spot.orderbook import KEY_FIRST_UPDATE_ID``)
 # continue to work without change.
 __all__ = (
+    'OrderBook',
     'SpotOrderBook',
     'KEY_ASKS',
     'KEY_BIDS',
