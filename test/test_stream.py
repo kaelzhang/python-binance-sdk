@@ -27,7 +27,7 @@ async def run_stream():
         f.set_result(msg)
 
     stream = Stream(
-        STREAM_HOST + '/stream',
+        f'ws://localhost:{PORT}/stream',
         on_message,
         logger=logger
     )
@@ -64,7 +64,15 @@ async def run_stream():
 
 @pytest.mark.asyncio
 async def test_binance_stream():
-    await run_stream()
+    # Use a local mock server that speaks the Binance Spot stream protocol.
+    # The real wss://stream.binance.com host is geo-blocked on CI runners
+    # (HTTP 451) and the project's policy is mock-only tests anyway.
+    server = SocketServer().binance_stream().start()
+    await server.run()
+    try:
+        await run_stream()
+    finally:
+        await server.shutdown()
 
 
 def on_message():

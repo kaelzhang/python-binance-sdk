@@ -1,8 +1,9 @@
 import asyncio
+import json
 import os
 from pathlib import Path
 
-from aiohttp import web
+from aiohttp import WSMsgType, web
 from dotenv import load_dotenv
 
 from binance.core.common.utils import json_stringify
@@ -48,6 +49,7 @@ class SocketServer:
 
         self._delay = 0.2
         self._valid_json = True
+        self._binance_stream = False
 
     def start(self):
         self._started = True
@@ -59,6 +61,19 @@ class SocketServer:
 
     def invalid_json(self):
         self._valid_json = False
+        return self
+
+    def binance_stream(self):
+        """Switch the server into Binance Spot stream protocol mode.
+
+        Replies to SUBSCRIBE / LIST_SUBSCRIPTIONS with the correlated `id`,
+        rejects empty-`params` SUBSCRIBE with an error frame, and pushes
+        `{"stream": ..., "data": ...}` events while at least one stream is
+        subscribed. Used by `test/test_stream.py::test_binance_stream` to
+        avoid hitting the real `wss://stream.binance.com` host (geo-blocked
+        on CI and against the project's mock-only test policy).
+        """
+        self._binance_stream = True
         return self
 
     def stop(self):
@@ -77,6 +92,10 @@ class SocketServer:
     async def _handle(self, ws) -> None:
         if not self._started:
             await ws.close(code=1006)
+            return
+
+        if self._binance_stream:
+            await self._handle_binance_stream(ws)
             return
 
         # Drain incoming frames concurrently so aiohttp auto-responds to the
@@ -106,6 +125,111 @@ class SocketServer:
             pass
         finally:
             drain_task.cancel()
+
+    async def _handle_binance_stream(self, ws) -> None:
+        """Minimal Binance Spot stream protocol responder.
+
+        Speaks just enough of the protocol to satisfy `Stream.send`:
+
+        * `SUBSCRIBE` with non-empty `params` -> reply `{id, result: null}`
+          and add each param to the subscription set.
+        * `SUBSCRIBE` with empty `params` -> reply
+          `{id, error: {code, msg}}` so the client raises
+          `StreamSubscribeException`.
+        * `LIST_SUBSCRIPTIONS` -> reply `{id, result: [sorted streams]}`.
+
+        While at least one stream is subscribed, a background pusher emits
+        `{"stream": <name>, "data": {...}}` frames so the `on_message`
+        callback in the test fires.
+        """
+        subscribed: set[str] = set()
+
+        async def _pusher():
+            try:
+                while True:
+                    await asyncio.sleep(0.1)
+                    if not subscribed:
+                        continue
+                    # Pick a deterministic stream (sorted) so the test sees
+                    # the one it subscribed to.
+                    stream_name = sorted(subscribed)[0]
+                    try:
+                        await ws.send_str(json.dumps({
+                            'stream': stream_name,
+                            'data': {'e': 'ticker'},
+                        }))
+                    except Exception:
+                        # Client is going away -- stop pushing quietly.
+                        return
+            except asyncio.CancelledError:
+                return
+
+        push_task = asyncio.create_task(_pusher())
+
+        try:
+            async for msg in ws:
+                if msg.type != WSMsgType.TEXT:
+                    # Ignore binary, ping/pong handled by aiohttp, close ends
+                    # the async-for naturally.
+                    continue
+
+                try:
+                    req = json.loads(msg.data)
+                except ValueError:
+                    continue
+
+                method = req.get('method')
+                req_id = req.get('id')
+
+                if method == 'SUBSCRIBE':
+                    params = req.get('params') or []
+                    if not params:
+                        await ws.send_str(json.dumps({
+                            'id': req_id,
+                            'error': {
+                                'code': 2,
+                                'msg': 'empty params',
+                            },
+                        }))
+                    else:
+                        for p in params:
+                            subscribed.add(p)
+                        await ws.send_str(json.dumps({
+                            'id': req_id,
+                            'result': None,
+                        }))
+                elif method == 'LIST_SUBSCRIPTIONS':
+                    await ws.send_str(json.dumps({
+                        'id': req_id,
+                        'result': sorted(subscribed),
+                    }))
+                elif method == 'UNSUBSCRIBE':
+                    params = req.get('params') or []
+                    for p in params:
+                        subscribed.discard(p)
+                    await ws.send_str(json.dumps({
+                        'id': req_id,
+                        'result': None,
+                    }))
+                else:
+                    # Unknown method -- echo a generic error so the awaiting
+                    # future never hangs.
+                    await ws.send_str(json.dumps({
+                        'id': req_id,
+                        'error': {
+                            'code': 2,
+                            'msg': f'unknown method: {method!r}',
+                        },
+                    }))
+        except Exception:
+            # Connection went away mid-loop; tear down quietly.
+            pass
+        finally:
+            push_task.cancel()
+            try:
+                await push_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
     async def _handler(self, request):
         ws = web.WebSocketResponse()
