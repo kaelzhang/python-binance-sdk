@@ -5,6 +5,10 @@ Uses ``aioresponses`` to mock HTTP; asserts:
 - each method hits the correct URL with the correct HTTP method;
 - request weight is consumed correctly (including open_orders 1/40 helper);
 - signed endpoints include a ``signature`` in the query or body.
+
+Note: ``get_position_mode`` was migrated from REST to WS-API
+(``positionSide.dual.get``) in 2026-05-26; its REST test now lives in
+``test_um_ws_api_trading.py``.
 """
 
 import re
@@ -243,21 +247,6 @@ async def test_set_position_margin_post_weight_1():
 
 
 # ---------------------------------------------------------------------------
-# get_position_mode  GET /fapi/v1/positionSide/dual  weight 30
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_get_position_mode_weight_30():
-    client = _signed_client()
-    payload = {'dualSidePosition': False}
-    with aioresponses() as m:
-        m.get(_re('/fapi/v1/positionSide/dual'), payload=payload, status=200)
-        result = await client.get_position_mode()
-    assert result == payload
-    assert _weight_used(client) == 30
-
-
-# ---------------------------------------------------------------------------
 # set_position_mode  POST /fapi/v1/positionSide/dual  weight 1
 # ---------------------------------------------------------------------------
 
@@ -333,7 +322,6 @@ def test_rest_endpoints_registry_contains_trading_entries():
         'set_leverage': ('post', '/fapi/v1/leverage'),
         'set_margin_type': ('post', '/fapi/v1/marginType'),
         'set_position_margin': ('post', '/fapi/v1/positionMargin'),
-        'get_position_mode': ('get', '/fapi/v1/positionSide/dual'),
         'set_position_mode': ('post', '/fapi/v1/positionSide/dual'),
         'get_multi_assets_mode': ('get', '/fapi/v1/multiAssetsMargin'),
         'set_multi_assets_mode': ('post', '/fapi/v1/multiAssetsMargin'),

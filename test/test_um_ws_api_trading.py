@@ -7,6 +7,9 @@ asserts:
 - order-placing endpoints consume the ORDERS pool (``is_order=True``);
 - cancel / query endpoints do NOT consume the ORDERS pool;
 - weights are correct per the spec.
+
+v2 migration (2026-05-26): ``get_account`` now uses ``v2/account.status``;
+``get_balance`` now uses ``v2/account.balance``.  v1 entries are dropped.
 """
 
 import pytest
@@ -154,20 +157,20 @@ async def test_um_get_order_via_order_status_no_orders_pool():
 
 
 # ---------------------------------------------------------------------------
-# get_account: is_order=False, weight=5, ws_method='account.status'
+# get_account: is_order=False, weight=5, ws_method='v2/account.status'
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_um_get_account_via_account_status():
+async def test_um_get_account_via_v2_account_status():
     server = WSAPIServer(port=_PORT)
-    server.on('account.status', result={'totalWalletBalance': '1000.00'})
+    server.on('v2/account.status', result={'totalWalletBalance': '1000.00'})
     await server.run()
     try:
         client = _make_client(server)
         result = await client.get_account()
         assert result == {'totalWalletBalance': '1000.00'}
         sent = server.received[0]
-        assert sent['method'] == 'account.status'
+        assert sent['method'] == 'v2/account.status'
         assert sent['params']['apiKey'] == 'K'
         assert 'signature' in sent['params']
         assert _orders_used(client) == 0
@@ -178,22 +181,129 @@ async def test_um_get_account_via_account_status():
 
 
 # ---------------------------------------------------------------------------
-# get_balance: is_order=False, weight=5, ws_method='account.balance'
+# get_balance: is_order=False, weight=5, ws_method='v2/account.balance'
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_um_get_balance_via_account_balance():
+async def test_um_get_balance_via_v2_account_balance():
     server = WSAPIServer(port=_PORT)
-    server.on('account.balance', result=[{'asset': 'USDT', 'balance': '500.00'}])
+    server.on('v2/account.balance', result=[{'asset': 'USDT', 'balance': '500.00'}])
     await server.run()
     try:
         client = _make_client(server)
         result = await client.get_balance()
         assert result == [{'asset': 'USDT', 'balance': '500.00'}]
         sent = server.received[0]
-        assert sent['method'] == 'account.balance'
+        assert sent['method'] == 'v2/account.balance'
         assert _orders_used(client) == 0
         assert _weight_used(client) == 5
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# get_position: is_order=False, weight=5, ws_method='account.position'
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_um_get_position_via_account_position():
+    server = WSAPIServer(port=_PORT)
+    server.on('account.position', result=[{'symbol': 'BTCUSDT', 'positionAmt': '0.1'}])
+    await server.run()
+    try:
+        client = _make_client(server)
+        result = await client.get_position(symbol='BTCUSDT')
+        assert result == [{'symbol': 'BTCUSDT', 'positionAmt': '0.1'}]
+        sent = server.received[0]
+        assert sent['method'] == 'account.position'
+        assert sent['params']['symbol'] == 'BTCUSDT'
+        assert sent['params']['apiKey'] == 'K'
+        assert 'signature' in sent['params']
+        assert _orders_used(client) == 0
+        assert _weight_used(client) == 5
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# get_position_mode: is_order=False, weight=30, ws_method='positionSide.dual.get'
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_um_get_position_mode_via_positionside_dual_get():
+    server = WSAPIServer(port=_PORT)
+    server.on('positionSide.dual.get', result={'dualSidePosition': False})
+    await server.run()
+    try:
+        client = _make_client(server)
+        result = await client.get_position_mode()
+        assert result == {'dualSidePosition': False}
+        sent = server.received[0]
+        assert sent['method'] == 'positionSide.dual.get'
+        assert sent['params']['apiKey'] == 'K'
+        assert 'signature' in sent['params']
+        assert _orders_used(client) == 0
+        assert _weight_used(client) == 30
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# create_algo_order: is_order=False, weight=0, ws_method='algoOrder.place'
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_um_create_algo_order_via_algo_order_place():
+    server = WSAPIServer(port=_PORT)
+    server.on('algoOrder.place', result={'algoId': 123, 'clientAlgoId': 'myAlgo'})
+    await server.run()
+    try:
+        client = _make_client(server)
+        result = await client.create_algo_order(
+            symbol='BTCUSDT', side='BUY', quantity='0.5', duration=3600)
+        assert result == {'algoId': 123, 'clientAlgoId': 'myAlgo'}
+        sent = server.received[0]
+        assert sent['method'] == 'algoOrder.place'
+        assert sent['params']['symbol'] == 'BTCUSDT'
+        assert sent['params']['side'] == 'BUY'
+        assert sent['params']['quantity'] == '0.5'
+        assert sent['params']['duration'] == 3600
+        assert sent['params']['apiKey'] == 'K'
+        assert 'signature' in sent['params']
+        # algoOrder.place draws from a separate algo quota, NOT ORDERS pool.
+        assert _orders_used(client) == 0
+        # Documented weight is 0; the SDK's rate-limit bucket clamps to
+        # max(1, weight), so the recorded cost is 1.
+        assert _weight_used(client) == 1
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# cancel_algo_order: is_order=False, weight=0, ws_method='algoOrder.cancel'
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_um_cancel_algo_order_via_algo_order_cancel():
+    server = WSAPIServer(port=_PORT)
+    server.on('algoOrder.cancel', result={'algoId': 123, 'success': True})
+    await server.run()
+    try:
+        client = _make_client(server)
+        result = await client.cancel_algo_order(algoId=123)
+        assert result == {'algoId': 123, 'success': True}
+        sent = server.received[0]
+        assert sent['method'] == 'algoOrder.cancel'
+        assert sent['params']['algoId'] == 123
+        assert sent['params']['apiKey'] == 'K'
+        assert 'signature' in sent['params']
+        assert _orders_used(client) == 0
+        # Documented weight is 0; SDK bucket clamps to max(1, weight) = 1.
+        assert _weight_used(client) == 1
     finally:
         await client.close()
         await server.shutdown()
@@ -212,8 +322,12 @@ def test_ws_api_endpoints_registry_matches_spec():
         'modify_order': ('order.modify', SecurityType.TRADE, True, 1),
         'cancel_order': ('order.cancel', SecurityType.TRADE, False, 1),
         'get_order': ('order.status', SecurityType.USER_DATA, False, 1),
-        'get_account': ('account.status', SecurityType.USER_DATA, False, 5),
-        'get_balance': ('account.balance', SecurityType.USER_DATA, False, 5),
+        'get_account': ('v2/account.status', SecurityType.USER_DATA, False, 5),
+        'get_balance': ('v2/account.balance', SecurityType.USER_DATA, False, 5),
+        'get_position': ('account.position', SecurityType.USER_DATA, False, 5),
+        'get_position_mode': ('positionSide.dual.get', SecurityType.USER_DATA, False, 30),
+        'create_algo_order': ('algoOrder.place', SecurityType.TRADE, False, 0),
+        'cancel_algo_order': ('algoOrder.cancel', SecurityType.TRADE, False, 0),
     }
 
     assert set(expected) == set(by_name)

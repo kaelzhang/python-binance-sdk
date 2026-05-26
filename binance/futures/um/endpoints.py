@@ -79,16 +79,47 @@ WS_API_ENDPOINTS = [
     dict(
         name='get_account',
         transport='ws_api',
-        ws_method='account.status',
+        ws_method='v2/account.status',
         security_type=SecurityType.USER_DATA,
         weight=5,
     ),
     dict(
         name='get_balance',
         transport='ws_api',
-        ws_method='account.balance',
+        ws_method='v2/account.balance',
         security_type=SecurityType.USER_DATA,
         weight=5,
+    ),
+    dict(
+        name='get_position',
+        transport='ws_api',
+        ws_method='account.position',
+        security_type=SecurityType.USER_DATA,
+        weight=5,
+    ),
+    dict(
+        name='get_position_mode',
+        transport='ws_api',
+        ws_method='positionSide.dual.get',
+        security_type=SecurityType.USER_DATA,
+        weight=30,
+    ),
+    dict(
+        name='create_algo_order',
+        transport='ws_api',
+        ws_method='algoOrder.place',
+        security_type=SecurityType.TRADE,
+        weight=0,
+        # algoOrder draws from a separate algo-orders quota, NOT the standard
+        # ORDERS pool; is_order=False to avoid double-counting.
+        is_order=False,
+    ),
+    dict(
+        name='cancel_algo_order',
+        transport='ws_api',
+        ws_method='algoOrder.cancel',
+        security_type=SecurityType.TRADE,
+        weight=0,
     ),
 ]
 
@@ -241,13 +272,6 @@ REST_ENDPOINTS = [
         weight=1,
     ),
     dict(
-        name='get_position_mode',
-        transport='rest',
-        rest_url=UM_REST_HOST + '/fapi/v1/positionSide/dual',
-        security_type=SecurityType.USER_DATA,
-        weight=30,
-    ),
-    dict(
         name='set_position_mode',
         transport='rest',
         method=RequestMethod.POST,
@@ -281,7 +305,9 @@ class UMFuturesGetters:
     - **WS-API** (trading / account): coroutines that issue a single
       id-correlated request over the shared WS-API connection via
       :meth:`_ws_api_request` — ``create_order``, ``modify_order``,
-      ``cancel_order``, ``get_order``, ``get_account``, ``get_balance``.
+      ``cancel_order``, ``get_order``, ``get_account`` (v2),
+      ``get_balance`` (v2), ``get_position``, ``get_position_mode``,
+      ``create_algo_order``, ``cancel_algo_order``.
     - **REST** (market-data + trading/account/position): coroutines that issue
       an HTTP request via :meth:`_request` (RestTransport) and return the
       decoded JSON response.
@@ -382,9 +408,10 @@ class UMFuturesGetters:
         ...  # pragma: no cover
 
     def get_account(self, **kwargs) -> Awaitable:
-        """Gets USDⓈ-M Futures account status over the WebSocket API.
+        """Gets USDⓈ-M Futures account status over the WebSocket API (v2).
 
-        Weight: 5.
+        Uses ``v2/account.status`` (richer field set than the deprecated v1
+        ``account.status``). Weight: 5.
 
         Args:
             recvWindow (:obj:`long`, optional): Max 60000.
@@ -395,15 +422,83 @@ class UMFuturesGetters:
         ...  # pragma: no cover
 
     def get_balance(self, **kwargs) -> Awaitable:
-        """Gets USDⓈ-M Futures account balance over the WebSocket API.
+        """Gets USDⓈ-M Futures account balance over the WebSocket API (v2).
 
-        Weight: 5.
+        Uses ``v2/account.balance`` (richer field set than the deprecated v1
+        ``account.balance``). Weight: 5.
 
         Args:
             recvWindow (:obj:`long`, optional): Max 60000.
 
         Returns:
             list: Per-asset balance records.
+        """
+        ...  # pragma: no cover
+
+    def get_position(self, **kwargs) -> Awaitable:
+        """Gets USDⓈ-M Futures position information over the WebSocket API.
+
+        Distinct from REST ``get_position_risk`` (``/fapi/v3/positionRisk``);
+        this uses WS-API ``account.position`` for a no-REST-round-trip query.
+        Weight: 5.
+
+        Args:
+            symbol (:obj:`str`, optional): The futures symbol.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            list: Position information records.
+        """
+        ...  # pragma: no cover
+
+    def get_position_mode(self, **kwargs) -> Awaitable:
+        """Gets the current position mode (one-way vs hedge) via WebSocket API.
+
+        Uses WS-API ``positionSide.dual.get``. Weight: 30.
+
+        Args:
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            dict: ``{'dualSidePosition': True/False}``
+        """
+        ...  # pragma: no cover
+
+    def create_algo_order(self, **kwargs) -> Awaitable:
+        """Places an algo (TWAP/VP) order over the WebSocket API.
+
+        Uses WS-API ``algoOrder.place`` (TRADE). Weight: 0.
+
+        Note:
+            Algo orders draw from a separate algo-orders quota, not the
+            standard ORDERS pool (``is_order=False`` — no ORDERS-pool charge).
+
+        Args:
+            symbol (str): The futures symbol.
+            side (OrderSide): ``'BUY'`` or ``'SELL'``.
+            positionSide (:obj:`PositionSide`, optional): Hedge-mode direction.
+            quantity (str): Total quantity to execute.
+            duration (int): Execution duration in seconds.
+            clientAlgoId (:obj:`str`, optional): Client algo order identifier.
+            limitPrice (:obj:`str`, optional): Price limit for the algo.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            dict: Algo order placement acknowledgement.
+        """
+        ...  # pragma: no cover
+
+    def cancel_algo_order(self, **kwargs) -> Awaitable:
+        """Cancels an active algo order over the WebSocket API.
+
+        Uses WS-API ``algoOrder.cancel`` (TRADE). Weight: 0.
+
+        Args:
+            algoId (long): The algo order id to cancel.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            dict: Cancellation confirmation.
         """
         ...  # pragma: no cover
 
@@ -752,19 +847,6 @@ class UMFuturesGetters:
 
         Returns:
             dict: Confirmation.
-        """
-        ...  # pragma: no cover
-
-    def get_position_mode(self, **kwargs) -> Awaitable:
-        """Gets the current position mode (one-way vs hedge).
-
-        Weight: 30
-
-        Args:
-            recvWindow (:obj:`long`, optional): Max 60000.
-
-        Returns:
-            dict: ``{'dualSidePosition': True/False}``
         """
         ...  # pragma: no cover
 
