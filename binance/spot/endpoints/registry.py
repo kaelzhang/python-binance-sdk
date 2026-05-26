@@ -334,7 +334,7 @@ WS_APIS = [
 #   class methods which are dynamically added by `setattr`, see:
 # https://jedi.readthedocs.io/en/latest/docs/features.html#not-supported
 #
-# So, however, we need to just create those methods and docstrings first,
+# So we need to declare those methods (as stubs) with their docstrings first,
 #   then override them.
 
 for getter_setting in WS_APIS:

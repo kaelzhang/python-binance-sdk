@@ -7,19 +7,11 @@ cancel, status, all, open). These are pre-declared stubs whose bodies are
 replaced by ``define_ws_getter``.
 """
 
-from typing import (
-    Awaitable,
-    Callable,
-)
-
-
-# pylint: disable=no-member
+from typing import Awaitable
 
 
 class WsApiTradingGetters:
     """Trading mixin for ``WsApiGetters``."""
-
-    _ws_api_request: Callable[..., Awaitable]
 
     # ----- trading ---------------------------------------------------------
 

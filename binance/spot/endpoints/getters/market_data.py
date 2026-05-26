@@ -6,19 +6,11 @@ trading day), execution rules and reference price. These are pre-declared
 stubs whose bodies are replaced by ``define_ws_getter``.
 """
 
-from typing import (
-    Awaitable,
-    Callable,
-)
-
-
-# pylint: disable=no-member
+from typing import Awaitable
 
 
 class WsApiMarketDataGetters:
     """Public market-data mixin for ``WsApiGetters``."""
-
-    _ws_api_request: Callable[..., Awaitable]
 
     # ----- market data -----------------------------------------------------
 

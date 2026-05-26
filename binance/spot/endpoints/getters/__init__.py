@@ -18,9 +18,6 @@ from binance.spot.endpoints.getters.market_data import WsApiMarketDataGetters
 from binance.spot.endpoints.getters.trading import WsApiTradingGetters
 
 
-# pylint: disable=no-member
-
-
 class WsApiGetters(
     WsApiGeneralGetters,
     WsApiMarketDataGetters,

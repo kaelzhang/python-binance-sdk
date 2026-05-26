@@ -15,9 +15,6 @@ from typing import (
 from binance.core.common.constants import SecurityType
 
 
-# pylint: disable=no-member
-
-
 class WsApiGeneralGetters:
     """Connectivity + session-management mixin for ``WsApiGetters``."""
 
