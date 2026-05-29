@@ -4,7 +4,7 @@ Hosts ``ContractInfoHandlerBase`` (``!contractInfo`` stream) and its processor.
 See :mod:`binance.futures.streams._common` for the per-stream verified findings.
 """
 
-from typing import ClassVar
+from typing import ClassVar, List, Optional
 
 from binance.core.common.constants import (
     SubType,
@@ -13,6 +13,7 @@ from binance.core.common.constants import (
     KEY_PAYLOAD,
 )
 from binance.core.common.exceptions import InvalidSubTypeParamException
+from binance.core.common.types import DictPayload
 from binance.core.handlers.base import Handler
 from binance.core.processors.base import Processor
 
@@ -21,7 +22,7 @@ from binance.core.processors.base import Processor
 # Futures ContractInfo (shared UM + CM)
 # Wire stream: !contractInfo
 # Event type: 'contractInfo'
-# Confirmed fields (UM 2026-05-26; CM shares same event):
+# Confirmed fields per developers.binance.com (UM + CM, 2026-05):
 #   e  'contractInfo'
 #   E  event time
 #   s  symbol
@@ -30,7 +31,12 @@ from binance.core.processors.base import Processor
 #   dt delivery time (ms; 0 for perpetual)
 #   ot onboard time
 #   cs contract status
-#   bks list of brackets (leverage/notional brackets)
+#   bks list of brackets (leverage/notional brackets); each element has
+#       {bs, bnf, bnc, mmr, cf, mi, ma}.  Exposed as ``brackets`` pass-through
+#       so downstream consumers can introspect.
+# Docs:
+# - UM https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Contract-Info-Stream
+# - CM https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Contract-Info-Stream
 # ---------------------------------------------------------------------------
 
 CONTRACT_INFO_COLUMNS_MAP = {
@@ -42,6 +48,7 @@ CONTRACT_INFO_COLUMNS_MAP = {
     'dt': 'delivery_time',
     'ot': 'onboard_time',
     'cs': 'contract_status',
+    'bks': 'brackets',
 }
 
 CONTRACT_INFO_COLUMNS = CONTRACT_INFO_COLUMNS_MAP.keys()
@@ -53,17 +60,30 @@ class ContractInfoHandlerBase(Handler):
     Shared across USDⓈ-M and COIN-M markets.  Receives contract specification
     change events such as listing, settlement, or bracket updates.  Each payload
     carries the symbol, pair, contract type, delivery time, onboard time,
-    contract status, and a ``bks`` (brackets) list.
+    contract status, and a ``brackets`` list (raw doc field ``bks``; each
+    element has ``bs, bnf, bnc, mmr, cf, mi, ma``).  The brackets list is
+    surfaced as a pass-through cell so downstream consumers can introspect.
 
     Subclass this and override ``receive(payload)`` to handle events.
 
     Docs:
     - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Contract-Info-Stream
-    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams
+    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Contract-Info-Stream
     """
 
     COLUMNS_MAP = CONTRACT_INFO_COLUMNS_MAP
     COLUMNS = CONTRACT_INFO_COLUMNS
+
+    def _receive(  # type: ignore[override]
+        self, payload: DictPayload, index: Optional[List[int]] = None
+    ):
+        # ``bks`` is a list-valued field; pandas treats lists as a column
+        # value so a raw assignment expands across rows.  Wrap it in a
+        # single-element outer list so it lands as a single cell while the
+        # rest of the scalar fields flow through unchanged.
+        if 'bks' in payload:
+            payload = {**payload, 'bks': [payload['bks']]}
+        return super()._receive(payload, index)
 
 
 class ContractInfoProcessor(Processor):

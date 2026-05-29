@@ -32,21 +32,27 @@ from binance.futures.streams._common import (
 
 # ---------------------------------------------------------------------------
 # Futures BookTicker
-# Confirmed fields (UM + CM identical, no 'e' event field, 2026-05-26):
+# Confirmed fields per developers.binance.com (UM + CM, 2026-05):
+#   e  event type ('bookTicker')
 #   u  update id
-#   s  symbol  (and 'ps' pair on CM -- but CM does NOT add it to bookTicker;
-#                per dstream docs the bookTicker payload is the same shape)
+#   E  event time
+#   T  transaction time
+#   s  symbol
 #   b  best bid price
 #   B  best bid quantity
 #   a  best ask price
 #   A  best ask quantity
-# Note: UM also has 'T' (transaction time) and 'E' (event time) since 2022.
-# Verified against UM docs: {u, E, T, s, b, B, a, A}
-# CM docs: {u, s, b, B, a, A} (no E/T in the dstream doc sample)
-# We include E and T in the shared map; missing fields in payloads are simply absent.
+# COIN-M additionally publishes 'ps' (pair); the CM-specific column map adds it
+# (see binance.futures.cm.streams).  Routing across both per-symbol and
+# all-market streams is by stream-name suffix so we accept both 'bookTicker'
+# and shape-only payloads.
+# Docs:
+# - UM https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Individual-Symbol-Book-Ticker-Streams
+# - CM https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Individual-Symbol-Book-Ticker-Streams
 # ---------------------------------------------------------------------------
 
 FUTURES_BOOK_TICKER_COLUMNS_MAP = {
+    'e': 'type',
     'u': 'update_id',
     'E': 'event_time',
     'T': 'transaction_time',
@@ -63,17 +69,18 @@ FUTURES_BOOK_TICKER_COLUMNS = FUTURES_BOOK_TICKER_COLUMNS_MAP.keys()
 class BookTickerHandlerBase(Handler):
     """Base handler for the futures ``SubType.BOOK_TICKER`` (best bid/ask) stream.
 
-    Shared across USDⓈ-M and COIN-M markets.  The bookTicker payload has NO ``e``
-    event field; routing is by stream-name suffix (``@bookTicker``).  Includes
-    ``update_id``, ``symbol``, ``best_bid_price``, ``best_bid_quantity``,
-    ``best_ask_price``, ``best_ask_quantity``, and optionally ``event_time`` /
-    ``transaction_time`` (present in UM, may be absent in CM).
+    Shared across USDⓈ-M and COIN-M markets.  Per developers.binance.com the
+    bookTicker payload carries ``e='bookTicker'`` as well as ``u`` (update_id),
+    ``E`` (event_time), ``T`` (transaction_time), ``s`` (symbol), and the best
+    bid/ask price + quantity pairs.  Processor dispatch still routes by
+    stream-name suffix (``@bookTicker``) since the all-market variant
+    (``!bookTicker``) shares the same event type.
 
     Subclass this and override ``receive(payload)`` to handle events.
 
     Docs:
     - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Individual-Symbol-Book-Ticker-Streams
-    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams
+    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Individual-Symbol-Book-Ticker-Streams
     """
 
     COLUMNS_MAP = FUTURES_BOOK_TICKER_COLUMNS_MAP
@@ -93,13 +100,15 @@ class AllMarketBookTickerHandlerBase(Handler):
     whenever it changes.  Note: the futures all-market book ticker stream name is
     ``!bookTicker`` (no ``@arr`` suffix), unlike Spot's deprecated ``!bookTicker@arr``.
 
-    The payload has NO ``e`` event field; routing is by stream name.
+    Per developers.binance.com the payload shape is identical to the per-symbol
+    bookTicker (including ``e='bookTicker'``); processor dispatch matches by
+    exact stream name.
 
     Subclass this and override ``receive(payload)`` to handle events.
 
     Docs:
     - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/All-Book-Tickers-Stream
-    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams
+    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/All-Book-Tickers-Stream
     """
 
     COLUMNS_MAP = FUTURES_BOOK_TICKER_COLUMNS_MAP
@@ -108,9 +117,12 @@ class AllMarketBookTickerHandlerBase(Handler):
 
 # ---------------------------------------------------------------------------
 # Futures Partial Order Book (depth snapshot)
-# Confirmed fields (UM + CM identical, 2026-05-26):
-# Same structure as Spot partial depth: { lastUpdateId, bids, asks }
+# Confirmed fields per developers.binance.com (UM + CM, 2026-05):
+#   { lastUpdateId, E, T, bids, asks }
 # bids/asks each: [ [price, quantity], ... ]
+# The handler surfaces ``lastUpdateId`` alongside the bids/asks dataframes so
+# downstream consumers can reconcile the snapshot against the diff-depth
+# stream's ``U`` / ``u`` / ``pu`` cursor.
 # ---------------------------------------------------------------------------
 
 FUTURES_PARTIAL_ORDER_BOOK_COLUMNS_MAP = {
@@ -124,14 +136,17 @@ FUTURES_PARTIAL_ORDER_BOOK_COLUMNS = FUTURES_PARTIAL_ORDER_BOOK_COLUMNS_MAP.keys
 class PartialOrderBookHandlerBase(Handler):
     """Base handler for the futures ``SubType.PARTIAL_ORDER_BOOK`` (partial depth snapshot) stream.
 
-    Shared across USDⓈ-M and COIN-M markets.  The raw payload has separate ``bids``
-    and ``asks`` lists of ``[price, quantity]`` pairs.  The internal ``_receive``
-    converts each side into a ``StockDataFrame`` with ``price`` and ``quantity`` columns;
-    the two frames are forwarded to ``receive`` as a ``(bids_df, asks_df)`` tuple.
+    Shared across USDⓈ-M and COIN-M markets.  The raw payload has
+    ``lastUpdateId`` plus separate ``bids`` and ``asks`` lists of
+    ``[price, quantity]`` pairs.  The internal ``_receive`` converts each side
+    into a ``StockDataFrame`` with ``price`` and ``quantity`` columns; the
+    snapshot's ``lastUpdateId`` is preserved so consumers can reconcile against
+    the diff-depth cursor.  The handler returns a
+    ``(last_update_id, bids_df, asks_df)`` tuple.
 
     Docs:
     - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Partial-Book-Depth-Streams
-    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams
+    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Partial-Book-Depth-Streams
     """
 
     COLUMNS_MAP = FUTURES_PARTIAL_ORDER_BOOK_COLUMNS_MAP
@@ -140,11 +155,12 @@ class PartialOrderBookHandlerBase(Handler):
     def _receive(  # type: ignore[override]
         self, payload: DictPayload, index: Optional[List[int]] = None
     ):
+        last_update_id = payload.get('lastUpdateId')
         bids_data = [{'price': x[0], 'quantity': x[1]} for x in payload['bids']]
         asks_data = [{'price': x[0], 'quantity': x[1]} for x in payload['asks']]
         bids = super()._receive(bids_data, list(range(len(bids_data))) or [0])
         asks = super()._receive(asks_data, list(range(len(asks_data))) or [0])
-        return bids, asks
+        return last_update_id, bids, asks
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +192,9 @@ FUTURES_BOOK_TICKER_STREAM_SUFFIX = f'@{SubType.BOOK_TICKER}'
 class BookTickerProcessor(Processor):
     """Processor for the futures book-ticker stream (``<symbol>@bookTicker``).
 
-    Routing is by stream-name suffix (no ``e`` event field in payload).
+    Routing is by stream-name suffix because both the per-symbol and the
+    all-market book-ticker streams share ``e='bookTicker'``; matching on the
+    event type alone would also accept the all-market stream.
     Shared by both USDⓈ-M and COIN-M markets.
     """
 
@@ -270,7 +288,8 @@ class AllMarketBookTickerProcessor(Processor):
     """Processor for the futures all-market book ticker stream (``!bookTicker``).
 
     Wire name is ``!bookTicker`` (no ``@arr`` suffix; distinct from Spot's deprecated
-    ``!bookTicker@arr``).  Routing is by stream name (no ``e`` event field).
+    ``!bookTicker@arr``).  Routing is by stream name since the per-symbol stream
+    shares the same ``e='bookTicker'`` event type.
     Shared by both USDⓈ-M and COIN-M markets.
     """
 

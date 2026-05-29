@@ -22,10 +22,11 @@ UM-only streams:
 - tradingSession: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Trading-Session-Stream
 """
 
-from typing import ClassVar
+from typing import ClassVar, List, Optional
 
 from binance.core.common.constants import SubType, KEY_STREAM_TYPE, KEY_PAYLOAD
 from binance.core.common.exceptions import InvalidSubTypeParamException
+from binance.core.common.types import DictPayload
 from binance.core.handlers.base import Handler
 from binance.core.processors.base import Processor
 from binance.core.common.utils import normalize_symbol
@@ -52,7 +53,6 @@ from binance.futures.streams import (  # noqa: F401  (re-exported for public API
     AllMarketBookTickerHandlerBase,
     # Processors (shared, used in PROCESSORS list below)
     ForceOrderProcessor,
-    AggTradeProcessor,
     KlineProcessor,
     MiniTickerProcessor,
     TickerProcessor,
@@ -68,8 +68,10 @@ from binance.futures.streams import (  # noqa: F401  (re-exported for public API
     # handler base aliases (re-exported under shared names)
     MarkPriceHandlerBase as _MarkPriceHandlerBase,
     AllMarketMarkPriceHandlerBase as _AllMarketMarkPriceHandlerBase,
+    AggTradeHandlerBase as _AggTradeHandlerBase,
     MarkPriceProcessor as _MarkPriceProcessor,
     AllMarketMarkPriceProcessor as _AllMarketMarkPriceProcessor,
+    AggTradeProcessor as _AggTradeProcessor,
 )
 
 from binance.futures.user_processor import FuturesUserProcessor  # noqa: F401  (re-exported)
@@ -171,22 +173,66 @@ class AllMarketMarkPriceProcessor(_AllMarketMarkPriceProcessor):
 
 
 # ---------------------------------------------------------------------------
+# UM-specific agg trade: add the 'nq' (normal quantity excluding RPI trades).
+# Per developers.binance.com USDⓈ-M aggregate-trade docs (2026-05), the UM
+# payload carries ``nq`` — the aggregated quantity that excludes RPI (retail
+# price improvement) trades.  COIN-M does NOT publish ``nq``; CM continues to
+# use the shared ``AggTradeHandlerBase``.
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Aggregate-Trade-Streams
+# ---------------------------------------------------------------------------
+
+UM_AGG_TRADE_COLUMNS_MAP = {
+    **FUTURES_AGG_TRADE_COLUMNS_MAP,
+    'nq': 'normal_quantity',
+}
+
+UM_AGG_TRADE_COLUMNS = UM_AGG_TRADE_COLUMNS_MAP.keys()
+
+
+class AggTradeHandlerBase(_AggTradeHandlerBase):
+    """Base handler for the USDⓈ-M ``SubType.AGG_TRADE`` stream.
+
+    Extends the shared :class:`~binance.futures.streams.AggTradeHandlerBase`
+    with the USDⓈ-M-specific ``nq`` (normal quantity excluding RPI trades)
+    column, which is published by USDⓈ-M aggregate-trade events but absent
+    from COIN-M.
+    """
+
+    COLUMNS_MAP = UM_AGG_TRADE_COLUMNS_MAP
+    COLUMNS = UM_AGG_TRADE_COLUMNS
+
+
+class AggTradeProcessor(_AggTradeProcessor):
+    """Processor for the USDⓈ-M aggregate trade stream (``<symbol>@aggTrade``).
+
+    Binds to the USDⓈ-M :class:`AggTradeHandlerBase` (which includes
+    ``normal_quantity``).
+    """
+
+    HANDLER = AggTradeHandlerBase
+
+
+# ---------------------------------------------------------------------------
 # UM-only: CompositeIndex
 # Wire stream: <symbol>@compositeIndex
-# Confirmed UM-only (2026-05-26): dstream (COIN-M) docs do not list this stream.
+# USDⓈ-M only (dstream / COIN-M docs do not list this stream).
 # Event type: 'compositeIndex'
-# Confirmed fields from UM docs:
+# Confirmed fields per developers.binance.com (UM, 2026-05):
 #   e  'compositeIndex'
 #   E  event time
 #   s  symbol (composite index symbol, e.g. 'DEFIUSDT')
 #   p  price
-#   C  composition list
-#   c  baseAsset  (in each composition element)
-#   w  weightInQuantity
-#   W  weightInPercentage
-#   b  baseAssetPrice
-# The column map covers the top-level fields; the 'C' composition list
-# is passed through as-is in the raw payload.
+#   C  composition method (string label, e.g. 'baseAsset')
+#   c  composition entries (list); each element has:
+#         b  base asset symbol
+#         q  quote asset
+#         w  weight in quantity
+#         W  weight in percentage
+#         i  component index price
+# The top-level COLUMNS_MAP surfaces the scalar fields plus the
+# ``composition_method`` label; the ``composition`` list is exposed as a
+# pass-through cell so downstream consumers can introspect.
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Composite-Index-Symbol-Information-Streams
 # ---------------------------------------------------------------------------
 
 COMPOSITE_INDEX_COLUMNS_MAP = {
@@ -194,6 +240,8 @@ COMPOSITE_INDEX_COLUMNS_MAP = {
     'E': 'event_time',
     's': 'symbol',
     'p': 'price',
+    'C': 'composition_method',
+    'c': 'composition',
 }
 
 COMPOSITE_INDEX_COLUMNS = COMPOSITE_INDEX_COLUMNS_MAP.keys()
@@ -203,8 +251,11 @@ class CompositeIndexHandlerBase(Handler):
     """Base handler for the USDⓈ-M ``SubType.COMPOSITE_INDEX`` stream (``<symbol>@compositeIndex``).
 
     USDⓈ-M only: not present on COIN-M.  Delivers the current index composition
-    and price for composite index symbols (e.g. ``DEFIUSDT``).  The payload includes
-    a ``C`` (composition) list with each constituent's weight and base asset price.
+    and price for composite index symbols (e.g. ``DEFIUSDT``).  The payload's
+    top-level ``C`` is the composition method label (e.g. ``baseAsset``); the
+    ``c`` array carries each constituent's base asset symbol, weights and
+    component index price.  The ``composition`` column is passed through as
+    a Python list cell.
 
     Subclass this and override ``receive(payload)`` to handle the event.
 
@@ -214,6 +265,16 @@ class CompositeIndexHandlerBase(Handler):
 
     COLUMNS_MAP = COMPOSITE_INDEX_COLUMNS_MAP
     COLUMNS = COMPOSITE_INDEX_COLUMNS
+
+    def _receive(  # type: ignore[override]
+        self, payload: DictPayload, index: Optional[List[int]] = None
+    ):
+        # ``c`` is the composition list; wrap it as a single-element outer
+        # list so pandas treats it as one cell rather than expanding it to
+        # one row per constituent.
+        if 'c' in payload:
+            payload = {**payload, 'c': [payload['c']]}
+        return super()._receive(payload, index)
 
 
 class CompositeIndexProcessor(Processor):
@@ -361,18 +422,24 @@ class AllAssetIndexProcessor(Processor):
 # ---------------------------------------------------------------------------
 # UM-only: TradingSession
 # Wire stream: tradingSession  (no symbol prefix, no @arr suffix)
-# Confirmed UM-only (2026-05-26): US equities/commodities session events.
+# USDⓈ-M only: US equities / commodities session events.
 # Event types: 'EquityUpdate' or 'CommodityUpdate'
-# Confirmed fields from UM docs (approximate; session stream is lightly documented):
+# Confirmed fields per developers.binance.com (UM, 2026-05):
 #   e  event type ('EquityUpdate' or 'CommodityUpdate')
 #   E  event time
-#   T  session open/close state
+#   S  session type — one of PRE_MARKET, REGULAR, AFTER_MARKET, OVERNIGHT,
+#                     NO_TRADING
+#   t  session start time (ms timestamp)
+#   T  session end time   (ms timestamp)
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Trading-Session-Stream
 # ---------------------------------------------------------------------------
 
 TRADING_SESSION_COLUMNS_MAP = {
     'e': 'type',
     'E': 'event_time',
-    'T': 'session_state',
+    'S': 'session_type',
+    't': 'session_start_time',
+    'T': 'session_end_time',
 }
 
 TRADING_SESSION_COLUMNS = TRADING_SESSION_COLUMNS_MAP.keys()
@@ -384,8 +451,12 @@ TRADING_SESSION_PAYLOAD_TYPES = ('EquityUpdate', 'CommodityUpdate')
 class TradingSessionHandlerBase(Handler):
     """Base handler for the USDⓈ-M ``SubType.TRADING_SESSION`` stream.
 
-    USDⓈ-M only: delivers US equity and commodity market session state events.
-    The event type field is either ``'EquityUpdate'`` or ``'CommodityUpdate'``.
+    USDⓈ-M only: delivers US equity and commodity market session events.
+    Per developers.binance.com each payload carries the event type (one of
+    ``'EquityUpdate'`` / ``'CommodityUpdate'``), the session type ``S``
+    (``PRE_MARKET`` / ``REGULAR`` / ``AFTER_MARKET`` / ``OVERNIGHT`` /
+    ``NO_TRADING``), the session start time ``t`` and session end time ``T``
+    (both ms timestamps).
 
     Subclass this and override ``receive(payload)`` to handle the event.
 

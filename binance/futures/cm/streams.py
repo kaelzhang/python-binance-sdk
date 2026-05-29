@@ -64,9 +64,12 @@ from binance.futures.streams import (  # noqa: F401  (re-exported for convenienc
     ContractInfoHandlerBase,
     AllMarketMarkPriceHandlerBase,
     AllMarketLiquidationHandlerBase,
-    AllMarketMiniTickersHandlerBase,
-    AllMarketTickersHandlerBase,
-    AllMarketBookTickerHandlerBase,
+    MiniTickerHandlerBase as _MiniTickerHandlerBase,
+    TickerHandlerBase as _TickerHandlerBase,
+    BookTickerHandlerBase as _BookTickerHandlerBase,
+    AllMarketMiniTickersHandlerBase as _AllMarketMiniTickersHandlerBase,
+    AllMarketTickersHandlerBase as _AllMarketTickersHandlerBase,
+    AllMarketBookTickerHandlerBase as _AllMarketBookTickerHandlerBase,
     # Processor bases (shared; CM overrides subscribe_param for symbol handling)
     MarkPriceProcessor as _MarkPriceProcessor,
     ForceOrderProcessor as _ForceOrderProcessor,
@@ -81,9 +84,9 @@ from binance.futures.streams import (  # noqa: F401  (re-exported for convenienc
     ContractInfoProcessor,
     AllMarketMarkPriceProcessor,
     AllMarketLiquidationProcessor,
-    AllMarketMiniTickersProcessor,
-    AllMarketTickersProcessor,
-    AllMarketBookTickerProcessor,
+    AllMarketMiniTickersProcessor as _AllMarketMiniTickersProcessor,
+    AllMarketTickersProcessor as _AllMarketTickersProcessor,
+    AllMarketBookTickerProcessor as _AllMarketBookTickerProcessor,
     _get_futures_depth_level,
     _get_futures_depth_speed,
 )
@@ -92,8 +95,11 @@ from binance.futures.user_processor import FuturesUserProcessor  # noqa: F401  (
 
 
 # ---------------------------------------------------------------------------
-# CM-specific force order: add the 'ps' (pair) field.
-# Confirmed present in COIN-M (2026-05-25); absent from USDⓈ-M.
+# CM-specific column maps: COIN-M payloads include a ``ps`` (pair) field that
+# USDⓈ-M does NOT publish, per developers.binance.com.  Applies to:
+# - force-order (nested ``o``)
+# - per-symbol miniTicker, ticker, bookTicker
+# - and the corresponding all-market arrays (same per-element shape).
 # ---------------------------------------------------------------------------
 
 FORCE_ORDER_COLUMNS_MAP = {
@@ -102,6 +108,24 @@ FORCE_ORDER_COLUMNS_MAP = {
 }
 
 FORCE_ORDER_COLUMNS = FORCE_ORDER_COLUMNS_MAP.keys()
+
+CM_MINI_TICKER_COLUMNS_MAP = {
+    **FUTURES_MINI_TICKER_COLUMNS_MAP,
+    'ps': 'pair',
+}
+CM_MINI_TICKER_COLUMNS = CM_MINI_TICKER_COLUMNS_MAP.keys()
+
+CM_TICKER_COLUMNS_MAP = {
+    **FUTURES_TICKER_COLUMNS_MAP,
+    'ps': 'pair',
+}
+CM_TICKER_COLUMNS = CM_TICKER_COLUMNS_MAP.keys()
+
+CM_BOOK_TICKER_COLUMNS_MAP = {
+    **FUTURES_BOOK_TICKER_COLUMNS_MAP,
+    'ps': 'pair',
+}
+CM_BOOK_TICKER_COLUMNS = CM_BOOK_TICKER_COLUMNS_MAP.keys()
 
 
 class ForceOrderHandlerBase(_ForceOrderHandlerBase):
@@ -135,6 +159,88 @@ class ForceOrderHandlerBase(_ForceOrderHandlerBase):
 
     COLUMNS_MAP = FORCE_ORDER_COLUMNS_MAP
     COLUMNS = FORCE_ORDER_COLUMNS
+
+
+class MiniTickerHandlerBase(_MiniTickerHandlerBase):
+    """Base handler for the COIN-M ``SubType.MINI_TICKER`` (24hrMiniTicker) stream.
+
+    Extends the shared :class:`~binance.futures.streams.MiniTickerHandlerBase`
+    with the COIN-M-specific ``ps`` (pair) column, which is published in
+    COIN-M payloads but absent from USDⓈ-M.
+
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Individual-Symbol-Mini-Ticker-Stream
+    """
+
+    COLUMNS_MAP = CM_MINI_TICKER_COLUMNS_MAP
+    COLUMNS = CM_MINI_TICKER_COLUMNS
+
+
+class TickerHandlerBase(_TickerHandlerBase):
+    """Base handler for the COIN-M ``SubType.TICKER`` (24hrTicker) stream.
+
+    Extends the shared :class:`~binance.futures.streams.TickerHandlerBase` with
+    the COIN-M-specific ``ps`` (pair) column.
+
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Individual-Symbol-Ticker-Streams
+    """
+
+    COLUMNS_MAP = CM_TICKER_COLUMNS_MAP
+    COLUMNS = CM_TICKER_COLUMNS
+
+
+class BookTickerHandlerBase(_BookTickerHandlerBase):
+    """Base handler for the COIN-M ``SubType.BOOK_TICKER`` stream.
+
+    Extends the shared :class:`~binance.futures.streams.BookTickerHandlerBase`
+    with the COIN-M-specific ``ps`` (pair) column.  The payload still includes
+    ``e='bookTicker'``; processor dispatch routes by stream-name suffix.
+
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Individual-Symbol-Book-Ticker-Streams
+    """
+
+    COLUMNS_MAP = CM_BOOK_TICKER_COLUMNS_MAP
+    COLUMNS = CM_BOOK_TICKER_COLUMNS
+
+
+class AllMarketMiniTickersHandlerBase(_AllMarketMiniTickersHandlerBase):
+    """Base handler for the COIN-M ``SubType.ALL_MARKET_MINI_TICKERS`` stream
+    (``!miniTicker@arr``).
+
+    Each element is a CM ``24hrMiniTicker`` event, so the column map mirrors
+    :class:`MiniTickerHandlerBase` (i.e. includes ``ps``).
+
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/All-Market-Mini-Tickers-Stream
+    """
+
+    COLUMNS_MAP = CM_MINI_TICKER_COLUMNS_MAP
+    COLUMNS = CM_MINI_TICKER_COLUMNS
+
+
+class AllMarketTickersHandlerBase(_AllMarketTickersHandlerBase):
+    """Base handler for the COIN-M ``SubType.ALL_MARKET_TICKERS`` stream
+    (``!ticker@arr``).
+
+    Each element is a CM ``24hrTicker`` event; column map mirrors
+    :class:`TickerHandlerBase` (i.e. includes ``ps``).
+
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/All-Market-Tickers-Streams
+    """
+
+    COLUMNS_MAP = CM_TICKER_COLUMNS_MAP
+    COLUMNS = CM_TICKER_COLUMNS
+
+
+class AllMarketBookTickerHandlerBase(_AllMarketBookTickerHandlerBase):
+    """Base handler for the COIN-M ``SubType.ALL_MARKET_BOOK_TICKER`` stream
+    (``!bookTicker``).
+
+    Payload shape mirrors the per-symbol CM book ticker (includes ``ps``).
+
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/All-Book-Tickers-Stream
+    """
+
+    COLUMNS_MAP = CM_BOOK_TICKER_COLUMNS_MAP
+    COLUMNS = CM_BOOK_TICKER_COLUMNS
 
 
 # ---------------------------------------------------------------------------
@@ -270,8 +376,11 @@ class ContinuousKlineProcessor(_ContinuousKlineProcessor):
 class MiniTickerProcessor(_MiniTickerProcessor):
     """Processor for the COIN-M mini-ticker stream (``<symbol>@miniTicker``).
 
+    Binds to the CM-specific :class:`MiniTickerHandlerBase` (includes ``pair``).
     Overrides ``subscribe_param`` to use ``symbol.lower()``.
     """
+
+    HANDLER = MiniTickerHandlerBase
 
     def subscribe_param(self, _, t, *args) -> str:
         symbol = self._get_param_symbol(t, args)
@@ -281,8 +390,11 @@ class MiniTickerProcessor(_MiniTickerProcessor):
 class TickerProcessor(_TickerProcessor):
     """Processor for the COIN-M ticker stream (``<symbol>@ticker``).
 
+    Binds to the CM-specific :class:`TickerHandlerBase` (includes ``pair``).
     Overrides ``subscribe_param`` to use ``symbol.lower()``.
     """
+
+    HANDLER = TickerHandlerBase
 
     def subscribe_param(self, _, t, *args) -> str:
         symbol = self._get_param_symbol(t, args)
@@ -292,13 +404,47 @@ class TickerProcessor(_TickerProcessor):
 class BookTickerProcessor(_BookTickerProcessor):
     """Processor for the COIN-M book-ticker stream (``<symbol>@bookTicker``).
 
-    Routing is by stream-name suffix (no ``e`` event field in payload).
+    Binds to the CM-specific :class:`BookTickerHandlerBase` (includes ``pair``).
+    Routing remains by stream-name suffix since the per-symbol and all-market
+    streams share ``e='bookTicker'``.
     Overrides ``subscribe_param`` to use ``symbol.lower()``.
     """
+
+    HANDLER = BookTickerHandlerBase
 
     def subscribe_param(self, _, t, *args) -> str:
         symbol = self._get_param_symbol(t, args)
         return f'{symbol.lower()}@{SubType.BOOK_TICKER}'
+
+
+class AllMarketMiniTickersProcessor(_AllMarketMiniTickersProcessor):
+    """Processor for the COIN-M all-market mini-ticker stream (``!miniTicker@arr``).
+
+    Binds to :class:`AllMarketMiniTickersHandlerBase` so payload elements
+    surface the CM ``pair`` column.
+    """
+
+    HANDLER = AllMarketMiniTickersHandlerBase
+
+
+class AllMarketTickersProcessor(_AllMarketTickersProcessor):
+    """Processor for the COIN-M all-market ticker stream (``!ticker@arr``).
+
+    Binds to :class:`AllMarketTickersHandlerBase` so payload elements surface
+    the CM ``pair`` column.
+    """
+
+    HANDLER = AllMarketTickersHandlerBase
+
+
+class AllMarketBookTickerProcessor(_AllMarketBookTickerProcessor):
+    """Processor for the COIN-M all-market book ticker stream (``!bookTicker``).
+
+    Binds to :class:`AllMarketBookTickerHandlerBase` so each event surfaces
+    the CM ``pair`` column.
+    """
+
+    HANDLER = AllMarketBookTickerHandlerBase
 
 
 class PartialOrderBookProcessor(_PartialOrderBookProcessor):

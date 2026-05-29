@@ -107,8 +107,12 @@ def test_futures_agg_trade_subscribe_param():
 
 @pytest.mark.asyncio
 async def test_futures_agg_trade_handler_columns(um_client):
+    # UMFuturesClient binds the UM-specific AggTradeHandlerBase (which adds
+    # ``nq``).  The shared ``FuturesAggTradeHandlerBase`` is exported for use
+    # on CMFuturesClient (CM does not publish ``nq``).
+    from binance.futures.um.streams import AggTradeHandlerBase as UMAggTradeHandlerBase
     df = await run_handler(
-        um_client, FuturesAggTradeHandlerBase, UM_AGG_TRADE_PAYLOAD, 'btcusdt@aggTrade'
+        um_client, UMAggTradeHandlerBase, UM_AGG_TRADE_PAYLOAD, 'btcusdt@aggTrade'
     )
     row = df.iloc[0]
     assert row['type'] == 'aggTrade'
@@ -121,6 +125,19 @@ async def test_futures_agg_trade_handler_columns(um_client):
     assert row['last_trade_id'] == 606073342
     assert row['trade_time'] == 1591702613869
     assert row['is_maker'] == False  # noqa: E712  (numpy bool: 'is False' fails)
+
+
+@pytest.mark.asyncio
+async def test_cm_agg_trade_handler_columns_uses_shared_base(cm_client):
+    # CMFuturesClient uses the shared FuturesAggTradeHandlerBase directly since
+    # CM does not publish UM-only ``nq``.
+    df = await run_handler(
+        cm_client, FuturesAggTradeHandlerBase,
+        {**UM_AGG_TRADE_PAYLOAD, 's': 'BTCUSD_PERP'}, 'btcusd_perp@aggTrade'
+    )
+    row = df.iloc[0]
+    assert row['type'] == 'aggTrade'
+    assert row['symbol'] == 'BTCUSD_PERP'
 
 
 # ===========================================================================
@@ -455,7 +472,11 @@ async def test_futures_partial_order_book_handler(um_client):
     df = await run_handler(
         um_client, FuturesPartialOrderBookHandlerBase, PARTIAL_DEPTH_PAYLOAD, 'btcusdt@depth5'
     )
-    bids, asks = df
+    # Partial-depth snapshots per developers.binance.com include lastUpdateId;
+    # the handler returns (last_update_id, bids_df, asks_df) so downstream
+    # consumers can reconcile against the diff-depth stream.
+    last_update_id, bids, asks = df
+    assert last_update_id == 1234
     assert bids.iloc[0]['price'] == '50000.0'
     assert asks.iloc[0]['price'] == '50001.0'
 
@@ -1053,16 +1074,24 @@ async def test_um_all_asset_index_handler_columns(um_client):
 # UM-specific: TradingSession
 # ===========================================================================
 
+# Per developers.binance.com Trading-Session-Stream docs, ``T`` is the session
+# end time (ms timestamp), ``t`` is the session start time, and ``S`` is the
+# session type (one of PRE_MARKET, REGULAR, AFTER_MARKET, OVERNIGHT,
+# NO_TRADING).  The original SDK mislabeled ``T`` as a "session state" string.
 EQUITY_UPDATE_PAYLOAD = {
     'e': 'EquityUpdate',
     'E': 1638747660000,
-    'T': 'OPEN',
+    'S': 'REGULAR',
+    't': 1638748000000,
+    'T': 1638780000000,
 }
 
 COMMODITY_UPDATE_PAYLOAD = {
     'e': 'CommodityUpdate',
     'E': 1638747661000,
-    'T': 'CLOSE',
+    'S': 'AFTER_MARKET',
+    't': 1638780000001,
+    'T': 1638790000000,
 }
 
 
@@ -1117,7 +1146,9 @@ async def test_um_trading_session_handler_equity(um_client):
     )
     row = df.iloc[0]
     assert row['type'] == 'EquityUpdate'
-    assert row['session_state'] == 'OPEN'
+    assert row['session_type'] == 'REGULAR'
+    assert row['session_start_time'] == 1638748000000
+    assert row['session_end_time'] == 1638780000000
 
 
 @pytest.mark.asyncio
@@ -1127,7 +1158,9 @@ async def test_um_trading_session_handler_commodity(um_client):
     )
     row = df.iloc[0]
     assert row['type'] == 'CommodityUpdate'
-    assert row['session_state'] == 'CLOSE'
+    assert row['session_type'] == 'AFTER_MARKET'
+    assert row['session_start_time'] == 1638780000001
+    assert row['session_end_time'] == 1638790000000
 
 
 # ===========================================================================
@@ -1466,6 +1499,351 @@ async def test_cm_force_order_handler_includes_pair(cm_client):
     row = df.iloc[0]
     assert row['pair'] == 'BTCUSD'
     assert row['symbol'] == 'BTCUSD_PERP'
+
+
+# ===========================================================================
+# UM-only: AggTrade includes ``nq`` (non-RPI normal quantity)
+# Per developers.binance.com UM aggregate trade docs, the USDⓈ-M payload now
+# includes ``nq`` — the quantity excluding RPI (retail price improvement)
+# trades.  COIN-M does NOT publish this field.
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Aggregate-Trade-Streams
+# ===========================================================================
+
+UM_AGG_TRADE_PAYLOAD_WITH_NQ = {
+    **UM_AGG_TRADE_PAYLOAD,
+    'nq': '0.01000000',
+}
+
+
+@pytest.mark.asyncio
+async def test_um_agg_trade_handler_includes_nq(um_client):
+    from binance.futures.um.streams import AggTradeHandlerBase as UMAggTradeHandlerBase
+    df = await run_handler(
+        um_client, UMAggTradeHandlerBase,
+        UM_AGG_TRADE_PAYLOAD_WITH_NQ, 'btcusdt@aggTrade'
+    )
+    row = df.iloc[0]
+    assert row['type'] == 'aggTrade'
+    assert row['agg_trade_id'] == 424951223
+    assert row['normal_quantity'] == '0.01000000'
+
+
+def test_um_agg_trade_columns_map_includes_nq():
+    from binance.futures.um.streams import UM_AGG_TRADE_COLUMNS_MAP
+    assert UM_AGG_TRADE_COLUMNS_MAP.get('nq') == 'normal_quantity'
+
+
+def test_cm_agg_trade_columns_map_excludes_nq():
+    """COIN-M agg-trade payloads do not include ``nq`` per docs.
+
+    The shared FUTURES_AGG_TRADE_COLUMNS_MAP must therefore not advertise it,
+    so CM consumers do not see a NaN column.
+    """
+    from binance.futures.streams import FUTURES_AGG_TRADE_COLUMNS_MAP
+    assert 'nq' not in FUTURES_AGG_TRADE_COLUMNS_MAP
+
+
+# ===========================================================================
+# BookTicker: payload includes ``e`` event type ("bookTicker") on both UM + CM
+# Per developers.binance.com, the per-symbol and all-market bookTicker payloads
+# both carry the ``e`` event type field.  Previously this field was excluded
+# from the shared column map (causing it to drop on dataframe conversion).
+# Docs:
+#   UM https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Individual-Symbol-Book-Ticker-Streams
+#   CM https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Individual-Symbol-Book-Ticker-Streams
+# ===========================================================================
+
+BOOK_TICKER_PAYLOAD_WITH_E = {
+    'e': 'bookTicker',
+    **BOOK_TICKER_PAYLOAD,
+}
+
+
+def test_futures_book_ticker_columns_map_includes_event_type():
+    from binance.futures.streams import FUTURES_BOOK_TICKER_COLUMNS_MAP
+    assert FUTURES_BOOK_TICKER_COLUMNS_MAP.get('e') == 'type'
+
+
+@pytest.mark.asyncio
+async def test_futures_book_ticker_handler_surfaces_event_type(um_client):
+    df = await run_handler(
+        um_client, FuturesBookTickerHandlerBase,
+        BOOK_TICKER_PAYLOAD_WITH_E, 'btcusdt@bookTicker'
+    )
+    row = df.iloc[0]
+    assert row['type'] == 'bookTicker'
+    assert row['symbol'] == 'BTCUSDT'
+
+
+@pytest.mark.asyncio
+async def test_futures_all_market_book_ticker_surfaces_event_type(um_client):
+    df = await run_handler(
+        um_client, FuturesAllMarketBookTickerHandlerBase,
+        BOOK_TICKER_PAYLOAD_WITH_E, '!bookTicker'
+    )
+    row = df.iloc[0]
+    assert row['type'] == 'bookTicker'
+
+
+# ===========================================================================
+# CM-only: ``ps`` (pair) is present on per-symbol miniTicker, ticker,
+# bookTicker, and the corresponding all-market arrays.  Per developers.binance.com
+# COIN-M docs, each event includes the ``ps`` pair string alongside the
+# instrument symbol ``s``.
+# Docs (per-symbol):
+#   https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Individual-Symbol-Mini-Ticker-Stream
+#   https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Individual-Symbol-Ticker-Streams
+#   https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Individual-Symbol-Book-Ticker-Streams
+# Docs (all-market):
+#   https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/All-Market-Mini-Tickers-Stream
+#   https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/All-Market-Tickers-Streams
+#   https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/All-Book-Tickers-Stream
+# ===========================================================================
+
+CM_MINI_TICKER_PAYLOAD = {
+    'e': '24hrMiniTicker',
+    'E': 1638747660000,
+    's': 'BTCUSD_PERP',
+    'ps': 'BTCUSD',
+    'o': '50000.0',
+    'h': '55000.0',
+    'l': '49000.0',
+    'c': '53000.0',
+    'v': '100.0',
+    'q': '5200000.0',
+}
+
+CM_TICKER_PAYLOAD = {
+    'e': '24hrTicker',
+    'E': 1638747660000,
+    's': 'BTCUSD_PERP',
+    'ps': 'BTCUSD',
+    'p': '3000.0',
+    'P': '6.00',
+    'w': '52000.0',
+    'c': '53000.0',
+    'Q': '0.5',
+    'o': '50000.0',
+    'h': '55000.0',
+    'l': '49000.0',
+    'v': '100.0',
+    'q': '5200000.0',
+    'O': 0,
+    'C': 86400000,
+    'F': 100,
+    'L': 200,
+    'n': 100,
+}
+
+CM_BOOK_TICKER_PAYLOAD = {
+    'e': 'bookTicker',
+    'u': 400900217,
+    'E': 1638747660000,
+    'T': 1638747660001,
+    's': 'BTCUSD_PERP',
+    'ps': 'BTCUSD',
+    'b': '50000.0',
+    'B': '1.0',
+    'a': '50001.0',
+    'A': '2.0',
+}
+
+
+def test_cm_mini_ticker_columns_map_includes_ps():
+    from binance.futures.cm.streams import CM_MINI_TICKER_COLUMNS_MAP
+    assert CM_MINI_TICKER_COLUMNS_MAP.get('ps') == 'pair'
+
+
+def test_cm_ticker_columns_map_includes_ps():
+    from binance.futures.cm.streams import CM_TICKER_COLUMNS_MAP
+    assert CM_TICKER_COLUMNS_MAP.get('ps') == 'pair'
+
+
+def test_cm_book_ticker_columns_map_includes_ps():
+    from binance.futures.cm.streams import CM_BOOK_TICKER_COLUMNS_MAP
+    assert CM_BOOK_TICKER_COLUMNS_MAP.get('ps') == 'pair'
+
+
+@pytest.mark.asyncio
+async def test_cm_mini_ticker_handler_includes_pair(cm_client):
+    from binance.futures.cm.streams import MiniTickerHandlerBase as CMMiniTickerHandlerBase
+    df = await run_handler(
+        cm_client, CMMiniTickerHandlerBase,
+        CM_MINI_TICKER_PAYLOAD, 'btcusd_perp@miniTicker'
+    )
+    row = df.iloc[0]
+    assert row['symbol'] == 'BTCUSD_PERP'
+    assert row['pair'] == 'BTCUSD'
+
+
+@pytest.mark.asyncio
+async def test_cm_ticker_handler_includes_pair(cm_client):
+    from binance.futures.cm.streams import TickerHandlerBase as CMTickerHandlerBase
+    df = await run_handler(
+        cm_client, CMTickerHandlerBase,
+        CM_TICKER_PAYLOAD, 'btcusd_perp@ticker'
+    )
+    row = df.iloc[0]
+    assert row['symbol'] == 'BTCUSD_PERP'
+    assert row['pair'] == 'BTCUSD'
+
+
+@pytest.mark.asyncio
+async def test_cm_book_ticker_handler_includes_pair(cm_client):
+    from binance.futures.cm.streams import BookTickerHandlerBase as CMBookTickerHandlerBase
+    df = await run_handler(
+        cm_client, CMBookTickerHandlerBase,
+        CM_BOOK_TICKER_PAYLOAD, 'btcusd_perp@bookTicker'
+    )
+    row = df.iloc[0]
+    assert row['type'] == 'bookTicker'
+    assert row['symbol'] == 'BTCUSD_PERP'
+    assert row['pair'] == 'BTCUSD'
+
+
+@pytest.mark.asyncio
+async def test_cm_all_market_mini_tickers_handler_includes_pair(cm_client):
+    from binance.futures.cm.streams import (
+        AllMarketMiniTickersHandlerBase as CMAllMarketMiniTickersHandlerBase,
+    )
+    df = await run_handler(
+        cm_client, CMAllMarketMiniTickersHandlerBase,
+        [CM_MINI_TICKER_PAYLOAD], '!miniTicker@arr'
+    )
+    row = df.iloc[0]
+    assert row['symbol'] == 'BTCUSD_PERP'
+    assert row['pair'] == 'BTCUSD'
+
+
+@pytest.mark.asyncio
+async def test_cm_all_market_tickers_handler_includes_pair(cm_client):
+    from binance.futures.cm.streams import (
+        AllMarketTickersHandlerBase as CMAllMarketTickersHandlerBase,
+    )
+    df = await run_handler(
+        cm_client, CMAllMarketTickersHandlerBase,
+        [CM_TICKER_PAYLOAD], '!ticker@arr'
+    )
+    row = df.iloc[0]
+    assert row['symbol'] == 'BTCUSD_PERP'
+    assert row['pair'] == 'BTCUSD'
+
+
+@pytest.mark.asyncio
+async def test_cm_all_market_book_ticker_handler_includes_pair(cm_client):
+    from binance.futures.cm.streams import (
+        AllMarketBookTickerHandlerBase as CMAllMarketBookTickerHandlerBase,
+    )
+    df = await run_handler(
+        cm_client, CMAllMarketBookTickerHandlerBase,
+        CM_BOOK_TICKER_PAYLOAD, '!bookTicker'
+    )
+    row = df.iloc[0]
+    assert row['symbol'] == 'BTCUSD_PERP'
+    assert row['pair'] == 'BTCUSD'
+
+
+# ===========================================================================
+# UM-only: CompositeIndex top-level ``C`` (composition method) + nested ``c``
+# composition array.  Each composition entry has ``b`` (base asset symbol),
+# ``q`` (quote asset), ``w`` (weight in quantity), ``W`` (weight in percentage),
+# and ``i`` (component index price).  The top-level COLUMNS_MAP gains ``C``
+# and the composition list ``c`` as pass-through fields.
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Composite-Index-Symbol-Information-Streams
+# ===========================================================================
+
+COMPOSITE_INDEX_PAYLOAD_FULL = {
+    'e': 'compositeIndex',
+    'E': 1638747660000,
+    's': 'DEFIUSDT',
+    'p': '580.2',
+    'C': 'baseAsset',
+    'c': [
+        {'b': 'AAVE', 'q': 'USDT', 'w': '1.23',
+         'W': '0.21', 'i': '92.0'},
+        {'b': 'SUSHI', 'q': 'USDT', 'w': '0.45',
+         'W': '0.08', 'i': '5.7'},
+    ],
+}
+
+
+def test_um_composite_index_columns_map_includes_C_and_c():
+    from binance.futures.um.streams import COMPOSITE_INDEX_COLUMNS_MAP
+    assert COMPOSITE_INDEX_COLUMNS_MAP.get('C') == 'composition_method'
+    assert COMPOSITE_INDEX_COLUMNS_MAP.get('c') == 'composition'
+
+
+@pytest.mark.asyncio
+async def test_um_composite_index_handler_surfaces_C_and_c(um_client):
+    df = await run_handler(
+        um_client, CompositeIndexHandlerBase,
+        COMPOSITE_INDEX_PAYLOAD_FULL, 'defiusdt@compositeIndex'
+    )
+    row = df.iloc[0]
+    assert row['symbol'] == 'DEFIUSDT'
+    assert row['price'] == '580.2'
+    assert row['composition_method'] == 'baseAsset'
+    composition = row['composition']
+    assert isinstance(composition, list)
+    assert composition[0]['b'] == 'AAVE'
+    assert composition[0]['i'] == '92.0'
+
+
+# ===========================================================================
+# UM-only: TradingSession column map sanity (assert the corrected ``T``, ``S``,
+# ``t`` labels per developers.binance.com docs).
+# Handler row checks live with the EQUITY_UPDATE_PAYLOAD / COMMODITY_UPDATE_PAYLOAD
+# tests above (which were updated in this commit to reflect the corrected
+# semantics — ``T`` = session end time, ``S`` = session type, ``t`` = start time).
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Trading-Session-Stream
+# ===========================================================================
+
+
+def test_um_trading_session_columns_map_has_correct_T_S_t():
+    from binance.futures.um.streams import TRADING_SESSION_COLUMNS_MAP
+    assert TRADING_SESSION_COLUMNS_MAP.get('T') == 'session_end_time'
+    assert TRADING_SESSION_COLUMNS_MAP.get('S') == 'session_type'
+    assert TRADING_SESSION_COLUMNS_MAP.get('t') == 'session_start_time'
+
+
+# ===========================================================================
+# UM + CM: ContractInfo includes ``bks`` (brackets) per developers.binance.com.
+# The brackets array contains nested elements ({bs, bnf, bnc, mmr, cf, mi, ma})
+# describing the notional brackets.  The handler surfaces the list as the
+# ``brackets`` column so downstream callers can introspect.
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Contract-Info-Stream
+# ===========================================================================
+
+CONTRACT_INFO_PAYLOAD_WITH_BKS = {
+    **CONTRACT_INFO_PAYLOAD,
+    'bks': [
+        {'bs': 1, 'bnf': 0, 'bnc': 50000, 'mmr': '0.004',
+         'cf': 0, 'mi': 1, 'ma': 20},
+        {'bs': 2, 'bnf': 50000, 'bnc': 250000, 'mmr': '0.005',
+         'cf': 50, 'mi': 1, 'ma': 15},
+    ],
+}
+
+
+def test_futures_contract_info_columns_map_includes_bks():
+    from binance.futures.streams import CONTRACT_INFO_COLUMNS_MAP
+    assert CONTRACT_INFO_COLUMNS_MAP.get('bks') == 'brackets'
+
+
+@pytest.mark.asyncio
+async def test_futures_contract_info_handler_surfaces_bks(um_client):
+    df = await run_handler(
+        um_client, FuturesContractInfoHandlerBase,
+        CONTRACT_INFO_PAYLOAD_WITH_BKS, '!contractInfo'
+    )
+    row = df.iloc[0]
+    assert row['type'] == 'contractInfo'
+    assert row['symbol'] == 'BTCUSDT_221230'
+    brackets = row['brackets']
+    assert isinstance(brackets, list)
+    assert brackets[0]['bs'] == 1
+    assert brackets[0]['bnc'] == 50000
+    assert brackets[1]['mmr'] == '0.005'
 
 
 # ===========================================================================
