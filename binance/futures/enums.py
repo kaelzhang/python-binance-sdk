@@ -83,13 +83,18 @@ class FuturesTimeInForce(StringEnum):
 
     Extends the Spot ``TimeInForce`` (GTC/IOC/FOK) with futures-only values.
 
+    **GTD and RPI are USDⓈ-M-only.** Per the COIN-M docs
+    (https://developers.binance.com/docs/derivatives/coin-margined-futures/common-definition),
+    COIN-M only supports ``GTC/IOC/FOK/GTX`` — passing ``GTD`` or ``RPI``
+    to a CM endpoint is rejected server-side.
+
     Members:
         GTC: Good Till Cancelled.
         IOC: Immediate Or Cancel.
         FOK: Fill Or Kill.
         GTX: Good Till Crossing (post-only; rejected if it would immediately match).
-        GTD: Good Till Date (expires at ``goodTillDate``).
-        RPI: Retail Price Improvement (for RPI orders).
+        GTD: Good Till Date (expires at ``goodTillDate``). **UM-only.**
+        RPI: Retail Price Improvement (for RPI orders). **UM-only.**
     """
 
     GTC = 'GTC'

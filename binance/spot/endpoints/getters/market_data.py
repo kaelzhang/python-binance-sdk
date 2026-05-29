@@ -406,6 +406,9 @@ class WsApiMarketDataGetters:
 
         Args:
             symbol (str): The symbol.
+            symbolStatus (str, optional): Filter by symbol status (e.g.
+                ``'TRADING'``). Docs:
+                https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/market-data-requests
 
         Returns:
             dict: Reference price calculation details.
