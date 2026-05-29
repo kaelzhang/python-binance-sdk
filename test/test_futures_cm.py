@@ -177,6 +177,22 @@ async def test_cm_get_funding_rate_weight(client):
     assert _weight_used(client) == 1
 
 
+def test_cm_get_funding_rate_docstring_marks_symbol_required():
+    """Per CM docs the ``symbol`` query parameter is mandatory.
+    Source: https://developers.binance.com/docs/derivatives/coin-margined-futures/market-data/rest-api/Get-Funding-Rate-History-of-Perpetual-Futures
+    The docstring MUST advertise this — otherwise users who omit ``symbol``
+    follow the (UM-only) optional convention and hit a 400.
+    """
+    import inspect
+    doc = inspect.getdoc(CMFuturesClient.get_funding_rate) or ''
+    assert 'symbol (str)' in doc, (
+        'CM get_funding_rate must declare ``symbol`` as required; '
+        f'got docstring:\n{doc!r}'
+    )
+    # Ensure the stale "optional" wording is gone.
+    assert 'symbol (:obj:`str`, optional)' not in doc
+
+
 # ---------------------------------------------------------------------------
 # REST: get_funding_info
 # ---------------------------------------------------------------------------

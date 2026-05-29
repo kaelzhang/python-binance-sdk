@@ -383,6 +383,7 @@ Note: COIN-M symbols contain underscores (e.g. `'btcusd_perp'`); pass them lower
 - WS-API host: `wss://ws-dapi.binance.com/ws-dapi/v1`.
 - Symbols are contract codes like `'BTCUSD_PERP'` (not `'BTCUSDT'`).
 - `get_open_interest_hist` uses `pair` + `contractType` instead of `symbol`.
+- `get_funding_rate` **requires** `symbol` (UM treats it as optional).
 - `get_premium_index` accepts `symbol` or `pair`; always returns a list.
 - `get_position_risk` filters by `marginAsset` or `pair` (not `symbol`).
 - **No `get_multi_assets_mode` / `set_multi_assets_mode`** — USDⓈ-M only.

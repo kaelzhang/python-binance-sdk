@@ -87,13 +87,18 @@ class CMMarketDataGetters:
         ...  # pragma: no cover
 
     def get_funding_rate(self, **kwargs) -> Awaitable:
-        """Gets historical funding rate data for a COIN-M symbol.
+        """Gets historical funding rate data for a COIN-M perpetual symbol.
 
         Weight: 1
 
+        Note:
+            Unlike the USDⓈ-M endpoint of the same name, on COIN-M ``symbol``
+            is **required**.  Calling without it returns HTTP 400.
+            Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/market-data/rest-api/Get-Funding-Rate-History-of-Perpetual-Futures
+
         Args:
-            symbol (:obj:`str`, optional): The COIN-M futures symbol,
-                e.g. ``'BTCUSD_PERP'``. If omitted, returns records for all symbols.
+            symbol (str): The COIN-M perpetual symbol (e.g. ``'BTCUSD_PERP'``).
+                Required.
             startTime (:obj:`long`, optional): Start timestamp in ms (inclusive).
             endTime (:obj:`long`, optional): End timestamp in ms (inclusive).
             limit (:obj:`int`, optional): Default 100; max 1000.
