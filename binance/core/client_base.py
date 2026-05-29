@@ -10,7 +10,7 @@ install their endpoint methods.
 
 import time
 from logging import getLogger, Logger
-from typing import ClassVar, Optional
+from typing import Any, ClassVar, Optional
 
 from aioretry import RetryPolicy
 
@@ -163,6 +163,10 @@ class BaseClient(  # type: ignore[misc]  # diamond mixin: _ws_api_request is a C
         self._want_user_stream = False
         self._user_unsubscribe_inflight = False
         self._user_recovering = False
+        # Captured ``subscriptionId`` from the Spot
+        # ``userDataStream.subscribe.signature`` response (2025-08-12 Spot
+        # CHANGELOG). Cleared on unsubscribe.  Other markets leave it None.
+        self._user_subscription_id: Optional[Any] = None
         # Whether the shared WS-API connection has an authenticated session
         # (after a successful Ed25519 `session.logon`). Reset on every
         # (re)connect since the session is not persistent across reconnects.
@@ -178,6 +182,23 @@ class BaseClient(  # type: ignore[misc]  # diamond mixin: _ws_api_request is a C
         through a different handler or level.
         """
         return self._logger
+
+    @property
+    def user_subscription_id(self) -> Optional[Any]:
+        """The ``subscriptionId`` returned by the most recent
+        ``userDataStream.subscribe.signature`` response (Spot WS-API).
+
+        Set on every successful user-stream subscribe and cleared on
+        unsubscribe. ``None`` when the client has not subscribed to its
+        user-data stream, when the response did not include a
+        ``subscriptionId``, or for markets that do not surface one (UM/CM
+        futures use a different user-stream flow entirely).
+
+        Docs:
+          https://developers.binance.com/docs/binance-spot-api-docs/CHANGELOG (2025-08-12)
+          https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/user-data-stream-requests
+        """
+        return self._user_subscription_id
 
     async def _sync_time(self) -> int:
         """Internal: sync the local clock offset against Binance server time.

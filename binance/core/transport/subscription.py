@@ -109,6 +109,9 @@ class SubscriptionManager:
     _want_user_stream: bool
     _user_unsubscribe_inflight: bool
     _user_recovering: bool
+    # Captured response ``subscriptionId`` from
+    # ``userDataStream.subscribe.signature`` (2025-08-12 Spot CHANGELOG).
+    _user_subscription_id: Optional[Any]
     _ws_api_authenticated: bool
     # The market's data-stream router (set from ``MarketSpec``).  Maps a wire
     # stream name to the path that should carry it.
@@ -655,7 +658,18 @@ class SubscriptionManager:
                 is_order=False,
             )
 
-            await stream.send(req)
+            result = await stream.send(req)
+
+            # The 2025-08-12 Spot CHANGELOG added a ``subscriptionId`` to the
+            # subscribe **response** (nested in ``result``).  Capture it so
+            # callers can introspect which subscription this connection
+            # opened; clear it on unsubscribe.
+            # Docs: https://developers.binance.com/docs/binance-spot-api-docs/CHANGELOG
+            if subscribe:
+                if isinstance(result, dict) and 'subscriptionId' in result:
+                    self._user_subscription_id = result['subscriptionId']
+            else:
+                self._user_subscription_id = None
 
     # subscribe to the stream for symbols
     async def _subscribe(

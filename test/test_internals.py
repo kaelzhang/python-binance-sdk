@@ -444,6 +444,50 @@ async def test_user_stream_subscribe_unsubscribe_close_mocked(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_user_stream_subscribe_captures_response_subscription_id(monkeypatch):
+    """The 2025-08-12 Spot CHANGELOG documents that the
+    ``userDataStream.subscribe.signature`` **response** itself carries a
+    ``subscriptionId`` field (nested inside ``result``). The SDK MUST
+    capture that response id so callers can introspect it.
+
+    Docs:
+      https://developers.binance.com/docs/binance-spot-api-docs/CHANGELOG (2025-08-12)
+      https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/user-data-stream-requests
+    """
+    client = SpotClient(Credentials('key', 'secret'))
+
+    class FakeUserStream:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def connect(self):
+            return self
+
+        async def send(self, req):
+            # Subscribe response: result.subscriptionId (per docs).
+            if req['method'] == 'userDataStream.subscribe.signature':
+                return {'subscriptionId': 'sub-abc-123'}
+            return None
+
+        async def close(self, code=4999):
+            pass
+
+    monkeypatch.setattr('binance.core.transport.subscription.Stream', FakeUserStream)
+
+    # No subscription yet → unset (None).
+    assert client.user_subscription_id is None
+
+    await client.subscribe(SubType.USER)
+    assert client.user_subscription_id == 'sub-abc-123'
+
+    await client.unsubscribe(SubType.USER)
+    # After unsubscribe the SDK MUST drop the captured id.
+    assert client.user_subscription_id is None
+
+    await client.close()
+
+
+@pytest.mark.asyncio
 async def test_user_stream_subscribe_consumes_weight_2_per_docs(monkeypatch):
     """Spot ``userDataStream.subscribe.signature`` and
     ``userDataStream.unsubscribe`` each have **weight 2** per
