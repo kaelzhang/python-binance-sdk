@@ -268,6 +268,21 @@ REST_ENDPOINTS = [
         is_order=True,
     ),
     dict(
+        # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Modify-Multiple-Orders
+        # Request Weight: 5. TRADE. Companion to create_batch_orders /
+        # cancel_batch_orders; modifies up to 5 existing orders atomically.
+        # Consumes the account ORDERS pool (``is_order=True``) — CM counts
+        # modifies the same way as new orders against the 1-min ORDERS
+        # window (parity with the UM equivalent).
+        name='modify_batch_orders',
+        transport='rest',
+        method=RequestMethod.PUT,
+        rest_url=CM_REST_HOST + '/dapi/v1/batchOrders',
+        security_type=SecurityType.TRADE,
+        weight=5,
+        is_order=True,
+    ),
+    dict(
         name='cancel_batch_orders',
         transport='rest',
         method=RequestMethod.DELETE,

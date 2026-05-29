@@ -272,6 +272,52 @@ def test_cm_create_batch_orders_registry_marks_is_order():
 
 
 # ---------------------------------------------------------------------------
+# modify_batch_orders  PUT /dapi/v1/batchOrders  weight 5 (TRADE)
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Modify-Multiple-Orders
+# Companion to create_batch_orders / cancel_batch_orders; modifies up to
+# 5 existing orders atomically. Consumes the account ORDERS pool — parity
+# with the UM equivalent.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_cm_modify_batch_orders_put_weight_5():
+    client = _signed_client()
+    with aioresponses() as m:
+        m.put(_re('/dapi/v1/batchOrders'), payload=[], status=200)
+        await client.modify_batch_orders(batchOrders=[
+            {'orderId': 1, 'symbol': 'BTCUSD_PERP', 'side': 'BUY',
+             'quantity': '1', 'price': '20000'},
+        ])
+    assert _weight_used(client) == 5
+
+
+@pytest.mark.asyncio
+async def test_cm_modify_batch_orders_consumes_orders_pool():
+    """A successful modify_batch_orders call MUST consume the account
+    ORDERS pool (parity with UM and with create_batch_orders).
+    """
+    client = _signed_client()
+    with aioresponses() as m:
+        m.put(_re('/dapi/v1/batchOrders'), payload=[], status=200)
+        await client.modify_batch_orders(batchOrders=[
+            {'orderId': 1, 'symbol': 'BTCUSD_PERP', 'side': 'BUY',
+             'quantity': '1', 'price': '20000'},
+        ])
+    assert _orders_used(client) == 1
+
+
+def test_cm_modify_batch_orders_registry_shape():
+    """PUT /dapi/v1/batchOrders, TRADE, weight 5, consumes ORDERS pool."""
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['modify_batch_orders']
+    assert str(entry['method']).lower() == 'put'
+    assert entry['rest_url'].endswith('/dapi/v1/batchOrders')
+    assert entry['weight'] == 5
+    assert entry['security_type'] == SecurityType.TRADE
+    assert entry.get('is_order') is True
+
+
+# ---------------------------------------------------------------------------
 # cancel_batch_orders  DELETE /dapi/v1/batchOrders  weight 1
 # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Cancel-Multiple-Orders
 # ---------------------------------------------------------------------------
@@ -570,6 +616,7 @@ def test_cm_rest_endpoints_registry_contains_trading_entries():
         'get_open_orders': ('get', '/dapi/v1/openOrders'),
         'get_all_orders': ('get', '/dapi/v1/allOrders'),
         'create_batch_orders': ('post', '/dapi/v1/batchOrders'),
+        'modify_batch_orders': ('put', '/dapi/v1/batchOrders'),
         'cancel_batch_orders': ('delete', '/dapi/v1/batchOrders'),
         'get_position_risk': ('get', '/dapi/v1/positionRisk'),
         'get_user_trades': ('get', '/dapi/v1/userTrades'),

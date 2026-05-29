@@ -250,6 +250,32 @@ class CMTradingGetters:
         """
         ...  # pragma: no cover
 
+    def modify_batch_orders(self, **kwargs) -> Awaitable:
+        """Modifies multiple existing COIN-M Futures orders in one request
+        (``PUT /dapi/v1/batchOrders``).
+
+        Weight: 5. Consumes the account ORDERS pool (``is_order=True``);
+        modifications count against the same CM 1-min ORDERS pool as new
+        orders.
+        Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Modify-Multiple-Orders
+
+        Companion to :py:meth:`create_batch_orders` /
+        :py:meth:`cancel_batch_orders`. Each entry in ``batchOrders`` MUST
+        identify the order via ``orderId`` OR ``origClientOrderId`` and
+        supply the new ``symbol`` / ``side`` / ``quantity`` / ``price``
+        (per docs).
+
+        Args:
+            batchOrders (list): List of order modification dicts (max 5).
+                Each dict requires ``symbol``, ``side``, ``quantity``,
+                ``price``, and ``orderId`` OR ``origClientOrderId``.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            list: One result per input modification.
+        """
+        ...  # pragma: no cover
+
     def cancel_batch_orders(self, **kwargs) -> Awaitable:
         """Cancels multiple COIN-M orders in a single request.
 
