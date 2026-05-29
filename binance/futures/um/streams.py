@@ -46,6 +46,7 @@ from binance.futures.streams import (  # noqa: F401  (re-exported for public API
     FUTURES_PARTIAL_ORDER_BOOK_COLUMNS_MAP,
     FUTURES_CONTINUOUS_KLINE_COLUMNS_MAP,
     CONTRACT_INFO_COLUMNS_MAP,
+    VALID_CONTRACT_TYPES as _BASE_VALID_CONTRACT_TYPES,
     # Handler bases (shared)
     ForceOrderHandlerBase,
     ContinuousKlineHandlerBase,
@@ -62,7 +63,6 @@ from binance.futures.streams import (  # noqa: F401  (re-exported for public API
     BookTickerProcessor,
     PartialOrderBookProcessor,
     OrderBookProcessor,
-    ContinuousKlineProcessor,
     ContractInfoProcessor,
     AllMarketLiquidationProcessor,
     AllMarketMiniTickersProcessor,
@@ -75,6 +75,7 @@ from binance.futures.streams import (  # noqa: F401  (re-exported for public API
     MarkPriceProcessor as _MarkPriceProcessor,
     AllMarketMarkPriceProcessor as _AllMarketMarkPriceProcessor,
     AggTradeProcessor as _AggTradeProcessor,
+    ContinuousKlineProcessor as _ContinuousKlineProcessor,
 )
 
 from binance.futures.user_processor import FuturesUserProcessor  # noqa: F401  (re-exported)
@@ -213,6 +214,34 @@ class AggTradeProcessor(_AggTradeProcessor):
     """
 
     HANDLER = AggTradeHandlerBase
+
+
+# ---------------------------------------------------------------------------
+# UM Continuous Kline: widen contractType to include `tradifi_perpetual`.
+#
+# Per developers.binance.com 2025-12-11 changelog the TradFi-Perps product
+# was added; the UM continuous-kline stream accepts ``tradifi_perpetual``
+# in addition to the three base contract types (``PERPETUAL``,
+# ``CURRENT_QUARTER``, ``NEXT_QUARTER``).  COIN-M does NOT publish
+# ``tradifi_perpetual`` for this stream.
+# Docs:
+# https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Continuous-Contract-Kline-Candlestick-Streams
+# ---------------------------------------------------------------------------
+
+UM_VALID_CONTRACT_TYPES = _BASE_VALID_CONTRACT_TYPES | frozenset(
+    ('TRADIFI_PERPETUAL',)
+)
+
+
+class ContinuousKlineProcessor(_ContinuousKlineProcessor):
+    """Processor for the USDⓈ-M continuous-contract kline stream.
+
+    Widens :attr:`VALID_CONTRACT_TYPES` to include ``TRADIFI_PERPETUAL`` per
+    the 2025-12-11 derivatives changelog.  Otherwise identical to the shared
+    futures :class:`_ContinuousKlineProcessor`.
+    """
+
+    VALID_CONTRACT_TYPES = UM_VALID_CONTRACT_TYPES
 
 
 # ---------------------------------------------------------------------------

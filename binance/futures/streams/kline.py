@@ -6,7 +6,7 @@ interval / contract-type constants.  See
 :mod:`binance.futures.streams._common` for the per-stream verified findings.
 """
 
-from typing import List, Optional
+from typing import ClassVar, FrozenSet, List, Optional
 
 from binance.core.common.constants import (
     SubType,
@@ -135,9 +135,18 @@ FUTURES_CONTINUOUS_KLINE_COLUMNS_MAP = {
 
 FUTURES_CONTINUOUS_KLINE_COLUMNS = FUTURES_CONTINUOUS_KLINE_COLUMNS_MAP.keys()
 
+# Base ``contractType`` set shared by USDⓈ-M and COIN-M continuous-kline streams.
+# Per developers.binance.com (2026-05-30) the documented values are the three
+# entries below; the previously-listed ``CURRENT_QUARTER_DELIVERING`` and
+# ``NEXT_QUARTER_DELIVERING`` are NOT documented for this stream and have
+# been removed.  USDⓈ-M additionally accepts ``TRADIFI_PERPETUAL`` (the
+# TradFi-Perps product, 2025-12-11 changelog); see
+# ``binance.futures.um.streams.UM_VALID_CONTRACT_TYPES`` for the UM superset.
+# Docs:
+# - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Continuous-Contract-Kline-Candlestick-Streams
+# - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Continuous-Contract-Kline-Candlestick-Streams
 VALID_CONTRACT_TYPES = frozenset((
     'PERPETUAL', 'CURRENT_QUARTER', 'NEXT_QUARTER',
-    'CURRENT_QUARTER_DELIVERING', 'NEXT_QUARTER_DELIVERING',
 ))
 
 
@@ -218,14 +227,20 @@ class ContinuousKlineProcessor(Processor):
     HANDLER = ContinuousKlineHandlerBase
     SUB_TYPE = SubType.CONTINUOUS_KLINE
     PAYLOAD_TYPE = 'continuous_kline'
+    # The set of valid ``contractType`` values for this market. The base set
+    # matches the COIN-M docs (PERPETUAL / CURRENT_QUARTER / NEXT_QUARTER);
+    # USDⓈ-M overrides this with the wider set that includes
+    # ``TRADIFI_PERPETUAL``.
+    VALID_CONTRACT_TYPES: ClassVar[FrozenSet[str]] = VALID_CONTRACT_TYPES
 
     def subscribe_param(self, _, t, *args) -> str:
         """Return ``<pair>_<contractType>@continuousKline_<interval>``.
 
         Args:
             args[0]: pair string (e.g. ``'BTCUSDT'`` for UM, ``'BTCUSD'`` for CM).
-            args[1]: contract type string (e.g. ``'PERPETUAL'``, ``'CURRENT_QUARTER'``).
-            args[2]: interval (``TimeFrame`` or str, e.g. ``TimeFrame.M1``).
+            args[1]: contract type string (e.g. ``'PERPETUAL'``, ``'CURRENT_QUARTER'``,
+                ``'TRADIFI_PERPETUAL'`` UM-only).
+            args[2]: interval (``TimeFrame`` or str, e.g. ``TimeFrame.m1``).
         """
         if len(args) < 3:
             raise InvalidSubTypeParamException(
@@ -246,11 +261,11 @@ class ContinuousKlineProcessor(Processor):
                 t, 'contract_type', 'string expected but got `%s`' % contract_type)
 
         ct_upper = contract_type.upper()
-        if ct_upper not in VALID_CONTRACT_TYPES:
+        if ct_upper not in self.VALID_CONTRACT_TYPES:
             raise InvalidSubTypeParamException(
                 t, 'contract_type',
                 'invalid contract type `%s`; must be one of %s'
-                % (contract_type, sorted(VALID_CONTRACT_TYPES))
+                % (contract_type, sorted(self.VALID_CONTRACT_TYPES))
             )
 
         interval_str = str(interval)

@@ -340,7 +340,6 @@ class ContinuousKlineProcessor(_ContinuousKlineProcessor):
     """
 
     def subscribe_param(self, _, t, *args) -> str:
-        from binance.futures.streams import VALID_CONTRACT_TYPES
         if len(args) < 3:
             raise InvalidSubTypeParamException(
                 t, 'pair/contract_type/interval',
@@ -360,11 +359,11 @@ class ContinuousKlineProcessor(_ContinuousKlineProcessor):
                 t, 'contract_type', 'string expected but got `%s`' % contract_type)
 
         ct_upper = contract_type.upper()
-        if ct_upper not in VALID_CONTRACT_TYPES:
+        if ct_upper not in self.VALID_CONTRACT_TYPES:
             raise InvalidSubTypeParamException(
                 t, 'contract_type',
                 'invalid contract type `%s`; must be one of %s'
-                % (contract_type, sorted(VALID_CONTRACT_TYPES))
+                % (contract_type, sorted(self.VALID_CONTRACT_TYPES))
             )
 
         interval_str = str(interval)
