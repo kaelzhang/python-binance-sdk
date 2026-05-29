@@ -31,7 +31,12 @@ TRADE_COLUMNS_MAP = {
     **BASE_TRADE_COLUMNS_MAP,
     't': 'trade_id',
     'b': 'buyer_order_id',
-    'a': 'seller_order_id'
+    'a': 'seller_order_id',
+    # Binance docs explicitly mark ``M`` as "Ignore" but it IS documented in
+    # the <symbol>@trade payload.  Surface as ``_ignore_M`` so downstream
+    # code SEES the field exists while knowing it is to be dropped.
+    # Docs: https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams
+    'M': '_ignore_M',
 }
 
 TRADE_COLUMNS = TRADE_COLUMNS_MAP.keys()
@@ -60,6 +65,11 @@ AGG_TRADE_COLUMNS_MAP = {
     'a': 'agg_trade_id',
     'f': 'first_trade_id',
     'l': 'last_trade_id',
+    # Binance docs explicitly mark ``M`` as "Ignore" but it IS documented in
+    # the <symbol>@aggTrade payload.  Surface as ``_ignore_M`` so downstream
+    # code SEES the field exists while knowing it is to be dropped.
+    # Docs: https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams
+    'M': '_ignore_M',
 }
 
 AGG_TRADE_COLUMNS = AGG_TRADE_COLUMNS_MAP.keys()
@@ -226,7 +236,13 @@ KLINE_COLUMNS_MAP = {
     'q': 'quote_volume',
     'V': 'taker_volume',
     'Q': 'taker_quote_volume',
-    'n': 'total_trades'
+    'n': 'total_trades',
+    # Binance docs explicitly mark ``B`` inside the nested ``k`` object as
+    # "Ignore" but it IS documented in the <symbol>@kline_<interval>
+    # payload.  Surface as ``_ignore_B`` so downstream code SEES the
+    # field exists while knowing it is to be dropped.
+    # Docs: https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams
+    'B': '_ignore_B',
 }
 
 KLINE_COLUMNS = KLINE_COLUMNS_MAP.keys()

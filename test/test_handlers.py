@@ -324,6 +324,127 @@ async def test_order_update_surfaces_subscription_id(client):
     assert received['symbol'] == 'ETHBTC'
 
 
+# ===========================================================================
+# Spot "Ignore" fields (strict-coverage acknowledgement)
+# Per developers.binance.com (Spot Web-Socket Streams) the docs explicitly
+# mark these fields "Ignore" but they ARE documented:
+# - `M` in <symbol>@trade
+# - `M` in <symbol>@aggTrade
+# - `B` in <symbol>@kline_<interval>'s nested `k` object
+# The SDK COLUMNS_MAP must include them (renamed to `_ignore_<key>`) so
+# downstream code SEES the field exists while knowing to drop it.
+# Docs: https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams
+# ===========================================================================
+
+def test_spot_trade_columns_map_includes_ignore_M():
+    """Per docs, <symbol>@trade payload includes ``M`` marked "Ignore".
+    The COLUMNS_MAP MUST surface it as ``_ignore_M`` so downstream code
+    SEES the field exists.
+    """
+    from binance.spot.handlers import TRADE_COLUMNS_MAP
+    assert TRADE_COLUMNS_MAP.get('M') == '_ignore_M'
+
+
+def test_spot_agg_trade_columns_map_includes_ignore_M():
+    """Per docs, <symbol>@aggTrade payload includes ``M`` marked "Ignore"."""
+    from binance.spot.handlers import AGG_TRADE_COLUMNS_MAP
+    assert AGG_TRADE_COLUMNS_MAP.get('M') == '_ignore_M'
+
+
+def test_spot_kline_columns_map_includes_ignore_B():
+    """Per docs, the nested ``k`` object on <symbol>@kline_<interval>
+    payload includes ``B`` marked "Ignore"."""
+    from binance.spot.handlers import KLINE_COLUMNS_MAP
+    assert KLINE_COLUMNS_MAP.get('B') == '_ignore_B'
+
+
+@pytest.mark.asyncio
+async def test_spot_trade_handler_surfaces_ignore_M(client):
+    from binance import TradeHandlerBase
+
+    payload = {
+        'e': 'trade',
+        'E': 123456789,
+        's': 'BNBBTC',
+        't': 12345,
+        'p': '0.001',
+        'q': '100',
+        'b': 88,
+        'a': 50,
+        'T': 123456785,
+        'm': True,
+        'M': True,  # docs say "Ignore"
+    }
+
+    def expect(received):
+        row = received.iloc[0]
+        assert row['symbol'] == 'BNBBTC'
+        assert bool(row['_ignore_M']) is True
+
+    await run_handler(client, TradeHandlerBase, payload, expect, 'bnbbtc@trade')
+
+
+@pytest.mark.asyncio
+async def test_spot_agg_trade_handler_surfaces_ignore_M(client):
+    from binance import AggTradeHandlerBase
+
+    payload = {
+        'e': 'aggTrade',
+        'E': 123456789,
+        's': 'BNBBTC',
+        'a': 12345,
+        'p': '0.001',
+        'q': '100',
+        'f': 100,
+        'l': 105,
+        'T': 123456785,
+        'm': True,
+        'M': True,  # docs say "Ignore"
+    }
+
+    def expect(received):
+        row = received.iloc[0]
+        assert row['symbol'] == 'BNBBTC'
+        assert bool(row['_ignore_M']) is True
+
+    await run_handler(client, AggTradeHandlerBase, payload, expect, 'bnbbtc@aggTrade')
+
+
+@pytest.mark.asyncio
+async def test_spot_kline_handler_surfaces_ignore_B(client):
+    payload = {
+        'e': 'kline',
+        'E': 123456789,
+        's': 'BNBBTC',
+        'k': {
+            't': 123400000,
+            'T': 123460000,
+            's': 'BNBBTC',
+            'i': '1m',
+            'f': 100,
+            'L': 200,
+            'o': '0.0010',
+            'c': '0.0020',
+            'h': '0.0025',
+            'l': '0.0009',
+            'v': '1000',
+            'n': 100,
+            'x': False,
+            'q': '1.0000',
+            'V': '500',
+            'Q': '0.5',
+            'B': '123',  # docs say "Ignore"
+        },
+    }
+
+    def expect(received):
+        row = received.iloc[0]
+        assert row['symbol'] == 'BNBBTC'
+        assert row['_ignore_B'] == '123'
+
+    await run_handler(client, KlineHandlerBase, payload, expect)
+
+
 @pytest.mark.asyncio
 async def test_order_list_status(client):
     await run_handler(client, OrderListStatusHandlerBase, {
