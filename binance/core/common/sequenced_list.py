@@ -107,10 +107,10 @@ class SequencedList(List[Pair]):
     # Merge a list into the current one and maintain order
     def merge(
         self,
-        l: Iterable[Pair]
+        pairs: Iterable[Pair]
     ) -> None:
         """Apply a batch of price-level updates by calling ``add`` for each pair."""
-        for subject in l:
+        for subject in pairs:
             self.add(subject)
 
     def __setitem__(  # type: ignore[override]  # intentional element-type narrowing; slice assignment unsupported
