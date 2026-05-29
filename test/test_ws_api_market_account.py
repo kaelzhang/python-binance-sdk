@@ -597,6 +597,43 @@ def test_params_false_general_endpoints():
         assert by_name[name].get('params') is False
 
 
+def test_get_execution_rules_grouped_with_general_requests():
+    """``executionRules`` is documented under the WS-API "general requests"
+    page (alongside ``ping`` / ``time`` / ``exchangeInfo``), NOT under
+    market-data-requests.  Verify the registry mirrors that taxonomy: the
+    ``get_execution_rules`` entry must appear consecutively with the
+    general group, before the first market-data entry (``get_orderbook``).
+
+    Docs: https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/general-requests
+    """
+    names_in_order = [entry['name'] for entry in WS_APIS]
+
+    assert 'get_execution_rules' in names_in_order, (
+        'get_execution_rules must still exist after relocation'
+    )
+
+    idx_exec = names_in_order.index('get_execution_rules')
+    idx_ping = names_in_order.index('ping')
+    idx_time = names_in_order.index('get_server_time')
+    idx_info = names_in_order.index('get_exchange_info')
+    idx_orderbook = names_in_order.index('get_orderbook')
+
+    # General group must come before any market-data entry.
+    assert idx_exec < idx_orderbook, (
+        'get_execution_rules must precede get_orderbook (first market-data entry); '
+        'relocate it from the market-data section to the general section.'
+    )
+    # Specifically: belongs in the general block alongside ping/time/exchangeInfo.
+    for general_idx in (idx_ping, idx_time, idx_info):
+        assert idx_exec > general_idx or idx_exec < idx_orderbook, (
+            'get_execution_rules must be in the general block'
+        )
+    # Tighter check: get_execution_rules sits between get_exchange_info and
+    # the first market-data entry (get_orderbook), with no market-data
+    # entries between get_exchange_info and get_execution_rules.
+    assert idx_info < idx_exec < idx_orderbook
+
+
 # ---------------------------------------------------------------------------
 # New market-data endpoints (NONE, public)
 # ---------------------------------------------------------------------------

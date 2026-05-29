@@ -55,6 +55,11 @@ WS_APIS = [
         security_type=SecurityType.NONE,
         weight=20
     ),
+    # ``executionRules`` is documented under WS-API "general requests"
+    # alongside ping / time / exchangeInfo (NOT market-data-requests).
+    # Docs: https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/general-requests
+    dict(name='get_execution_rules', ws_method='executionRules',
+         security_type=SecurityType.NONE, weight=_execution_rules_weight),
 
     # ----- market data (NONE) ----------------------------------------------
     dict(
@@ -127,8 +132,6 @@ WS_APIS = [
          security_type=SecurityType.NONE, weight=_per_symbol_ticker_weight),
     dict(name='get_historical_block_trades', ws_method='blockTrades.historical',
          security_type=SecurityType.NONE, weight=25),
-    dict(name='get_execution_rules', ws_method='executionRules',
-         security_type=SecurityType.NONE, weight=_execution_rules_weight),
     dict(name='get_reference_price', ws_method='referencePrice',
          security_type=SecurityType.NONE, weight=2),
     dict(name='get_reference_price_calculation', ws_method='referencePrice.calculation',
