@@ -162,9 +162,18 @@ class FuturesOrderUpdateHandlerBase(FuturesSimpleHandler):
                 "V":   "<stp_mode>",
                 "pm":  "<price_match_mode>",
                 "gtd": <gtd_cancel_time>,
-                "er":  "<expiry_reason>"
+                "er":  "<expiry_reason>",
+                "si":  0,                         # Ignore (Binance-documented)
+                "ss":  0                          # Ignore (Binance-documented)
             }
         }
+
+    The nested ``o.si`` and ``o.ss`` are Binance-documented **Ignore**
+    fields — present in the wire payload but reserved / non-semantic.
+    They are enumerated here for Spot-parity (Spot ``executionReport``
+    pins ``_ignore_M`` / ``_ignore_B`` in its ``COLUMNS_MAP``) so callers
+    do not assume the fields carry meaning. Source: USDⓈ-M docs page
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Order-Update
 
     **CM-only** fields (delivered only on COIN-M streams; **absent on
     USDⓈ-M**)::

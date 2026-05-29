@@ -1162,3 +1162,21 @@ async def test_keepalive_ping_error_is_logged_not_raised(monkeypatch, patch_fstr
         client._cancel_futures_keepalive()
         await client.close()
         await server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Docstring pin: nested o.si / o.ss are documented Binance Ignore fields.
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Order-Update
+# (Spot already enumerates Ignore fields in its COLUMNS_MAP; futures user
+# handlers are pass-through, so the docstring is the contract surface.)
+# ---------------------------------------------------------------------------
+
+def test_order_trade_update_docstring_documents_ignore_fields_si_ss():
+    """FuturesOrderUpdateHandlerBase docstring must list ``si`` and ``ss``
+    as Binance-documented nested ``o`` Ignore fields."""
+    doc = FuturesOrderUpdateHandlerBase.__doc__ or ''
+    assert '"si"' in doc, '"si" Ignore field must be documented in nested o object'
+    assert '"ss"' in doc, '"ss" Ignore field must be documented in nested o object'
+    assert 'Ignore' in doc or 'ignore' in doc, (
+        'docstring must mark si/ss as Ignore / ignore fields'
+    )
