@@ -131,7 +131,18 @@ async def test_cm_get_all_orders_with_pair_weight_40():
 
 # ---------------------------------------------------------------------------
 # create_batch_orders  POST /dapi/v1/batchOrders  weight 5
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Place-Multiple-Orders
+# Consumes the account ORDERS pool (per UM parity and the SDK's own docstring).
 # ---------------------------------------------------------------------------
+
+def _orders_used(client) -> int:
+    """Maximum ``used`` count across all ORDERS-pool windows."""
+    snap = client.rate_limit_snapshot()
+    return max(
+        (w.used for w in snap.windows if w.type == RateLimitType.ORDERS),
+        default=0,
+    )
+
 
 @pytest.mark.asyncio
 async def test_cm_create_batch_orders_post_weight_5():
@@ -140,6 +151,24 @@ async def test_cm_create_batch_orders_post_weight_5():
         m.post(_re('/dapi/v1/batchOrders'), payload=[], status=200)
         await client.create_batch_orders(batchOrders=[])
     assert _weight_used(client) == 5
+
+
+@pytest.mark.asyncio
+async def test_cm_create_batch_orders_consumes_orders_pool():
+    """A successful batch-orders call MUST consume the account ORDERS pool
+    (parity with UM and with the SDK's own ``create_batch_orders`` docstring).
+    """
+    client = _signed_client()
+    with aioresponses() as m:
+        m.post(_re('/dapi/v1/batchOrders'), payload=[], status=200)
+        await client.create_batch_orders(batchOrders=[])
+    assert _orders_used(client) == 1
+
+
+def test_cm_create_batch_orders_registry_marks_is_order():
+    """Registry entry for ``create_batch_orders`` MUST set ``is_order=True``."""
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    assert by_name['create_batch_orders'].get('is_order') is True
 
 
 # ---------------------------------------------------------------------------

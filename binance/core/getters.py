@@ -39,8 +39,10 @@ def define_getter(
 
     For ``transport='rest'``: the generated coroutine issues an HTTP request
     via :meth:`get` (or :meth:`post`/... for other methods) on the
-    ``rest_url``. All keyword arguments become query/body parameters. No
-    ``is_order`` semantics apply for REST getters.
+    ``rest_url``. All keyword arguments become query/body parameters. When the
+    spec sets ``is_order=True``, the account ORDERS pool is consumed alongside
+    the IP REQUEST_WEIGHT / RAW_REQUESTS pools — the same semantics that apply
+    to WS-API order-placing endpoints.
 
     ``weight`` may be a static ``int`` or a callable ``(kwargs) -> int``
     resolved per call for params-dependent endpoints.
@@ -54,6 +56,7 @@ def define_getter(
     if transport == 'rest':
         # REST getter: call self.get()/post()/... via RestTransport
         _method = method  # capture
+        _is_order = is_order
 
         def getter(self, **kwargs):
             resolved_weight = weight(kwargs) if weight_is_dynamic else weight
@@ -63,6 +66,7 @@ def define_getter(
                 rest_url,
                 security_type=security_type,
                 weight=resolved_weight,
+                is_order=_is_order,
                 **kwargs,
             )
     else:

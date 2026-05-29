@@ -216,12 +216,19 @@ REST_ENDPOINTS = [
         weight=_cm_all_orders_weight,
     ),
     dict(
+        # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Place-Multiple-Orders
+        # Request Weight 5; consumes the account ORDERS pool (parity with the
+        # UM equivalent — the CM "Place Multiple Orders" page omits the order
+        # rate-limit clause from its Request Weight block but every CM
+        # order-placing endpoint goes through the CM 1-min ORDERS pool, as
+        # documented on "New Order" and the CM common rate-limit page).
         name='create_batch_orders',
         transport='rest',
         method=RequestMethod.POST,
         rest_url=CM_REST_HOST + '/dapi/v1/batchOrders',
         security_type=SecurityType.TRADE,
         weight=5,
+        is_order=True,
     ),
     dict(
         name='cancel_batch_orders',
