@@ -496,3 +496,47 @@ class OrderBookFetchAbandonedException(Exception):
             self.symbol,
             self.exception
         )
+
+
+class SnapshotTooOldException(Exception):
+    """Raised by :class:`~binance.core.orderbook.OrderBook` when a freshly
+    fetched depth snapshot is older than the first buffered diff event.
+
+    Per the Spot ``How to manage a local order book correctly`` procedure
+    (`developers.binance.com
+    <https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams>`__,
+    step 4):
+
+        *"If the lastUpdateId from the snapshot is strictly less than the U
+        from step 2 [first buffered event], go back to step 3 [refetch
+        snapshot]."*
+
+    The SDK enforces this pre-check *before* installing the snapshot into the
+    local book so that callers never observe a transiently-bad state.  When
+    the check fails, the buffered queue is cleared and this exception is
+    raised so the configured retry policy can drive a fresh fetch.
+
+    Attributes:
+        symbol: The trading pair symbol whose snapshot was too old.
+        snapshot_last_update_id: ``lastUpdateId`` returned by the snapshot.
+        first_buffered_U: ``U`` of the first buffered diff event that the
+            snapshot failed to cover.
+    """
+
+    def __init__(
+        self,
+        symbol: str,
+        snapshot_last_update_id: int,
+        first_buffered_U: int
+    ) -> None:
+        self.symbol = symbol
+        self.snapshot_last_update_id = snapshot_last_update_id
+        self.first_buffered_U = first_buffered_U
+
+    def __str__(self) -> str:
+        return format_msg(
+            'orderbook for `%s` got a snapshot too old (lastUpdateId=%s) to cover the first buffered event (U=%s); refetch required',
+            self.symbol,
+            self.snapshot_last_update_id,
+            self.first_buffered_U
+        )

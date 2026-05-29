@@ -7,6 +7,7 @@ from binance import (
     OrderBook,
     OrderBookFetchAbandonedException
 )
+from binance.core.common.exceptions import SnapshotTooOldException
 from binance.spot.orderbook import SpotOrderBook
 
 from test.test_ws_api import WSAPIServer
@@ -86,6 +87,16 @@ async def test_order_book():
                 bids=bids
             ))
 
+        def preset_11():
+            # Variant of preset_10 used by scenarios whose first buffered diff
+            # has U=11; lastUpdateId must be >= 11 to satisfy the docs' step-4
+            # pre-check (snapshot must cover the first buffered event's U).
+            server.on('depth', result=dict(
+                lastUpdateId=11,
+                asks=asks,
+                bids=bids
+            ))
+
         def assert_state_a():
             assert orderbook.asks == asks
             assert orderbook.bids == bids_sort
@@ -93,6 +104,18 @@ async def test_order_book():
         def preset_13():
             server.on('depth', result=dict(
                 lastUpdateId=13,
+                asks=asks1,
+                bids=bids
+            ))
+
+        def preset_14():
+            # Variant of preset_13 used by scenarios whose first buffered diff
+            # has U=14 so the snapshot must have lastUpdateId >= 14 to satisfy
+            # the docs' step-4 pre-check
+            # (developers.binance.com/docs/binance-spot-api-docs/web-socket-streams,
+            # section "How to manage a local order book correctly").
+            server.on('depth', result=dict(
+                lastUpdateId=14,
                 asks=asks1,
                 bids=bids
             ))
@@ -166,7 +189,11 @@ async def test_order_book():
 
         print('round three: new update when still refetching')
 
-        preset_13()
+        # The first event the refetch will see in the buffer is U=14, so the
+        # snapshot's lastUpdateId must be >= 14 to satisfy the docs' step-4
+        # pre-check.  preset_13 would be a step-4 violation here (13 < 14) and
+        # would correctly trigger SnapshotTooOldException + refetch.
+        preset_14()
 
         f = orderbook.updated()
 
@@ -251,7 +278,12 @@ async def test_order_book():
         if not orderbook.ready:
             await orderbook.updated()
 
-        preset_10()
+        # The first buffered diff below has U=11, so the snapshot's
+        # lastUpdateId must be >= 11 to clear the docs' step-4 pre-check.
+        # The intent of this round is to exercise the "queue has an invalid
+        # *intermediate* entry" path -- not the step-4 path -- so the
+        # snapshot must be allowed past step 4 first.
+        preset_11()
 
         def allow_retry_once(info):
             if info.fails > 1:
@@ -316,3 +348,223 @@ async def test_order_book():
     finally:
         await client.close()
         await server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Spot docs step-4 pre-check: snapshot too old -> discard before merge.
+#
+# https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams
+# (section "How to manage a local order book correctly", step 4):
+#
+#   "If the lastUpdateId from the snapshot is strictly less than the U from
+#    step 2 [first buffered event], go back to step 3 [refetch snapshot]."
+#
+# The base class must NOT install the snapshot before validating step 4.
+# Installing a known-too-old snapshot would briefly populate the book with
+# bad state visible to callers.
+# ---------------------------------------------------------------------------
+
+
+def _no_retry(_info):
+    """A retry policy that abandons immediately so ``@retry``-decorated calls
+    re-raise the original exception on the first failure -- used by unit
+    tests to assert raw ``_fetch_snapshot`` semantics."""
+    return True, 0
+
+
+def _allow_one_retry(info):
+    """Retry once with no delay, abandon afterwards."""
+    if info.fails > 1:
+        return True, 0
+    return False, 0
+
+
+def _make_spot_orderbook_for_unit_test(retry_policy=_no_retry) -> SpotOrderBook:
+    """Build a ``SpotOrderBook`` with no client attached.
+
+    No client means ``set_client`` is not called, so the automatic snapshot
+    fetch is not triggered.  Tests can then drive ``_fetch_snapshot`` themselves
+    through a stub client.
+    """
+    return SpotOrderBook('BTCUSDT', retry_policy=retry_policy)
+
+
+class _StubClient:
+    """Drives ``_fetch_snapshot`` deterministically without a real WS-API."""
+
+    def __init__(self, snapshots):
+        # Each call to get_orderbook pops the next prepared snapshot.
+        self._snapshots = list(snapshots)
+        self.calls = 0
+
+        class _Logger:
+            def error(self, *_args, **_kwargs) -> None:
+                pass
+
+        self.logger = _Logger()
+
+    async def get_orderbook(self, *, symbol, limit):  # noqa: ARG002 - signature parity
+        self.calls += 1
+        return self._snapshots.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_spot_orderbook_step4_snapshot_too_old_discards_before_merge():
+    """Step 4: snapshot.lastUpdateId < first buffered U -> discard, do NOT merge.
+
+    Setup:
+      * Buffer a diff event with U=100, u=110.
+      * Provide a snapshot with lastUpdateId=50  (50 < 100 -> step-4 violation).
+
+    Expected:
+      * SnapshotTooOldException is raised by _fetch_snapshot.
+      * The book is NEVER populated with the too-old snapshot
+        (asks/bids stay empty; _last_update_id stays 0).
+      * The buffered queue is cleared (the original buffered event is gone --
+        on a refetch the client will receive fresh events from the WS stream).
+    """
+    # _no_retry abandons after the first failure -> the original
+    # SnapshotTooOldException propagates out unwrapped.
+    orderbook = _make_spot_orderbook_for_unit_test()
+
+    # Simulate the buffering step: a diff event arrived while fetching.
+    orderbook._unsolved_queue.append(dict(U=100, u=110, a=[[101, 1]], b=[]))
+
+    orderbook._client = _StubClient([
+        dict(lastUpdateId=50, asks=[[200, 1]], bids=[[199, 1]]),
+    ])
+
+    with pytest.raises(SnapshotTooOldException) as exc_info:
+        await orderbook._fetch_snapshot()
+
+    # Exception carries the diagnostic details required to debug stuck books.
+    assert exc_info.value.symbol == 'BTCUSDT'
+    assert exc_info.value.snapshot_last_update_id == 50
+    assert exc_info.value.first_buffered_U == 100
+    # Make sure __str__ is exercised (matches the human-readable message).
+    msg = str(exc_info.value)
+    assert 'BTCUSDT' in msg
+    assert '50' in msg
+    assert '100' in msg
+
+    # The book must be untouched: no bad data installed.
+    assert orderbook.asks == []
+    assert orderbook.bids == []
+    assert orderbook._last_update_id == 0
+
+    # The stale buffered event is gone -- step 4 requires a *fresh* fetch and
+    # any subsequently arriving events; replaying old ones against a new
+    # snapshot is meaningless.
+    assert orderbook._unsolved_queue == []
+
+
+@pytest.mark.asyncio
+async def test_spot_orderbook_step4_recovers_via_retry():
+    """The retry policy MUST catch SnapshotTooOldException and refetch.
+
+    Flow:
+      * First fetch returns lastUpdateId=50 (too old) -> step-4 raises.
+      * Retry policy allows one retry; second fetch returns lastUpdateId=105
+        which is >= the first buffered U (100) so step 4 passes.
+      * Book state is taken from the *new* snapshot; the original buffered
+        event was already discarded by step-4 (per the docs).
+    """
+    orderbook = _make_spot_orderbook_for_unit_test(_allow_one_retry)
+
+    # Pre-populate the buffer with a diff event.
+    orderbook._unsolved_queue.append(dict(U=100, u=110, a=[[101, 1]], b=[]))
+
+    orderbook._client = _StubClient([
+        # First call -> too old (50 < 100).
+        dict(lastUpdateId=50, asks=[[200, 1]], bids=[[199, 1]]),
+        # Second call -> covers the buffered event (105 >= 100).
+        dict(lastUpdateId=105, asks=[[100, 5]], bids=[[99, 5]]),
+    ])
+
+    await orderbook._fetch_snapshot()
+
+    # After the retry, the book reflects the *new* snapshot.  The buffered
+    # event (U=100, u=110) was dropped on the first attempt (per the docs:
+    # "go back to step 3" implies starting fresh, not replaying the old
+    # buffered events against the new snapshot).
+    assert orderbook._last_update_id == 105
+    assert orderbook.asks == [[100, 5]]
+    assert orderbook.bids == [[99, 5]]
+    # The stub client served exactly two snapshots (one too-old + one good).
+    assert orderbook._client.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_spot_orderbook_step4_passes_when_snapshot_covers_buffered():
+    """When lastUpdateId >= first buffered U, step 4 passes and merge proceeds."""
+    orderbook = _make_spot_orderbook_for_unit_test()
+
+    # Buffered event: U=100, u=110.
+    orderbook._unsolved_queue.append(dict(U=100, u=110, a=[[101, 1]], b=[]))
+
+    orderbook._client = _StubClient([
+        # lastUpdateId=105 >= U=100 -> step-4 OK; the buffered event will be
+        # applied since U=100 <= 105+1 = 106.
+        dict(lastUpdateId=105, asks=[[100, 5]], bids=[[99, 5]]),
+    ])
+
+    await orderbook._fetch_snapshot()
+
+    # Buffered event was applied -> last update id advanced to 110.
+    assert orderbook._last_update_id == 110
+    assert orderbook._unsolved_queue == []
+    # asks include the snapshot's [100, 5] and the diff's [101, 1].
+    assert [100, 5] in orderbook.asks
+    assert [101, 1] in orderbook.asks
+
+
+@pytest.mark.asyncio
+async def test_spot_orderbook_step4_no_op_when_queue_empty():
+    """Step 4 only applies when the buffer is non-empty.
+
+    With an empty buffer, the first event has not yet been received, so the
+    snapshot is installed unconditionally and the WS straddle is validated
+    later by the subscription's first arriving diff.
+    """
+    orderbook = _make_spot_orderbook_for_unit_test()
+    # No buffered events.
+    assert orderbook._unsolved_queue == []
+
+    orderbook._client = _StubClient([
+        # Any lastUpdateId is fine; nothing to compare it against.
+        dict(lastUpdateId=42, asks=[[100, 5]], bids=[[99, 5]]),
+    ])
+
+    await orderbook._fetch_snapshot()
+
+    assert orderbook._last_update_id == 42
+    assert orderbook.asks == [[100, 5]]
+    assert orderbook.bids == [[99, 5]]
+
+
+@pytest.mark.asyncio
+async def test_spot_orderbook_step4_equal_ids_is_acceptable():
+    """The docs say *strictly less* triggers refetch.
+
+    A snapshot whose ``lastUpdateId`` exactly equals the first buffered ``U``
+    is acceptable: the buffered event picks up at ``current_last + 1`` so
+    ``U == lastUpdateId`` means the diff was generated immediately after the
+    snapshot and bridges into the live stream.
+
+    (Equality is acceptable for the step-4 gate; per-event ``U <= last+1``
+    validation in ``_update`` then governs the merge itself.)
+    """
+    orderbook = _make_spot_orderbook_for_unit_test()
+    # Buffered event with U == lastUpdateId.
+    orderbook._unsolved_queue.append(dict(U=100, u=110, a=[[101, 1]], b=[]))
+
+    orderbook._client = _StubClient([
+        dict(lastUpdateId=100, asks=[[100, 5]], bids=[[99, 5]]),
+    ])
+
+    await orderbook._fetch_snapshot()
+
+    # The buffered event (U=100, u=110) satisfies U <= last+1 (100 <= 101),
+    # so it should be applied; final last_update_id is 110.
+    assert orderbook._last_update_id == 110
+    assert orderbook._unsolved_queue == []

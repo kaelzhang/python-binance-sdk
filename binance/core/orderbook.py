@@ -61,7 +61,10 @@ from binance.core.common.utils import (
     format_msg,
     repr_exception
 )
-from binance.core.common.exceptions import OrderBookFetchAbandonedException
+from binance.core.common.exceptions import (
+    OrderBookFetchAbandonedException,
+    SnapshotTooOldException,
+)
 
 # Diff-event field keys.  Identical on every Binance market venue (Spot,
 # USDⓈ-M, COIN-M) per the public WebSocket reference documentation.
@@ -268,17 +271,55 @@ class OrderBook(ABC):
         The default implementation calls ``self._client.get_orderbook`` which
         is provided by every market client.  Markets whose snapshot transport
         diverges from this signature may override.
+
+        Step 4 of the Spot "How to manage a local order book correctly"
+        procedure (`developers.binance.com
+        <https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams>`__)
+        is enforced *before* the snapshot is installed: if the snapshot's
+        ``lastUpdateId`` is strictly less than the ``U`` of the first
+        buffered diff event, the snapshot is too old to bridge to the live
+        stream.  In that case the buffered queue is cleared (those events
+        will be lost; the next refetch starts a fresh straddle) and
+        :class:`SnapshotTooOldException` is raised so the configured retry
+        policy refetches.  This guarantees callers never observe a
+        transiently-bad book state.
         """
         snapshot = await self._client.get_orderbook(
             symbol=self._symbol,
             limit=self._limit
         )
 
+        snapshot_last_update_id = snapshot[KEY_REST_LAST_UPDATE_ID]
+
+        # Docs step 4: snapshot must cover the first buffered event.
+        #
+        # On Spot the rule is ``snapshot.lastUpdateId >= first_buffered.U``;
+        # if that fails the snapshot is too old to bridge into the live diff
+        # stream and we MUST refetch.  Futures uses the straddle rule
+        # (``U <= snapshot.lastUpdateId <= u``) which is enforced separately
+        # by ``FuturesOrderBook._update`` once the first post-snapshot event
+        # arrives, but the spot pre-condition is still a useful sanity check
+        # (a snapshot strictly older than the first buffered event cannot
+        # straddle it either).  Apply it uniformly here.
+        if self._unsolved_queue:
+            first_U = self._unsolved_queue[0][KEY_FIRST_UPDATE_ID]
+            if snapshot_last_update_id < first_U:
+                # Drop the stale buffered events: on a refetch the WS stream
+                # will deliver fresh ones, and replaying the old buffer
+                # against the new snapshot is ambiguous (per the docs we
+                # "go back to step 3" -- i.e. restart the buffering).
+                self._unsolved_queue.clear()
+                raise SnapshotTooOldException(
+                    self._symbol,
+                    snapshot_last_update_id,
+                    first_U
+                )
+
         self.asks.clear()
         self.bids.clear()
 
         self._merge(
-            snapshot[KEY_REST_LAST_UPDATE_ID],
+            snapshot_last_update_id,
             snapshot[KEY_REST_ASKS],
             snapshot[KEY_REST_BIDS]
         )
