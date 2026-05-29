@@ -228,3 +228,16 @@ def test_redact_url_replaces_both_params():
     assert 'symbol=X' in result
     assert 'signature=***' in result
     assert 'apiKey=***' in result
+
+
+# ---------------------------------------------------------------------------
+# ERROR_CODE_NO_REFERENCE_PRICE = -2043
+# Returned by Spot ``GET /api/v3/referencePrice`` and the WS-API
+# ``referencePrice`` method when the queried symbol has no reference price
+# set. Added by Binance in the 2026-04-16 Spot CHANGELOG entry.
+# Docs: https://developers.binance.com/docs/binance-spot-api-docs/CHANGELOG
+# ---------------------------------------------------------------------------
+
+def test_error_code_no_reference_price_constant():
+    from binance.core.common.constants import ERROR_CODE_NO_REFERENCE_PRICE
+    assert ERROR_CODE_NO_REFERENCE_PRICE == -2043

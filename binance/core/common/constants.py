@@ -492,5 +492,11 @@ ERROR_CODE_INVALID_TIMESTAMP = -1021
 # Docs: https://developers.binance.com/docs/derivatives/change-log (2026-05-11 entry)
 ERROR_CODE_POSITION_SIDE_DUAL_BLOCKED = -4531
 
+# Returned by `GET /api/v3/referencePrice` and WS-API `referencePrice` when
+# the queried symbol has no reference price set (per 2026-04-16 Spot
+# CHANGELOG). Docs:
+# https://developers.binance.com/docs/binance-spot-api-docs/CHANGELOG
+ERROR_CODE_NO_REFERENCE_PRICE = -2043
+
 EVENT_SERVER_SHUTDOWN = 'serverShutdown'
 EVENT_STREAM_TERMINATED = 'eventStreamTerminated'
