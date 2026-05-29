@@ -148,6 +148,29 @@ class CMTradingGetters:
         """
         ...  # pragma: no cover
 
+    def get_open_order(self, **kwargs) -> Awaitable:
+        """Queries a single open COIN-M order (singular ``/openOrder``).
+
+        Weight: 1.
+        Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Query-Current-Open-Order
+
+        Distinct from :py:meth:`get_open_orders` (plural). Either
+        ``orderId`` or ``origClientOrderId`` MUST be supplied. Returns
+        an "Order does not exist" error if the order has been filled or
+        cancelled.
+
+        Args:
+            symbol (str): The COIN-M futures symbol.
+            orderId (:obj:`long`, optional): Either this or
+                ``origClientOrderId`` must be sent.
+            origClientOrderId (:obj:`str`, optional):
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            dict: The single open order.
+        """
+        ...  # pragma: no cover
+
     def get_open_orders(self, **kwargs) -> Awaitable:
         """Gets all open orders, or open orders for a specific COIN-M symbol.
 

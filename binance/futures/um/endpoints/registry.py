@@ -223,6 +223,18 @@ REST_ENDPOINTS = [
         weight=10,
     ),
     dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Query-Current-Open-Order
+        # Request Weight: 1. Returns ONE open order (singular ``/openOrder``,
+        # not plural ``/openOrders``); either ``orderId`` or
+        # ``origClientOrderId`` MUST be supplied. Returns an "Order does not
+        # exist" error if the order is filled or cancelled.
+        name='get_open_order',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/openOrder',
+        security_type=SecurityType.USER_DATA,
+        weight=1,
+    ),
+    dict(
         name='get_open_orders',
         transport='rest',
         rest_url=UM_REST_HOST + '/fapi/v1/openOrders',

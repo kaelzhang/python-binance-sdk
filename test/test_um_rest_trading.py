@@ -113,6 +113,43 @@ def test_countdown_cancel_all_orders_registry_shape():
 
 
 # ---------------------------------------------------------------------------
+# get_open_order  GET /fapi/v1/openOrder  weight 1  (USER_DATA, singular)
+# Distinct from `openOrders` (plural). Returns a single live order.
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Query-Current-Open-Order
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_open_order_singular_weight_1():
+    client = _signed_client()
+    payload = {'orderId': 1917641, 'symbol': 'BTCUSDT', 'status': 'NEW'}
+    with aioresponses() as m:
+        m.get(_re('/fapi/v1/openOrder'), payload=payload, status=200)
+        result = await client.get_open_order(symbol='BTCUSDT', orderId=1917641)
+    assert result == payload
+    assert _weight_used(client) == 1
+
+
+def test_get_open_order_registry_shape():
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['get_open_order']
+    assert str(entry.get('method', 'get')).lower() == 'get'
+    assert entry['rest_url'].endswith('/fapi/v1/openOrder')
+    assert entry['weight'] == 1
+    assert entry['security_type'] == SecurityType.USER_DATA
+
+
+def test_get_open_order_is_not_get_open_orders():
+    """``get_open_order`` (singular) and ``get_open_orders`` (plural)
+    MUST be distinct registry entries, since the wire paths differ."""
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    singular = by_name['get_open_order']['rest_url']
+    plural = by_name['get_open_orders']['rest_url']
+    assert singular != plural
+    assert singular.endswith('/openOrder')
+    assert plural.endswith('/openOrders')
+
+
+# ---------------------------------------------------------------------------
 # get_open_orders  GET /fapi/v1/openOrders  weight 1 (symbol) or 40 (no symbol)
 # ---------------------------------------------------------------------------
 
@@ -435,6 +472,7 @@ def test_rest_endpoints_registry_contains_trading_entries():
         'countdown_cancel_all_orders': ('post', '/fapi/v1/countdownCancelAll'),
         'get_adl_quantile': ('get', '/fapi/v1/adlQuantile'),
         'get_position_margin_history': ('get', '/fapi/v1/positionMargin/history'),
+        'get_open_order': ('get', '/fapi/v1/openOrder'),
         'get_open_orders': ('get', '/fapi/v1/openOrders'),
         'get_all_orders': ('get', '/fapi/v1/allOrders'),
         'create_batch_orders': ('post', '/fapi/v1/batchOrders'),
