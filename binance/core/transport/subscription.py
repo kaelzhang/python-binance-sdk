@@ -175,7 +175,19 @@ class SubscriptionManager:
 
         self._handler_ctx = None
 
-    async def _receive(self, msg) -> None:
+    async def _receive(self, msg, *, origin: Optional[Stream] = None) -> None:
+        """Dispatch ``msg`` delivered by ``origin`` (the originating stream).
+
+        Args:
+            msg: The raw message payload from the server.
+            origin: The :class:`Stream` instance that delivered the message.
+                Must be passed by the per-stream ``on_message`` wrapper so
+                ``serverShutdown`` (per 2026-05-06 Spot changelog: now sent on
+                BOTH WS-API and market-data WS streams) recycles the
+                connection that delivered it rather than always recycling
+                the market-data stream. ``None`` (legacy) falls back to
+                recycling every known data stream.
+        """
         if not self._receiving:
             return
 
@@ -183,9 +195,14 @@ class SubscriptionManager:
 
         if event_type == EVENT_SERVER_SHUTDOWN:
             self._logger.warning(
-                'serverShutdown received; recycling data streams proactively')
-            for stream in list(self._data_streams.values()):
-                await stream.recycle()
+                'serverShutdown received; recycling originating stream')
+            if origin is not None:
+                await origin.recycle()
+            else:
+                # Fallback for callers that have not yet been migrated to the
+                # bound-origin callback (only legacy tests / direct calls).
+                for stream in list(self._data_streams.values()):
+                    await stream.recycle()
             return
 
         if event_type == EVENT_STREAM_TERMINATED:
@@ -226,9 +243,16 @@ class SubscriptionManager:
             path = self._default_data_stream_path
         stream = self._data_streams.get(path)
         if stream is None:
+            # Bind the ``origin`` for ``_receive`` to the path key so the
+            # callback resolves to the current ``_data_streams[path]`` at the
+            # time the message arrives.  This survives reconnects that may
+            # swap the underlying :class:`Stream` instance via aioretry.
+            async def on_message_bound(msg, _key=path):
+                origin = self._data_streams.get(_key)
+                await self._receive(msg, origin=origin)
             stream = Stream(
                 self._stream_host + path,
-                on_message=self._receive,
+                on_message=on_message_bound,
                 on_connected=self._build_data_resubscribe(path),
                 retry_policy=self._stream_retry_policy,
                 timeout=self._stream_timeout,
@@ -262,9 +286,14 @@ class SubscriptionManager:
         every response into the shared rate-limit core.
         """
         if self._user_stream is None:
+            # Bind ``origin`` for ``_receive`` so a ``serverShutdown`` arriving
+            # over the WS-API connection (per 2026-05-06 Spot changelog) recycles
+            # THIS connection rather than the market-data stream.
+            async def on_message_bound(msg):
+                await self._receive(msg, origin=self._user_stream)
             self._user_stream = Stream(
                 self._ws_api_host,
-                on_message=self._receive,
+                on_message=on_message_bound,
                 on_connected=self._on_ws_api_connected,
                 on_response=self._reconcile_ws_api_rate_limits,
                 retry_policy=self._stream_retry_policy,

@@ -154,7 +154,7 @@ class FuturesUserStreamMixin:
     # Override: intercept listenKeyExpired in _receive
     # ------------------------------------------------------------------
 
-    async def _receive(self, msg) -> None:
+    async def _receive(self, msg, *, origin: Optional[Stream] = None) -> None:
         """Override: intercept ``listenKeyExpired`` for SDK-side recovery, then dispatch normally."""
         # Extract the event type from the message (same logic as subscription.py
         # _extract_event_type, duplicated here to avoid importing a private symbol).
@@ -163,7 +163,7 @@ class FuturesUserStreamMixin:
             asyncio.get_running_loop().create_task(
                 self._on_futures_listen_key_expired()
             )
-        await super()._receive(msg)  # type: ignore[misc]
+        await super()._receive(msg, origin=origin)  # type: ignore[misc]
 
     # ------------------------------------------------------------------
     # Override: on_connected — do NOT replay subscribe on ws-fapi reconnect
@@ -262,9 +262,14 @@ class FuturesUserStreamMixin:
         template = self.MARKET.user_stream_path_template
         uri = self._stream_host + template.format(listen_key=listen_key)
 
+        # Bind ``origin`` so a ``serverShutdown`` arriving over the dedicated
+        # fstream connection recycles it (and not the data stream / WS-API).
+        async def on_message_bound(msg):
+            await self._receive(msg, origin=self._futures_user_stream)
+
         self._futures_user_stream = Stream(
             uri,
-            on_message=self._receive,
+            on_message=on_message_bound,
             retry_policy=self._stream_retry_policy,
             timeout=self._stream_timeout,
             logger=self._logger,
