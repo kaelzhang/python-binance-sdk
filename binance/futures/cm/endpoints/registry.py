@@ -65,6 +65,7 @@ from binance.futures.cm.constants import CM_REST_HOST
 from binance.futures.cm.endpoints.getters import CMFuturesGetters
 from binance.futures.cm.endpoints.weights import (
     _cm_all_orders_weight,
+    _cm_force_orders_weight,
     _cm_open_orders_weight,
     _cm_user_trades_weight,
     _depth_weight,
@@ -290,6 +291,18 @@ REST_ENDPOINTS = [
         security_type=SecurityType.TRADE,
         # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Cancel-Multiple-Orders
         weight=1,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Users-Force-Orders
+        # Request Weight: 20 with `symbol`, 50 without. USER_DATA. 90-day
+        # query window only — server rejects ranges further beyond 90 days.
+        # Returns the user's auto-liquidation / ADL history; mirrors the UM
+        # equivalent.
+        name='get_force_orders',
+        transport='rest',
+        rest_url=CM_REST_HOST + '/dapi/v1/forceOrders',
+        security_type=SecurityType.USER_DATA,
+        weight=_cm_force_orders_weight,
     ),
     # ----- Account / Position ------------------------------------------------
     dict(

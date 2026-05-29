@@ -293,3 +293,30 @@ class CMTradingGetters:
             list: Cancellation results.
         """
         ...  # pragma: no cover
+
+    def get_force_orders(self, **kwargs) -> Awaitable:
+        """Queries the caller's COIN-M force-order (liquidation / ADL)
+        history (``GET /dapi/v1/forceOrders``).
+
+        Weight: 20 when ``symbol`` is given; 50 otherwise.
+        Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Users-Force-Orders
+
+        Returns force-order events (auto-liquidation or ADL) for the user.
+        Query window is the last 90 days only; ``startTime`` / ``endTime``
+        further beyond 90 days will be rejected by the server.
+
+        Args:
+            symbol (:obj:`str`, optional): The COIN-M futures symbol. If
+                omitted, returns force orders across all symbols (weight
+                50 — use with care).
+            autoCloseType (:obj:`str`, optional): ``'LIQUIDATION'`` or
+                ``'ADL'``; returns both kinds if omitted.
+            startTime (:obj:`long`, optional): Inclusive lower bound (ms).
+            endTime (:obj:`long`, optional): Inclusive upper bound (ms).
+            limit (:obj:`int`, optional): Default 50; max 100.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            list: Force-order records (price, quantity, status, etc.).
+        """
+        ...  # pragma: no cover

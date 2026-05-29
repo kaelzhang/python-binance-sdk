@@ -29,6 +29,15 @@ def _cm_user_trades_weight(kwargs) -> int:
     return 40 if 'pair' in kwargs else 20
 
 
+def _cm_force_orders_weight(kwargs) -> int:
+    """`forceOrders` weight: 20 with ``symbol``, 50 without.
+
+    Docs:
+      https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Users-Force-Orders
+    """
+    return 20 if 'symbol' in kwargs else 50
+
+
 def _depth_weight(kwargs) -> int:
     """`GET /dapi/v1/depth` weight depends on the ``limit`` parameter.
 
