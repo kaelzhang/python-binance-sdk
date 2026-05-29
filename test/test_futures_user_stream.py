@@ -765,6 +765,32 @@ def test_account_config_update_docstring_marks_ai_as_um_only():
     assert 'CM' in doc
 
 
+# ---------------------------------------------------------------------------
+# ``eventStreamTerminated`` is SERVER-PUSHED by Binance on the ws-fapi
+# connection (mirrors the spot WS-API behaviour). The dedicated futures
+# user-data fstream uses ``listenKeyExpired`` instead for listenKey
+# invalidation — that is the SDK's recovery trigger, NOT a synthesized
+# eventStreamTerminated. The handler docstring must reflect this.
+#
+# Source: https://developers.binance.com/docs/binance-spot-api-docs/user-data-stream
+# Futures listenKey flow: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams
+# ---------------------------------------------------------------------------
+
+
+def test_futures_event_stream_terminated_docstring_marks_event_as_server_pushed():
+    """FuturesEventStreamTerminatedHandlerBase docstring must mark the event as server-pushed on the ws-fapi connection, NOT SDK-synthesized."""
+    doc = FuturesEventStreamTerminatedHandlerBase.__doc__ or ''
+    # Stale wording must be gone (the SDK does not synthesize this event
+    # anywhere in source — it is always pushed by the Binance WS-API).
+    assert 'synthesized by the SDK' not in doc
+    assert 'SDK-synthesized' not in doc
+    # The docstring must say it is server-pushed by Binance.
+    assert 'server-pushed' in doc or 'pushed by Binance' in doc
+    # It must also point at the listenKeyExpired recovery channel for the
+    # dedicated futures user-data fstream so users do not confuse the two.
+    assert 'listenKeyExpired' in doc
+
+
 def test_handler_bases_are_handler_subclasses():
     """All futures user handler bases are subclasses of core Handler."""
     from binance.core.handlers.base import Handler

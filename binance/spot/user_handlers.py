@@ -98,13 +98,20 @@ class ExternalLockUpdateHandlerBase(SimpleHandler):
 
 
 class EventStreamTerminatedHandlerBase(SimpleHandler):
-    """Base handler for the ``eventStreamTerminated`` synthetic event.
+    """Base handler for the ``eventStreamTerminated`` event.
 
-    Receives a notification synthesized by the SDK (not by Binance itself)
-    when the user-data WebSocket stream is terminated unexpectedly.  After
-    receiving this event, the SDK automatically attempts to re-establish the
-    stream.  Override ``receive(payload)`` to log or react to stream
-    interruptions.
+    Server-pushed by Binance on the spot WS-API user-data stream when the
+    user-data subscription is closed (``userDataStream.unsubscribe``), the
+    session is logged out, or the listen-token expires.  This event is
+    emitted by Binance itself — the SDK does NOT synthesize it.
+
+    After receiving this event, the SDK automatically attempts to
+    re-establish the user-data subscription on the same WS-API connection
+    (see ``_recover_user_stream_if_needed`` in
+    ``binance.core.transport.subscription``).  Override ``receive(payload)``
+    to log or react to the disconnect.
+
+    Source: https://developers.binance.com/docs/binance-spot-api-docs/user-data-stream
 
     The raw payload dict is passed to ``receive`` unchanged.
     """

@@ -52,8 +52,11 @@ class FuturesUserProcessor(Processor):
     - ``ORDER_TRADE_UPDATE``:                order lifecycle event
     - ``MARGIN_CALL``:                       margin-ratio warning
     - ``ACCOUNT_CONFIG_UPDATE``:             leverage or multi-assets-mode change
-    - ``listenKeyExpired``:                  listen-key expiry notification
-    - ``eventStreamTerminated``:             SDK-synthesized stream-termination sentinel
+    - ``listenKeyExpired``:                  listen-key expiry notification (server-pushed
+                                             on the dedicated user-data fstream)
+    - ``eventStreamTerminated``:             server-pushed by Binance on the ws-fapi
+                                             connection when the WS-API user-data
+                                             subscription / session is terminated
     - ``TRADE_LITE``:                        low-latency fill (UM only)
     - ``STRATEGY_UPDATE``:                   algo/strategy lifecycle (UM + CM)
     - ``GRID_UPDATE``:                       grid trading update (UM + CM)

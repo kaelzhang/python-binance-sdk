@@ -288,13 +288,24 @@ class FuturesListenKeyExpiredHandlerBase(FuturesSimpleHandler):
 
 
 class FuturesEventStreamTerminatedHandlerBase(FuturesSimpleHandler):
-    """Base handler for the ``eventStreamTerminated`` SDK-synthesized event.
+    """Base handler for the ``eventStreamTerminated`` event on the ws-fapi connection.
 
-    Receives a notification synthesized by the SDK (not by Binance itself)
-    when the futures user-data WebSocket stream is terminated unexpectedly.
-    After receiving this event the SDK automatically attempts to re-establish
-    the stream.  Override ``receive(payload)`` to log or react to stream
-    interruptions.
+    Server-pushed by Binance on the futures WS-API connection (same wire
+    semantics as the spot ``eventStreamTerminated``).  This event is
+    emitted by Binance itself — the SDK does NOT synthesize it.
+
+    For the **dedicated futures user-data fstream** (the connection that
+    actually carries ``ACCOUNT_UPDATE`` / ``ORDER_TRADE_UPDATE`` / etc.)
+    Binance does NOT push ``eventStreamTerminated``; instead it pushes
+    ``listenKeyExpired``, which the SDK uses to re-obtain the listenKey
+    and reconnect the dedicated fstream (see
+    ``binance.futures.user_stream.FuturesUserStreamMixin._on_futures_listen_key_expired``).
+    Subscribe to ``FuturesListenKeyExpiredHandlerBase`` to observe that
+    recovery path; subscribe to this handler to observe ws-fapi-connection
+    termination.
+
+    Source: https://developers.binance.com/docs/binance-spot-api-docs/user-data-stream
+    Futures listenKey flow: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams
 
     The raw payload dict is passed unchanged.
     """

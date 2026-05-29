@@ -147,6 +147,19 @@ async def test_event_stream_terminated(client):
     })
 
 
+def test_event_stream_terminated_docstring_marks_event_as_server_pushed():
+    """EventStreamTerminatedHandlerBase docstring must mark ``eventStreamTerminated`` as server-pushed by Binance, NOT SDK-synthesized.
+
+    Spot WS-API source: https://developers.binance.com/docs/binance-spot-api-docs/user-data-stream
+    """
+    doc = EventStreamTerminatedHandlerBase.__doc__ or ''
+    # Stale wording must be gone.
+    assert 'synthesized by the SDK' not in doc
+    assert 'SDK-synthesized' not in doc
+    # The docstring must say the event is pushed by Binance (server-pushed).
+    assert 'server-pushed' in doc or 'pushed by Binance' in doc
+
+
 @pytest.mark.asyncio
 async def test_kline_handler(client):
     E = 123456789
