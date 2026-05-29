@@ -4,6 +4,7 @@ COIN-M reuses the shared futures handler bases from :mod:`binance.futures.stream
 This module:
 1. Adds the COIN-M-specific ``ps`` (pair) field to the force-order column map.
 2. Provides CM-only handler bases and processors for streams exclusive to COIN-M:
+   ``<pair>@markPrice`` (Mark Price of All Symbols of a Pair),
    ``indexPrice``, ``indexPriceKline``, ``markPriceKline``.
 3. Overrides ``subscribe_param`` on processors that take symbol/pair parameters
    to preserve underscores in COIN-M symbol names (e.g. ``BTCUSD_PERP``).
@@ -24,6 +25,8 @@ Confirmed CM vs UM payload differences (2026-05-26):
   ``symbol.lower()`` instead, preserving the underscore.
 
 CM-only streams:
+- <pair>@markPrice (Mark Price of All Symbols of a Pair):
+  https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Mark-Price-of-All-Symbols-of-a-Pair
 - indexPrice: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Index-Price-Stream
 - indexPriceKline: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Index-Kline-Candlestick-Streams
 - markPriceKline: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Mark-Price-Kline-Candlestick-Streams
@@ -36,6 +39,8 @@ from binance.core.common.constants import (
     STREAM_TYPE_MAP,
     STREAM_OHLC_MAP,
     KLINE_TYPE_PREFIX,
+    KEY_STREAM_TYPE,
+    KEY_PAYLOAD,
 )
 from binance.core.common.exceptions import InvalidSubTypeParamException
 from binance.core.common.types import DictPayload
@@ -479,6 +484,117 @@ class OrderBookProcessor(_OrderBookProcessor):
 
 
 # ---------------------------------------------------------------------------
+# CM-only: PairMarkPrice (Mark Price of All Symbols of a Pair)
+# Wire stream: <pair>@markPrice  or  <pair>@markPrice@1s
+# Confirmed CM-only (2026-05): not documented on fstream (USDⓈ-M).
+# Delivers an ARRAY of markPriceUpdate dicts covering every symbol of the
+# given pair (e.g. BTCUSD_PERP, BTCUSD_201225, ...).  Distinct from
+# <symbol>@markPrice (single dict) and !markPrice@arr (all markets).
+# Default speed = 3000ms; @1s = 1000ms.
+# Each element shape matches CM <symbol>@markPrice (no `ap` -- CM lacks it).
+# Confirmed fields per CM docs:
+#   e  'markPriceUpdate'
+#   E  event time
+#   s  symbol (specific symbol within the pair, e.g. BTCUSD_PERP)
+#   p  mark price
+#   P  estimated settle price (only useful in last hour before settlement)
+#   i  index price
+#   r  funding rate (perpetual) or empty string (delivery contracts)
+#   T  next funding time (perpetual) or 0 (delivery contracts)
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Mark-Price-of-All-Symbols-of-a-Pair
+# ---------------------------------------------------------------------------
+
+CM_PAIR_MARK_PRICE_COLUMNS_MAP = MARK_PRICE_COLUMNS_MAP_BASE
+CM_PAIR_MARK_PRICE_COLUMNS = CM_PAIR_MARK_PRICE_COLUMNS_MAP.keys()
+
+
+class CMPairMarkPriceHandlerBase(Handler):
+    """Base handler for the COIN-M ``SubType.PAIR_MARK_PRICE`` stream (``<pair>@markPrice[@1s]``).
+
+    COIN-M only: delivers a ``markPriceUpdate`` array covering every symbol
+    of the given pair (e.g. ``BTCUSD_PERP``, ``BTCUSD_201225``).  Distinct
+    from the per-symbol ``<symbol>@markPrice`` stream (which delivers a
+    single dict) and from ``!markPrice@arr`` (all markets, not pair-scoped).
+
+    Each array element matches the per-symbol CM ``markPriceUpdate`` shape
+    (no ``ap`` field — CM lacks it).
+
+    Subclass this and override ``receive(payload)`` to handle events.
+
+    Docs:
+    https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Mark-Price-of-All-Symbols-of-a-Pair
+    """
+
+    COLUMNS_MAP = CM_PAIR_MARK_PRICE_COLUMNS_MAP
+    COLUMNS = CM_PAIR_MARK_PRICE_COLUMNS
+
+
+CM_PAIR_MARK_PRICE_STREAM_SUFFIX = '@markPrice'
+
+
+class CMPairMarkPriceProcessor(Processor):
+    """Processor for the COIN-M pair mark price stream (``<pair>@markPrice[@1s]``).
+
+    COIN-M only.  Requires a ``pair`` string parameter (e.g. ``'BTCUSD'``).
+    Accepts an optional second positional argument ``'1s'`` to select the
+    1000ms variant (default is 3000ms per docs).
+
+    Routing matches stream names ending in ``@markPrice`` or
+    ``@markPrice@1s`` and requires an array payload, which disambiguates
+    from:
+    - ``<symbol>@markPrice`` (per-symbol; delivers a single dict, dispatched
+      by :class:`~binance.futures.streams.MarkPriceProcessor`).
+    - ``!markPrice@arr[@1s]`` (all-market; stream name starts with ``!``,
+      dispatched by :class:`~binance.futures.streams.AllMarketMarkPriceProcessor`).
+    """
+
+    HANDLER = CMPairMarkPriceHandlerBase
+    SUB_TYPE = SubType.PAIR_MARK_PRICE
+
+    def is_message_type(self, msg):
+        stream_type = msg.get(KEY_STREAM_TYPE)
+        payload = msg.get(KEY_PAYLOAD)
+
+        if stream_type is None or stream_type.startswith('!'):
+            return False, None
+
+        # Match <pair>@markPrice or <pair>@markPrice@1s suffix.
+        if not (
+            stream_type.endswith(CM_PAIR_MARK_PRICE_STREAM_SUFFIX)
+            or stream_type.endswith(CM_PAIR_MARK_PRICE_STREAM_SUFFIX + '@1s')
+        ):
+            return False, None
+
+        # Per-symbol <symbol>@markPrice delivers a single dict; only the
+        # pair variant delivers an array.
+        if type(payload) is not list:
+            return False, None
+
+        return True, payload
+
+    def subscribe_param(self, _, t, *args) -> str:
+        """Return ``<pair>@markPrice`` or ``<pair>@markPrice@1s``.
+
+        Uses ``pair.lower()`` (preserves underscores) for consistency with
+        the rest of the CM module.
+        """
+        pair = self._get_param_symbol(t, args)
+
+        if len(args) >= 2:
+            speed = args[1]
+            if speed != '1s':
+                raise InvalidSubTypeParamException(
+                    t, 'speed',
+                    "`SubType.PAIR_MARK_PRICE` accepts only ``'1s'`` "
+                    'for the optional update_speed parameter '
+                    "(default is 3s); got `%s`" % (speed,)
+                )
+            return f'{pair.lower()}@markPrice@1s'
+
+        return f'{pair.lower()}@markPrice'
+
+
+# ---------------------------------------------------------------------------
 # CM-only: IndexPrice
 # Wire stream: <pair>@indexPrice[@1s]
 # Confirmed CM-only (2026-05-26): not documented on fstream (USDⓈ-M).
@@ -742,6 +858,7 @@ PROCESSORS = [
     PartialOrderBookProcessor,
     OrderBookProcessor,
     ContractInfoProcessor,
+    CMPairMarkPriceProcessor,
     IndexPriceProcessor,
     IndexPriceKlineProcessor,
     MarkPriceKlineProcessor,

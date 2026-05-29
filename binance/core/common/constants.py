@@ -93,6 +93,7 @@ class SubType(StringEnum):
         TRADING_SESSION: US equity/commodity session events (``tradingSession``).
 
     CM-only streams:
+        PAIR_MARK_PRICE: Mark price for every symbol of a pair (``<pair>@markPrice[@1s]``).
         INDEX_PRICE: Spot index price for the pair (``<pair>@indexPrice[@1s]``).
         INDEX_PRICE_KLINE: Index price kline (``<pair>@indexPriceKline_<interval>``).
         MARK_PRICE_KLINE: Mark price kline (``<symbol>@markPriceKline_<interval>``).
@@ -185,6 +186,14 @@ class SubType(StringEnum):
     """
 
     # CM-only futures streams
+    PAIR_MARK_PRICE = 'pairMarkPrice'
+    """Mark Price of All Symbols of a Pair stream (``<pair>@markPrice[@1s]``).
+    COIN-M only: delivers a ``markPriceUpdate`` array covering every symbol
+    of the given pair (e.g. ``BTCUSD_PERP``, ``BTCUSD_201225``, ...).
+    Distinct from per-symbol ``<symbol>@markPrice`` and all-markets
+    ``!markPrice@arr``.  Default speed = 3000ms; ``@1s`` selects 1000ms.
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Mark-Price-of-All-Symbols-of-a-Pair
+    """
     INDEX_PRICE = 'indexPrice'
     """Index price stream (``<pair>@indexPrice[@1s]``).
     COIN-M only: delivers spot index price updates for the underlying pair.

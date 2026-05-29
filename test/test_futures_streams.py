@@ -2073,6 +2073,173 @@ def test_um_rpi_diff_depth_in_um_processors():
 
 
 # ===========================================================================
+# CM-only: <pair>@markPrice (Mark Price of All Symbols of a Pair)
+# Wire stream: <pair>@markPrice or <pair>@markPrice@1s
+# COIN-M only: delivers a markPriceUpdate ARRAY containing every symbol of a
+# given pair (e.g. BTCUSD_PERP, BTCUSD_201225, ...).  Distinct from
+# `<symbol>@markPrice` (single symbol) and `!markPrice@arr` (all markets).
+# Default speed = 3000ms; @1s = 1000ms (per docs).
+# Each element is a markPriceUpdate dict — same field set as per-symbol CM
+# markPrice (no `ap`, since CM lacks `ap`).
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Mark-Price-of-All-Symbols-of-a-Pair
+# ===========================================================================
+
+CM_PAIR_MARK_PRICE_ITEM = {
+    'e': 'markPriceUpdate',
+    'E': 1638747660000,
+    's': 'BTCUSD_200925',
+    'p': '11185.87786614',
+    'P': '11185.87786614',
+    'i': '11185.87786614',
+    'r': '0.00038167',
+    'T': 1638748800000,
+}
+
+
+def test_cm_pair_mark_price_subtype_value():
+    assert str(SubType.PAIR_MARK_PRICE) == 'pairMarkPrice'
+
+
+def test_cm_pair_mark_price_subscribe_param_default():
+    from binance.futures.cm.streams import CMPairMarkPriceProcessor
+    proc = CMPairMarkPriceProcessor(None)
+    assert proc.subscribe_param(
+        True, SubType.PAIR_MARK_PRICE, 'BTCUSD'
+    ) == 'btcusd@markPrice'
+
+
+def test_cm_pair_mark_price_subscribe_param_1s():
+    from binance.futures.cm.streams import CMPairMarkPriceProcessor
+    proc = CMPairMarkPriceProcessor(None)
+    assert proc.subscribe_param(
+        True, SubType.PAIR_MARK_PRICE, 'BTCUSD', '1s'
+    ) == 'btcusd@markPrice@1s'
+
+
+def test_cm_pair_mark_price_subscribe_param_rejects_other_speed():
+    """Per docs only the (default) 3s stream and the @1s variant exist."""
+    from binance.futures.cm.streams import CMPairMarkPriceProcessor
+    proc = CMPairMarkPriceProcessor(None)
+    with pytest.raises(InvalidSubTypeParamException, match='speed'):
+        proc.subscribe_param(True, SubType.PAIR_MARK_PRICE, 'BTCUSD', '3s')
+    with pytest.raises(InvalidSubTypeParamException, match='speed'):
+        proc.subscribe_param(True, SubType.PAIR_MARK_PRICE, 'BTCUSD', 1000)
+
+
+def test_cm_pair_mark_price_subscribe_param_no_pair():
+    from binance.futures.cm.streams import CMPairMarkPriceProcessor
+    proc = CMPairMarkPriceProcessor(None)
+    with pytest.raises(InvalidSubTypeParamException, match='symbol'):
+        proc.subscribe_param(True, SubType.PAIR_MARK_PRICE)
+
+
+def test_cm_pair_mark_price_is_message_type_matches_default():
+    from binance.futures.cm.streams import CMPairMarkPriceProcessor
+    proc = CMPairMarkPriceProcessor(None)
+    is_match, payload = proc.is_message_type({
+        'stream': 'btcusd@markPrice',
+        'data': [CM_PAIR_MARK_PRICE_ITEM],
+    })
+    assert is_match
+    assert payload == [CM_PAIR_MARK_PRICE_ITEM]
+
+
+def test_cm_pair_mark_price_is_message_type_matches_1s():
+    from binance.futures.cm.streams import CMPairMarkPriceProcessor
+    proc = CMPairMarkPriceProcessor(None)
+    is_match, _ = proc.is_message_type({
+        'stream': 'btcusd@markPrice@1s',
+        'data': [CM_PAIR_MARK_PRICE_ITEM],
+    })
+    assert is_match
+
+
+def test_cm_pair_mark_price_is_message_type_rejects_per_symbol():
+    """Per-symbol `<symbol>@markPrice` delivers a dict, not an array.
+    The pair processor MUST reject scalar-dict payloads so it does not
+    hijack the per-symbol markPrice stream.
+    """
+    from binance.futures.cm.streams import CMPairMarkPriceProcessor
+    proc = CMPairMarkPriceProcessor(None)
+    is_match, _ = proc.is_message_type({
+        'stream': 'btcusd_perp@markPrice',
+        'data': CM_PAIR_MARK_PRICE_ITEM,   # single dict, not list
+    })
+    assert not is_match
+
+
+def test_cm_pair_mark_price_is_message_type_rejects_all_market():
+    """`!markPrice@arr` is the all-markets stream — distinct from `<pair>@markPrice`."""
+    from binance.futures.cm.streams import CMPairMarkPriceProcessor
+    proc = CMPairMarkPriceProcessor(None)
+    is_match, _ = proc.is_message_type({
+        'stream': '!markPrice@arr',
+        'data': [CM_PAIR_MARK_PRICE_ITEM],
+    })
+    assert not is_match
+
+
+def test_cm_pair_mark_price_is_message_type_rejects_unrelated_stream():
+    """Streams that do not end in `@markPrice[@1s]` must not match."""
+    from binance.futures.cm.streams import CMPairMarkPriceProcessor
+    proc = CMPairMarkPriceProcessor(None)
+    is_match, _ = proc.is_message_type({
+        'stream': 'btcusd@indexPrice',
+        'data': [CM_PAIR_MARK_PRICE_ITEM],
+    })
+    assert not is_match
+    # Missing stream key entirely.
+    is_match, _ = proc.is_message_type({'data': [CM_PAIR_MARK_PRICE_ITEM]})
+    assert not is_match
+
+
+def test_cm_pair_mark_price_columns_map():
+    from binance.futures.cm.streams import CM_PAIR_MARK_PRICE_COLUMNS_MAP
+    # Mirrors the CM per-symbol markPrice fields (no `ap`).
+    assert CM_PAIR_MARK_PRICE_COLUMNS_MAP.get('e') == 'type'
+    assert CM_PAIR_MARK_PRICE_COLUMNS_MAP.get('E') == 'event_time'
+    assert CM_PAIR_MARK_PRICE_COLUMNS_MAP.get('s') == 'symbol'
+    assert CM_PAIR_MARK_PRICE_COLUMNS_MAP.get('p') == 'mark_price'
+    assert CM_PAIR_MARK_PRICE_COLUMNS_MAP.get('i') == 'index_price'
+    assert CM_PAIR_MARK_PRICE_COLUMNS_MAP.get('P') == 'est_settle_price'
+    assert CM_PAIR_MARK_PRICE_COLUMNS_MAP.get('r') == 'funding_rate'
+    assert CM_PAIR_MARK_PRICE_COLUMNS_MAP.get('T') == 'next_funding_time'
+    # CM has no `ap`.
+    assert 'ap' not in CM_PAIR_MARK_PRICE_COLUMNS_MAP
+
+
+@pytest.mark.asyncio
+async def test_cm_pair_mark_price_handler_columns(cm_client):
+    from binance import CMPairMarkPriceHandlerBase
+    df = await run_handler(
+        cm_client, CMPairMarkPriceHandlerBase,
+        [CM_PAIR_MARK_PRICE_ITEM], 'btcusd@markPrice'
+    )
+    row = df.iloc[0]
+    assert row['type'] == 'markPriceUpdate'
+    assert row['symbol'] == 'BTCUSD_200925'
+    assert row['mark_price'] == '11185.87786614'
+    assert row['index_price'] == '11185.87786614'
+    assert row['funding_rate'] == '0.00038167'
+
+
+def test_cm_pair_mark_price_preserves_underscore():
+    """CM pair stream names are lowercase but must still preserve pair
+    underscores when the pair contains one (some indexes use `BTCUSD_NEXT`)."""
+    from binance.futures.cm.streams import CMPairMarkPriceProcessor
+    proc = CMPairMarkPriceProcessor(None)
+    assert proc.subscribe_param(
+        True, SubType.PAIR_MARK_PRICE, 'BTCUSD_PERP'
+    ) == 'btcusd_perp@markPrice'
+
+
+def test_cm_pair_mark_price_in_cm_processors():
+    """The new processor MUST be wired into the CM PROCESSORS list."""
+    from binance.futures.cm.streams import PROCESSORS, CMPairMarkPriceProcessor
+    assert CMPairMarkPriceProcessor in PROCESSORS
+
+
+# ===========================================================================
 # Layering sanity
 # ===========================================================================
 
@@ -2129,3 +2296,4 @@ def test_subtype_values():
     assert str(SubType.INDEX_PRICE_KLINE) == 'indexPriceKline'
     assert str(SubType.MARK_PRICE_KLINE) == 'markPriceKline'
     assert str(SubType.RPI_DIFF_DEPTH) == 'rpiDiffDepth'
+    assert str(SubType.PAIR_MARK_PRICE) == 'pairMarkPrice'
