@@ -69,8 +69,11 @@ class SubType(StringEnum):
             The Spot WebSocket Streams docs do NOT document a standalone
             ``!ticker@arr``; on Spot, use ``ALL_MARKET_WINDOW_TICKERS`` for
             the documented all-market full-ticker variant.
-        ALL_MARKET_BOOK_TICKER: Best bid/ask for every symbol (``!bookTicker@arr``
-            on Spot, ``!bookTicker`` on futures).
+        ALL_MARKET_BOOK_TICKER: Best bid/ask for every symbol (``!bookTicker``).
+            **Futures only** -- documented for USDⓈ-M and COIN-M.
+            The Spot WebSocket Streams docs do NOT document a standalone
+            all-market book ticker stream; any equivalent was deprecated
+            on Spot in 2021 and the SDK ships no Spot binding here.
 
     User data stream:
         USER: Account and order update events for the authenticated user.
@@ -131,9 +134,18 @@ class SubType(StringEnum):
     unsupported subtype.
     """
     ALL_MARKET_BOOK_TICKER = 'allMarketBookTicker'
-    """All-market book ticker stream.
-    Spot: ``!bookTicker@arr`` · UM/CM: ``!bookTicker`` (no ``@arr`` suffix).
+    """All-market book ticker stream (``!bookTicker``).
     Delivers the best bid/ask for every symbol whenever it changes.
+
+    **Futures only** -- documented for both USDⓈ-M and COIN-M
+    (``developers.binance.com/docs/derivatives/{usds,coin}-margined-futures/websocket-market-streams/All-Book-Tickers-Stream``).
+    The Spot WebSocket Streams docs do NOT document a standalone all-market
+    book ticker stream (any equivalent was deprecated on Spot in 2021); the
+    SDK therefore ships no Spot binding for this SubType.  Subscribing on a
+    Spot client will surface as an unsupported subtype.
+
+    Note the futures stream name has no ``@arr`` suffix, unlike the array
+    all-market streams elsewhere on this enum (e.g. ``!ticker@arr``).
     """
     ALL_MARKET_MARK_PRICE = 'allMarketMarkPrice'
     """All-market mark-price array for futures (``!markPrice@arr[@1s]``).

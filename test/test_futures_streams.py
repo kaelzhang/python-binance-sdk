@@ -2466,3 +2466,55 @@ def test_subtype_values():
     assert str(SubType.MARK_PRICE_KLINE) == 'markPriceKline'
     assert str(SubType.RPI_DIFF_DEPTH) == 'rpiDiffDepth'
     assert str(SubType.PAIR_MARK_PRICE) == 'pairMarkPrice'
+
+
+def test_subtype_all_market_book_ticker_docstring_is_futures_only():
+    """Per developers.binance.com, ``!bookTicker`` (the all-market book
+    ticker stream) is documented ONLY for USDⓈ-M and COIN-M; the Spot
+    WebSocket Streams page does NOT document an all-market book ticker
+    stream (``!bookTicker@arr`` was deprecated on Spot in 2021).
+
+    The ``SubType.ALL_MARKET_BOOK_TICKER`` standalone string docstring
+    (the literal that follows the enum assignment in source) MUST mark
+    this as Futures-only (matching the ``ALL_MARKET_TICKERS`` member's
+    wording) and MUST NOT advertise the deprecated Spot variant
+    ``!bookTicker@arr`` as a positive Spot surface.
+
+    The class-level docstring's enumeration MUST also be updated so the
+    one-line summary near ``ALL_MARKET_BOOK_TICKER:`` no longer claims
+    a Spot binding.
+
+    Docs:
+    - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/All-Book-Tickers-Stream
+    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/All-Book-Tickers-Stream
+    """
+    import inspect
+    import re
+    from binance.core.common.constants import SubType
+    src = inspect.getsource(SubType)
+
+    # 1) The standalone literal docstring tied to the
+    #    ``ALL_MARKET_BOOK_TICKER`` assignment in the enum body MUST be
+    #    Futures-only.  We slice out the docstring that follows the
+    #    assignment and pin its wording.
+    m = re.search(
+        r"ALL_MARKET_BOOK_TICKER\s*=\s*'allMarketBookTicker'\s*\n\s*\"\"\"(.*?)\"\"\"",
+        src, re.DOTALL,
+    )
+    assert m, 'standalone member docstring for ALL_MARKET_BOOK_TICKER missing'
+    standalone = m.group(1)
+    assert 'Futures only' in standalone
+    assert '!bookTicker' in standalone
+    # Standalone MUST NOT advertise the deprecated Spot stream.
+    assert '!bookTicker@arr' not in standalone
+
+    # 2) The class-docstring enumeration line for ALL_MARKET_BOOK_TICKER
+    #    MUST NOT claim a Spot binding either.
+    m2 = re.search(
+        r"ALL_MARKET_BOOK_TICKER:\s*([^\n]+(?:\n\s{8,}[^\n]+)*)",
+        src,
+    )
+    assert m2, 'class-docstring enumeration line for ALL_MARKET_BOOK_TICKER missing'
+    enum_line = m2.group(1)
+    # Should NOT show the deprecated Spot stream as a positive variant.
+    assert '!bookTicker@arr' not in enum_line
