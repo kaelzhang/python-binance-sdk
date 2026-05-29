@@ -32,7 +32,6 @@ from binance.futures.user_handlers import (
     FuturesTradeLiteHandlerBase,
     FuturesStrategyUpdateHandlerBase,
     FuturesGridUpdateHandlerBase,
-    FuturesConditionalOrderTriggerRejectHandlerBase,
     FuturesAlgoUpdateHandlerBase,
 )
 
@@ -58,8 +57,13 @@ class FuturesUserProcessor(Processor):
     - ``TRADE_LITE``:                        low-latency fill (UM only)
     - ``STRATEGY_UPDATE``:                   algo/strategy lifecycle (UM + CM)
     - ``GRID_UPDATE``:                       grid trading update (UM + CM)
-    - ``CONDITIONAL_ORDER_TRIGGER_REJECT``:  TP/SL trigger rejected (UM only)
     - ``ALGO_UPDATE``:                       algo order status (UM only)
+
+    REMOVED (2025-12-10):
+    - ``CONDITIONAL_ORDER_TRIGGER_REJECT`` was dropped after Binance migrated
+      conditional orders to the Algo Service.  Conditional rejection reasons
+      now arrive inside ``ALGO_UPDATE``'s ``o.rm`` (reject_message) field.
+      See https://developers.binance.com/docs/derivatives/change-log
     """
 
     SUB_TYPE = SubType.USER
@@ -74,7 +78,6 @@ class FuturesUserProcessor(Processor):
         'TRADE_LITE',
         'STRATEGY_UPDATE',
         'GRID_UPDATE',
-        'CONDITIONAL_ORDER_TRIGGER_REJECT',
         'ALGO_UPDATE',
     )
 
@@ -88,7 +91,6 @@ class FuturesUserProcessor(Processor):
         FuturesTradeLiteHandlerBase,
         FuturesStrategyUpdateHandlerBase,
         FuturesGridUpdateHandlerBase,
-        FuturesConditionalOrderTriggerRejectHandlerBase,
         FuturesAlgoUpdateHandlerBase,
     )
 

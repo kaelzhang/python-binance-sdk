@@ -297,8 +297,14 @@ Handler bases to subclass (from `binance`):
 - `FuturesTradeLiteHandlerBase` — `TRADE_LITE` (low-latency fill; fewer fields than `ORDER_TRADE_UPDATE`; **UM only**)
 - `FuturesStrategyUpdateHandlerBase` — `STRATEGY_UPDATE` (algo/TWAP strategy lifecycle; UM + CM)
 - `FuturesGridUpdateHandlerBase` — `GRID_UPDATE` (grid trading order events; UM + CM; deprecated by Binance but still delivered)
-- `FuturesConditionalOrderTriggerRejectHandlerBase` — `CONDITIONAL_ORDER_TRIGGER_REJECT` (TP/SL trigger rejected; **UM only**)
-- `FuturesAlgoUpdateHandlerBase` — `ALGO_UPDATE` (algo order status change; **UM only**)
+- `FuturesAlgoUpdateHandlerBase` — `ALGO_UPDATE` (algo order status change; **UM only**; carries conditional-order rejection reasons in `o.rm` since 2025-12-10)
+
+> **Removed (2025-12-10):** `FuturesConditionalOrderTriggerRejectHandlerBase` /
+> `CONDITIONAL_ORDER_TRIGGER_REJECT`.  Binance migrated conditional orders to
+> the Algo Service; rejection reasons now arrive inside `ALGO_UPDATE`'s
+> `o.rm` (reject_message) field.  No backward-compatibility shim — the class
+> is gone from `binance.futures.user_handlers` and the top-level `binance`
+> package.  See [the derivatives change-log](https://developers.binance.com/docs/derivatives/change-log).
 
 ### Futures market-data streams
 

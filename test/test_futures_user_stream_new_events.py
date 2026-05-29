@@ -1,11 +1,14 @@
-"""Tests for the 5 new futures user-data-stream event handlers.
+"""Tests for the futures user-data-stream event handlers.
 
 Covers:
 - TRADE_LITE (UM only) → FuturesTradeLiteHandlerBase
 - STRATEGY_UPDATE (UM + CM) → FuturesStrategyUpdateHandlerBase
 - GRID_UPDATE (UM + CM) → FuturesGridUpdateHandlerBase
-- CONDITIONAL_ORDER_TRIGGER_REJECT (UM only) → FuturesConditionalOrderTriggerRejectHandlerBase
 - ALGO_UPDATE (UM only) → FuturesAlgoUpdateHandlerBase
+- CONDITIONAL_ORDER_TRIGGER_REJECT — DEPRECATED & REMOVED (2025-12-10):
+  conditional orders were migrated to the Algo Service; rejection reasons
+  are now delivered inside ALGO_UPDATE's ``o.rm`` reject_message field.
+  See https://developers.binance.com/docs/derivatives/change-log
 
 Each event is driven through client._receive() on the appropriate mock client and
 assertions confirm correct routing and field access.
@@ -16,7 +19,6 @@ Payload schemas confirmed from official Binance docs (2026-05-25):
 - TRADE_LITE: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Trade-Lite
 - STRATEGY_UPDATE: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-STRATEGY-UPDATE
 - GRID_UPDATE: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-GRID-UPDATE
-- CONDITIONAL_ORDER_TRIGGER_REJECT: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Conditional-Order-Trigger-Reject
 - ALGO_UPDATE: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Algo-Order-Update
 """
 
@@ -29,7 +31,6 @@ from binance import (
     FuturesTradeLiteHandlerBase,
     FuturesStrategyUpdateHandlerBase,
     FuturesGridUpdateHandlerBase,
-    FuturesConditionalOrderTriggerRejectHandlerBase,
     FuturesAlgoUpdateHandlerBase,
 )
 from binance.core.common.utils import create_future
@@ -84,17 +85,6 @@ GRID_UPDATE_PAYLOAD = {
         'uf': '-0.00300716',
         'mp': '0.0',
         'ut': 1669262908197,
-    },
-}
-
-CONDITIONAL_ORDER_TRIGGER_REJECT_PAYLOAD = {
-    'e': 'CONDITIONAL_ORDER_TRIGGER_REJECT',
-    'E': 1685517224945,
-    'T': 1685517224955,
-    'or': {
-        's': 'ETHUSDT',
-        'i': 155618472834,
-        'r': 'Due to the order could not be filled immediately, the FOK order has been rejected.',
     },
 }
 
@@ -277,35 +267,45 @@ async def test_grid_update_routed_on_cm(cm_client):
 
 
 # ---------------------------------------------------------------------------
-# CONDITIONAL_ORDER_TRIGGER_REJECT — UM only; confirm nested 'or' object
+# CONDITIONAL_ORDER_TRIGGER_REJECT — REMOVED (2025-12-10)
+#
+# Binance migrated conditional orders to the Algo Service.  Conditional order
+# rejection reasons are now delivered inside ``ALGO_UPDATE``'s ``o.rm`` field
+# (reject_message).  The SDK drops the legacy handler entirely — there is no
+# backward-compatibility shim and the SDK will not accept the old class name.
+#
+# Source: https://developers.binance.com/docs/derivatives/change-log
+# Replacement source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Algo-Order-Update
 # ---------------------------------------------------------------------------
 
-@pytest.mark.asyncio
-async def test_conditional_order_trigger_reject_routed_on_um_event_envelope(um_client):
-    """CONDITIONAL_ORDER_TRIGGER_REJECT in 'event' envelope routes correctly on UM."""
-    received = await _run_handler(
-        um_client,
-        FuturesConditionalOrderTriggerRejectHandlerBase,
-        CONDITIONAL_ORDER_TRIGGER_REJECT_PAYLOAD,
-        envelope='event',
-    )
-    assert received['e'] == 'CONDITIONAL_ORDER_TRIGGER_REJECT'
-    assert received['or']['s'] == 'ETHUSDT'
-    assert received['or']['i'] == 155618472834
-    assert 'FOK' in received['or']['r']
+
+def test_conditional_order_trigger_reject_handler_no_longer_importable_from_binance_root():
+    """FuturesConditionalOrderTriggerRejectHandlerBase MUST NOT be importable from binance root."""
+    import binance
+
+    assert not hasattr(binance, 'FuturesConditionalOrderTriggerRejectHandlerBase')
 
 
-@pytest.mark.asyncio
-async def test_conditional_order_trigger_reject_routed_on_um_data_envelope(um_client):
-    """CONDITIONAL_ORDER_TRIGGER_REJECT in 'data' envelope routes correctly on UM."""
-    received = await _run_handler(
-        um_client,
-        FuturesConditionalOrderTriggerRejectHandlerBase,
-        CONDITIONAL_ORDER_TRIGGER_REJECT_PAYLOAD,
-        envelope='data',
-    )
-    assert received['e'] == 'CONDITIONAL_ORDER_TRIGGER_REJECT'
-    assert received['or']['s'] == 'ETHUSDT'
+def test_conditional_order_trigger_reject_handler_no_longer_importable_from_user_handlers():
+    """FuturesConditionalOrderTriggerRejectHandlerBase MUST NOT exist on the user_handlers module."""
+    from binance.futures import user_handlers
+
+    assert not hasattr(user_handlers, 'FuturesConditionalOrderTriggerRejectHandlerBase')
+
+
+def test_conditional_order_trigger_reject_handler_explicit_import_raises_importerror():
+    """An explicit ``from binance.futures.user_handlers import ...`` of the removed class MUST raise ImportError."""
+    with pytest.raises(ImportError):
+        from binance.futures.user_handlers import (  # noqa: F401
+            FuturesConditionalOrderTriggerRejectHandlerBase,
+        )
+
+
+def test_conditional_order_trigger_reject_not_in_processor_payload_types():
+    """FuturesUserProcessor.PAYLOAD_TYPES MUST NOT carry 'CONDITIONAL_ORDER_TRIGGER_REJECT'."""
+    from binance.futures.user_processor import FuturesUserProcessor
+
+    assert 'CONDITIONAL_ORDER_TRIGGER_REJECT' not in FuturesUserProcessor.PAYLOAD_TYPES
 
 
 # ---------------------------------------------------------------------------
@@ -376,45 +376,42 @@ def test_algo_update_docstring_describes_tt_as_trigger_time():
 # ---------------------------------------------------------------------------
 
 def test_new_handler_bases_importable_from_binance():
-    """All 5 new futures user handler bases are importable from the binance root package."""
+    """All current futures user handler bases are importable from the binance root package."""
     import binance
 
     assert hasattr(binance, 'FuturesTradeLiteHandlerBase')
     assert hasattr(binance, 'FuturesStrategyUpdateHandlerBase')
     assert hasattr(binance, 'FuturesGridUpdateHandlerBase')
-    assert hasattr(binance, 'FuturesConditionalOrderTriggerRejectHandlerBase')
     assert hasattr(binance, 'FuturesAlgoUpdateHandlerBase')
 
 
 def test_new_handler_bases_are_handler_subclasses():
-    """All 5 new handler bases are subclasses of core Handler."""
+    """All current handler bases are subclasses of core Handler."""
     from binance.core.handlers.base import Handler
 
     assert issubclass(FuturesTradeLiteHandlerBase, Handler)
     assert issubclass(FuturesStrategyUpdateHandlerBase, Handler)
     assert issubclass(FuturesGridUpdateHandlerBase, Handler)
-    assert issubclass(FuturesConditionalOrderTriggerRejectHandlerBase, Handler)
     assert issubclass(FuturesAlgoUpdateHandlerBase, Handler)
 
 
 # ---------------------------------------------------------------------------
-# FuturesUserProcessor routing table now includes all 5 new event types
+# FuturesUserProcessor routing table covers the current event types
 # ---------------------------------------------------------------------------
 
 def test_processor_payload_types_include_new_events():
-    """FuturesUserProcessor.PAYLOAD_TYPES must contain all 5 new event type strings."""
+    """FuturesUserProcessor.PAYLOAD_TYPES must contain the current event type strings."""
     from binance.futures.user_processor import FuturesUserProcessor
 
     types = FuturesUserProcessor.PAYLOAD_TYPES
     assert 'TRADE_LITE' in types
     assert 'STRATEGY_UPDATE' in types
     assert 'GRID_UPDATE' in types
-    assert 'CONDITIONAL_ORDER_TRIGGER_REJECT' in types
     assert 'ALGO_UPDATE' in types
 
 
 def test_processor_handlers_include_new_handler_bases():
-    """FuturesUserProcessor.HANDLERS must contain all 5 new handler base classes.
+    """FuturesUserProcessor.HANDLERS must contain the current handler base classes.
 
     Import both modules fresh inside the test to avoid class-identity mismatches
     caused by module-reload tests in test_futures_user_stream.py.
@@ -432,7 +429,6 @@ def test_processor_handlers_include_new_handler_bases():
     assert user_handlers.FuturesTradeLiteHandlerBase in handlers
     assert user_handlers.FuturesStrategyUpdateHandlerBase in handlers
     assert user_handlers.FuturesGridUpdateHandlerBase in handlers
-    assert user_handlers.FuturesConditionalOrderTriggerRejectHandlerBase in handlers
     assert user_handlers.FuturesAlgoUpdateHandlerBase in handlers
 
 
@@ -489,8 +485,8 @@ def test_is_message_type_grid_update_data_envelope():
     assert payload['e'] == 'GRID_UPDATE'
 
 
-def test_is_message_type_conditional_order_trigger_reject():
-    """is_message_type matches CONDITIONAL_ORDER_TRIGGER_REJECT."""
+def test_is_message_type_conditional_order_trigger_reject_no_longer_matches():
+    """is_message_type MUST NOT match CONDITIONAL_ORDER_TRIGGER_REJECT (event removed 2025-12-10)."""
     from binance.futures.user_processor import FuturesUserProcessor
 
     client = UMFuturesClient(Credentials('key', 'secret'))
@@ -499,8 +495,8 @@ def test_is_message_type_conditional_order_trigger_reject():
     msg = {'data': {'e': 'CONDITIONAL_ORDER_TRIGGER_REJECT', 'E': 1}, 'stream': 'fake'}
     matched, payload = proc.is_message_type(msg)
 
-    assert matched is True
-    assert payload['e'] == 'CONDITIONAL_ORDER_TRIGGER_REJECT'
+    assert matched is False
+    assert payload is None
 
 
 def test_is_message_type_algo_update():

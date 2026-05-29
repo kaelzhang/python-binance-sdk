@@ -131,7 +131,6 @@ from binance.futures.user_handlers import (
     FuturesTradeLiteHandlerBase,
     FuturesStrategyUpdateHandlerBase,
     FuturesGridUpdateHandlerBase,
-    FuturesConditionalOrderTriggerRejectHandlerBase,
     FuturesAlgoUpdateHandlerBase,
 )
 

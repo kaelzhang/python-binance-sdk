@@ -25,10 +25,16 @@ Event types confirmed from official Binance USDⓈ-M Futures docs (2026-05-25):
   Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-STRATEGY-UPDATE
 - ``GRID_UPDATE``:       grid trading update (UM + CM; deprecated by Binance)
   Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-GRID-UPDATE
-- ``CONDITIONAL_ORDER_TRIGGER_REJECT``: TP/SL trigger rejected (**UM only** — not delivered on CM)
-  Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Conditional-Order-Trigger-Reject
 - ``ALGO_UPDATE``:       algo order status update (**UM only** — not delivered on CM)
   Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Algo-Order-Update
+
+REMOVED events (kept here as a deprecation note so future readers can find the
+migration path without git archaeology):
+
+- ``CONDITIONAL_ORDER_TRIGGER_REJECT`` — DROPPED 2025-12-10.  Binance migrated
+  conditional orders to the Algo Service; rejection reasons now arrive inside
+  ``ALGO_UPDATE``'s ``o.rm`` (reject_message) field.
+  Source: https://developers.binance.com/docs/derivatives/change-log
 """
 
 from binance.core.common.types import DictPayload
@@ -398,37 +404,6 @@ class FuturesGridUpdateHandlerBase(FuturesSimpleHandler):
     pass
 
 
-class FuturesConditionalOrderTriggerRejectHandlerBase(FuturesSimpleHandler):
-    """Base handler for the ``CONDITIONAL_ORDER_TRIGGER_REJECT`` futures event.
-
-    **UM only** — not delivered on CM streams.  CM clients may register this
-    handler but it will never fire.
-
-    Fires when a triggered TP/SL (conditional) order is rejected after
-    triggering, e.g. because it would have been a FOK order that couldn't fill.
-
-    Payload structure (confirmed from Binance USDⓈ-M docs, 2026-05-25)::
-
-        {
-            "e": "CONDITIONAL_ORDER_TRIGGER_REJECT",
-            "E": <event_time>,
-            "T": <transaction_time>,
-            "or": {
-                "s": "<symbol>",
-                "i": <order_id>,
-                "r": "<rejection_reason>"
-            }
-        }
-
-    Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Conditional-Order-Trigger-Reject
-
-    Subclass and override ``receive(payload)`` to handle the event.
-    The raw Binance payload dict is passed unchanged.
-    """
-
-    pass
-
-
 class FuturesAlgoUpdateHandlerBase(FuturesSimpleHandler):
     """Base handler for the ``ALGO_UPDATE`` futures user-data-stream event.
 
@@ -494,6 +469,5 @@ __all__ = [
     'FuturesTradeLiteHandlerBase',
     'FuturesStrategyUpdateHandlerBase',
     'FuturesGridUpdateHandlerBase',
-    'FuturesConditionalOrderTriggerRejectHandlerBase',
     'FuturesAlgoUpdateHandlerBase',
 ]
