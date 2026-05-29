@@ -264,12 +264,17 @@ REST_ENDPOINTS = [
         weight=5,
     ),
     dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Place-Multiple-Orders
+        # Request Weight: 5 IP, 5 ORDERS-10s, 1 ORDERS-1m. TRADE.
+        # Batch order placement consumes the ORDERS pool (`is_order=True`) —
+        # parity with CM and with the singular `create_order` WS-API entry.
         name='create_batch_orders',
         transport='rest',
         method=RequestMethod.POST,
         rest_url=UM_REST_HOST + '/fapi/v1/batchOrders',
         security_type=SecurityType.TRADE,
         weight=5,
+        is_order=True,
     ),
     dict(
         # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Modify-Multiple-Orders
