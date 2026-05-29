@@ -483,5 +483,14 @@ WS_MAX_STREAMS_PER_CONNECTION = 1024
 # (https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/general-api-information)
 ERROR_CODE_TOO_MANY_REQUESTS = -1003
 ERROR_CODE_INVALID_TIMESTAMP = -1021
+
+# UM Futures-specific error: returned by POST /fapi/v1/positionSide/dual
+# when the CM account has open positions or open orders that block the
+# UM→CM dualSidePosition sync. Added by Binance in the 2026-05-11
+# derivatives changelog (effective 2026-05-13). The docs note this is
+# temporary and stops surfacing once CM enters Guard status.
+# Docs: https://developers.binance.com/docs/derivatives/change-log (2026-05-11 entry)
+ERROR_CODE_POSITION_SIDE_DUAL_BLOCKED = -4531
+
 EVENT_SERVER_SHUTDOWN = 'serverShutdown'
 EVENT_STREAM_TERMINATED = 'eventStreamTerminated'

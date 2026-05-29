@@ -413,6 +413,19 @@ def test_um_force_orders_weight_helper():
 
 
 # ---------------------------------------------------------------------------
+# ERROR_CODE_POSITION_SIDE_DUAL_BLOCKED = -4531
+# Returned by POST /fapi/v1/positionSide/dual when CM has open positions
+# blocking the dual-side change (2026-05-11 derivatives changelog;
+# effective 2026-05-13).
+# Docs: https://developers.binance.com/docs/derivatives/change-log
+# ---------------------------------------------------------------------------
+
+def test_error_code_position_side_dual_blocked_constant():
+    from binance.core.common.constants import ERROR_CODE_POSITION_SIDE_DUAL_BLOCKED
+    assert ERROR_CODE_POSITION_SIDE_DUAL_BLOCKED == -4531
+
+
+# ---------------------------------------------------------------------------
 # get_adl_quantile  GET /fapi/v1/adlQuantile  weight 5  (USER_DATA)
 # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Position-ADL-Quantile-Estimation
 # Used for risk monitoring — exposes ADL queue position (0-4) per side.
