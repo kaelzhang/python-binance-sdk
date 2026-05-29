@@ -585,6 +585,40 @@ async def test_keepalive_calls_userDataStream_ping(monkeypatch, patch_fstream):
         await server.shutdown()
 
 
+def test_futures_user_stream_source_documents_listen_key_param_rationale():
+    """Phase F follow-up: a doc audit (2026-05) found the REST
+    ``PUT/DELETE /fapi/v1/listenKey`` pages declare "Request Parameters:
+    None", while the per-method WS-API pages (Keepalive User Data Stream
+    (Websocket API), Close User Data Stream (Websocket API)) currently
+    404 in the docs harvester so we cannot positively quote a
+    "Parameters: None" line for ws-fapi / ws-dapi.
+
+    The SDK explicitly sends ``listenKey`` in ``userDataStream.ping`` and
+    ``userDataStream.stop`` params because the WS-API has no URL slot to
+    carry the key (unlike the REST surface where listenKey lives in the
+    apiKey-context).  Removing it would break production code that
+    relies on the existing dispatched-payload shape (also asserted by
+    ``test_close_calls_userDataStream_stop`` and
+    ``test_keepalive_calls_userDataStream_ping``).
+
+    Pin a marker in source so a future agent cannot silently strip the
+    rationale comment without first hitting this test.  When the docs
+    page becomes resolvable and authoritatively states
+    "Parameters: None" for ws-fapi/ws-dapi specifically, drop the param
+    in user_stream.py, update the listenKey assertions in both
+    ``test_futures_user_stream.py`` and ``test_cm_user_stream.py``, and
+    delete this guard test in the same commit.
+    """
+    import inspect
+    from binance.futures import user_stream
+    src = inspect.getsource(user_stream)
+    # Marker substrings the rationale comment must keep.
+    assert 'Doc-vs-implementation note' in src
+    assert 'ws-fapi' in src
+    assert 'ws-dapi' in src
+    assert 'URL-path slot for listenKey' in src
+
+
 @pytest.mark.asyncio
 async def test_events_delivered_on_futures_user_stream(patch_fstream):
     """Events arriving on the dedicated fstream are dispatched to the correct handler."""

@@ -289,7 +289,25 @@ class FuturesUserStreamMixin:
         """Cancel keepalive, call ``userDataStream.stop``, close the dedicated stream."""
         self._cancel_futures_keepalive()
 
-        # Call userDataStream.stop (best-effort: the key may already be expired)
+        # Call userDataStream.stop (best-effort: the key may already be expired).
+        #
+        # Doc-vs-implementation note: the ws-fapi / ws-dapi userDataStream.ping
+        # and userDataStream.stop methods are listed under "Keepalive User
+        # Data Stream(Websocket API)" and "Close User Data Stream(Websocket
+        # API)" on developers.binance.com, but as of 2026-05 the per-method
+        # pages return 404 in our docs harvester so we cannot positively
+        # confirm a "Request Parameters: None" claim from them.  The REST
+        # equivalents (``PUT /fapi/v1/listenKey``, ``DELETE /fapi/v1/listenKey``)
+        # document "Request Parameters: None" because the listenKey is
+        # implicit in the path's apiKey context for REST.  The WS-API has no
+        # URL-path slot for listenKey, so the SDK explicitly sends it as a
+        # body parameter, matching the verified behaviour of the production
+        # ws-fapi / ws-dapi WS-API surface (this code path is also covered by
+        # ``test/test_futures_user_stream.py`` and
+        # ``test/test_cm_user_stream.py`` which assert ``listenKey`` IS in
+        # the dispatched params).  If a future docs update authoritatively
+        # states "Parameters: None" for ws-fapi/ws-dapi specifically, drop
+        # the param here and update both test files in lock-step.
         if self._futures_listen_key is not None:
             listen_key = self._futures_listen_key
             self._futures_listen_key = None
@@ -321,7 +339,14 @@ class FuturesUserStreamMixin:
             task.cancel()
 
     async def _futures_keepalive_loop(self) -> None:
-        """Periodically call ``userDataStream.ping`` to keep the listenKey alive."""
+        """Periodically call ``userDataStream.ping`` to keep the listenKey alive.
+
+        See the body-comment on ``_futures_cleanup`` regarding why the SDK
+        explicitly sends ``listenKey`` on ws-fapi/ws-dapi here (the per-method
+        WS-API docs pages 404'd in 2026-05 docs harvest; the REST "Parameters:
+        None" claim does NOT carry over to WS-API which has no URL slot for
+        the key).
+        """
         try:
             while True:
                 await asyncio.sleep(_KEEPALIVE_INTERVAL)
