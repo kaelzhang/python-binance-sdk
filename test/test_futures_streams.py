@@ -510,6 +510,73 @@ def test_cm_order_book_subscribe_param_with_250ms_speed():
     ) == 'btcusd_perp@depth@250ms'
 
 
+# ---------------------------------------------------------------------------
+# CM partial-depth payload includes ``ps`` (pair), per docs:
+# https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Partial-Book-Depth-Streams
+# The CM-specific PartialOrderBookHandlerBase surfaces ``pair`` alongside
+# ``lastUpdateId`` / bids / asks so consumers can route by pair.
+# ---------------------------------------------------------------------------
+
+CM_PARTIAL_DEPTH_PAYLOAD = {
+    'lastUpdateId': 17276701,
+    'pair': 'BTCUSD',
+    'bids': [['9523.0', '5'], ['9522.8', '8']],
+    'asks': [['9524.6', '2'], ['9524.7', '3']],
+}
+
+
+def test_cm_partial_order_book_handler_exposes_pair():
+    """CM PartialOrderBookHandlerBase MUST return ``(pair, last_update_id, bids, asks)``
+    per the CM docs that publish ``ps``.
+    """
+    from binance.futures.cm.streams import PartialOrderBookHandlerBase
+    handler = PartialOrderBookHandlerBase()
+    result = handler._receive({
+        'lastUpdateId': 17276701,
+        'ps': 'BTCUSD',
+        'bids': [['9523.0', '5']],
+        'asks': [['9524.6', '2']],
+    })
+    pair, last_update_id, bids, asks = result
+    assert pair == 'BTCUSD'
+    assert last_update_id == 17276701
+    assert bids.iloc[0]['price'] == '9523.0'
+    assert asks.iloc[0]['price'] == '9524.6'
+
+
+def test_cm_partial_order_book_processor_binds_cm_handler():
+    """``CMPartialOrderBookProcessor`` MUST bind the CM-specific handler."""
+    from binance.futures.cm.streams import (
+        PartialOrderBookProcessor as CMPartialProc,
+        PartialOrderBookHandlerBase as CMPartialHB,
+    )
+    assert CMPartialProc.HANDLER is CMPartialHB
+
+
+# ---------------------------------------------------------------------------
+# CM diff-depth payload includes ``ps`` (pair) per docs:
+# https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Diff-Book-Depth-Streams
+# The CM-specific OrderBookHandlerBase surfaces ``pair`` on the diff-event
+# info DataFrame produced by ``_receive``.
+# ---------------------------------------------------------------------------
+
+def test_cm_diff_depth_handler_column_map_includes_pair():
+    """The CM diff-depth handler's column map MUST include ``ps -> pair``."""
+    from binance.futures.cm.streams import OrderBookHandlerBase as CMOrderBookHB
+    assert CMOrderBookHB.COLUMNS_MAP.get('ps') == 'pair'
+
+
+def test_cm_order_book_processor_binds_cm_handler():
+    """``CMOrderBookProcessor`` MUST bind the CM-specific
+    :class:`OrderBookHandlerBase` (which carries the ``ps -> pair`` column).
+    """
+    from binance.futures.cm.streams import (
+        OrderBookProcessor as CMOrderProc,
+        OrderBookHandlerBase as CMOrderBookHB,
+    )
+    assert CMOrderProc.HANDLER is CMOrderBookHB
+
+
 def test_futures_partial_order_book_subscribe_param_speed_not_int():
     from binance.futures.streams import PartialOrderBookProcessor
     proc = PartialOrderBookProcessor(None)

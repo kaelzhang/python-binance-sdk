@@ -45,6 +45,10 @@ from binance.core.common.constants import (
 from binance.core.common.exceptions import InvalidSubTypeParamException
 from binance.core.common.types import DictPayload
 from binance.core.handlers.base import Handler
+from binance.core.handlers.orderbook import (
+    ORDER_BOOK_COLUMNS_MAP,
+    OrderBookHandlerBase as _OrderBookHandlerBase,
+)
 from binance.core.processors.base import Processor
 
 from binance.futures.streams import (  # noqa: F401  (re-exported for convenience)
@@ -72,6 +76,7 @@ from binance.futures.streams import (  # noqa: F401  (re-exported for convenienc
     MiniTickerHandlerBase as _MiniTickerHandlerBase,
     TickerHandlerBase as _TickerHandlerBase,
     BookTickerHandlerBase as _BookTickerHandlerBase,
+    PartialOrderBookHandlerBase as _PartialOrderBookHandlerBase,
     AllMarketMiniTickersHandlerBase as _AllMarketMiniTickersHandlerBase,
     AllMarketTickersHandlerBase as _AllMarketTickersHandlerBase,
     AllMarketBookTickerHandlerBase as _AllMarketBookTickerHandlerBase,
@@ -246,6 +251,76 @@ class AllMarketBookTickerHandlerBase(_AllMarketBookTickerHandlerBase):
 
     COLUMNS_MAP = CM_BOOK_TICKER_COLUMNS_MAP
     COLUMNS = CM_BOOK_TICKER_COLUMNS
+
+
+# ---------------------------------------------------------------------------
+# CM partial-depth + diff-depth: ``ps`` (pair) exposure.
+# CM publishes a ``ps`` field (the contract pair, e.g. ``"BTCUSD"``) on both
+# the per-symbol partial-depth snapshot and the diff-depth update streams,
+# while USDⓈ-M does not. The CM-specific handler bases below add ``pair``
+# to the surfaced payload so consumers can route or aggregate by pair.
+#
+# Docs:
+# - Partial: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Partial-Book-Depth-Streams
+# - Diff:    https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Diff-Book-Depth-Streams
+# ---------------------------------------------------------------------------
+
+CM_KEY_PAIR = 'ps'
+
+
+class PartialOrderBookHandlerBase(_PartialOrderBookHandlerBase):
+    """Base handler for the COIN-M ``SubType.PARTIAL_ORDER_BOOK`` stream
+    (``<symbol>@depth<N>[@speed]``).
+
+    Extends the shared futures
+    :class:`~binance.futures.streams.PartialOrderBookHandlerBase` with the
+    COIN-M-specific ``ps`` (pair) field documented for CM partial-depth.
+
+    ``_receive`` returns ``(pair, last_update_id, bids_df, asks_df)`` so
+    consumers can route by pair (e.g. all symbols of ``BTCUSD``) in addition
+    to reconciling against the diff-depth ``U``/``u``/``pu`` cursor.
+
+    Docs:
+    https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Partial-Book-Depth-Streams
+    """
+
+    def _receive(  # type: ignore[override]
+        self, payload: DictPayload, index: Optional[List[int]] = None
+    ):
+        # The shared futures handler returns (last_update_id, bids, asks).
+        # We prepend ``pair`` so the CM tuple is (pair, last_update_id, bids, asks).
+        last_update_id, bids, asks = super()._receive(payload, index)
+        pair = payload.get(CM_KEY_PAIR)
+        return pair, last_update_id, bids, asks
+
+
+# CM diff-depth: extend the core ORDER_BOOK_COLUMNS_MAP with ``ps -> pair`` so
+# the diff-event ``info`` StockDataFrame surfaces ``pair`` alongside symbol /
+# update IDs.  This is the right layer because the unified core
+# :class:`~binance.core.handlers.orderbook.OrderBookHandlerBase` is what the
+# CM processor routes events to; subclassing here keeps UM unaffected.
+CM_ORDER_BOOK_COLUMNS_MAP = {
+    **ORDER_BOOK_COLUMNS_MAP,
+    'ps': 'pair',
+}
+CM_ORDER_BOOK_COLUMNS = CM_ORDER_BOOK_COLUMNS_MAP.keys()
+
+
+class OrderBookHandlerBase(_OrderBookHandlerBase):
+    """COIN-M-specific base for the unified diff-depth handler.
+
+    Same maintained-local-orderbook semantics as the shared
+    :class:`~binance.core.handlers.orderbook.OrderBookHandlerBase`; the only
+    delta is the column map.  CM diff-depth events publish ``ps`` (pair) which
+    USDⓈ-M does not — adding ``'ps': 'pair'`` to ``COLUMNS_MAP`` surfaces it on
+    the ``info`` StockDataFrame returned from ``_receive``.
+
+    Docs:
+    https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Diff-Book-Depth-Streams
+    """
+
+    COLUMNS_MAP = CM_ORDER_BOOK_COLUMNS_MAP
+    COLUMNS = CM_ORDER_BOOK_COLUMNS
 
 
 # ---------------------------------------------------------------------------
@@ -454,8 +529,12 @@ class AllMarketBookTickerProcessor(_AllMarketBookTickerProcessor):
 class PartialOrderBookProcessor(_PartialOrderBookProcessor):
     """Processor for the COIN-M partial depth stream (``<symbol>@depth<N>[@speed]``).
 
-    Overrides ``subscribe_param`` to use ``symbol.lower()``.
+    Binds to the CM-specific :class:`PartialOrderBookHandlerBase` (which
+    surfaces ``pair``) and overrides ``subscribe_param`` to use
+    ``symbol.lower()`` (preserving underscores in COIN-M symbols).
     """
+
+    HANDLER = PartialOrderBookHandlerBase
 
     def subscribe_param(self, _, t, *args) -> str:
         symbol = self._get_param_symbol(t, args)
@@ -470,8 +549,13 @@ class PartialOrderBookProcessor(_PartialOrderBookProcessor):
 class OrderBookProcessor(_OrderBookProcessor):
     """Processor for the COIN-M diff depth stream (``<symbol>@depth[@speed]``).
 
-    Overrides ``subscribe_param`` to use ``symbol.lower()``.
+    Binds to the CM-specific :class:`OrderBookHandlerBase` (which adds the
+    ``ps -> pair`` column to the diff-event ``info`` DataFrame) and overrides
+    ``subscribe_param`` to use ``symbol.lower()`` (preserving underscores in
+    COIN-M symbols).
     """
+
+    HANDLER = OrderBookHandlerBase
 
     def subscribe_param(self, _, t, *args) -> str:
         symbol = self._get_param_symbol(t, args)

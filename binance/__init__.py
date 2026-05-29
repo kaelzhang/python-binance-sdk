@@ -123,6 +123,8 @@ from binance.futures.streams import (
 
 from binance.futures.cm.streams import (
     ForceOrderHandlerBase as CMForceOrderHandlerBase,
+    PartialOrderBookHandlerBase as CMPartialOrderBookHandlerBase,
+    OrderBookHandlerBase as CMOrderBookHandlerBase,
     CMPairMarkPriceHandlerBase,
     IndexPriceHandlerBase,
     IndexPriceKlineHandlerBase,
