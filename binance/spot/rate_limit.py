@@ -4,9 +4,10 @@ The rate-limit *engine* (RateLimiter / buckets / rule types) is market-agnostic
 and lives in :mod:`binance.core.rate_limit`. This module pins the Spot market's
 default rule set and Spot-specific weight helpers.
 
-Verified 2026-05-23 against Binance Spot API docs (rest-api.md LIMITS,
-faqs/rate_limits.md).  Numeric limits are reconciled at runtime against
-response headers and ``exchangeInfo``.
+Verified 2026-05-29 against Binance Spot API docs
+(https://developers.binance.com/docs/binance-spot-api-docs/rest-api/limits).
+Numeric limits are reconciled at runtime against response headers and
+``exchangeInfo``.
 """
 
 from binance.core.common.constants import (

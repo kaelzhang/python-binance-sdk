@@ -402,11 +402,13 @@ STREAM_KEY_RATE_LIMITS = 'rateLimits'
 ERROR_KEY_CODE = 'code'
 ERROR_KEY_MESSAGE = 'msg'
 
-# WS-API session.logon (web-socket-api.md "Authenticate after connection")
+# WS-API session.logon (Spot WS-API "Authenticate after connection";
+# https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/general-api-information)
 WS_API_METHOD_SESSION_LOGON = 'session.logon'
 ERROR_CODE_UNAUTHORIZED = -2015   # API-key revoked / session invalid/expired
 
-# WS-API timeUnit (F-13, web-socket-api.md "Timing security").
+# WS-API timeUnit (Spot WS-API "Timing security";
+# https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/general-api-information).
 # Opt in to microsecond-precision timestamps for an entire WS-API connection by
 # appending `?timeUnit=MICROSECOND` to the connection URL. Default (None /
 # omitted) keeps Binance's millisecond default.
@@ -417,7 +419,8 @@ WS_API_TIME_UNIT_MILLISECOND = 'MILLISECOND'
 # Rate limits — shared across all markets
 # ==================================================
 
-# REST headers (rest-api.md LIMITS, faqs/rate_limits.md)
+# REST headers (Spot REST "Limits";
+# https://developers.binance.com/docs/binance-spot-api-docs/rest-api/limits)
 HEADER_USED_WEIGHT_PREFIX = 'x-mbx-used-weight-'   # e.g. x-mbx-used-weight-1m
 HEADER_ORDER_COUNT_PREFIX = 'x-mbx-order-count-'   # e.g. x-mbx-order-count-1m
 HEADER_RETRY_AFTER = 'Retry-After'
@@ -425,7 +428,8 @@ HEADER_RETRY_AFTER = 'Retry-After'
 HTTP_TOO_MANY_REQUESTS = 429
 HTTP_IP_BANNED = 418
 
-# WebSocket streams (web-socket-streams.md)
+# WebSocket streams (Spot WS streams limits;
+# https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams#websocket-limits)
 WS_MAX_CONNECTIONS = 300
 WS_CONNECTION_WINDOW = 300.0             # seconds (5 minutes)
 WS_CONNECTION_SAFETY = 290               # stay below the 300 hard cap
@@ -433,7 +437,8 @@ WS_MAX_MESSAGES_PER_SEC = 5
 WS_MESSAGE_WINDOW = 1.0
 WS_MAX_STREAMS_PER_CONNECTION = 1024
 
-# WS-API / stream rate-limit signalling (web-socket-api.md)
+# WS-API / stream rate-limit signalling
+# (https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/general-api-information)
 ERROR_CODE_TOO_MANY_REQUESTS = -1003
 ERROR_CODE_INVALID_TIMESTAMP = -1021
 EVENT_SERVER_SHUTDOWN = 'serverShutdown'

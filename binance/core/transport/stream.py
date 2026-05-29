@@ -463,7 +463,7 @@ class Stream:
         if socket is not None:
             await socket.close(DEFAULT_STREAM_CLOSE_CODE)
 
-    # Ref: https://academy.binance.com/en/articles/what-are-binance-websocket-limits
+    # Ref: https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams#websocket-limits
 
     # Connection Limits
     # There is a limit of 300 connection attempts per five-minute period per IP address for both Websocket tools.

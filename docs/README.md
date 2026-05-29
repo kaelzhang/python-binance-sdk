@@ -85,7 +85,7 @@ All arguments are keyword arguments; the first positional argument is an optiona
 
 ### WS-API request methods
 
-Every method is an `await`-able coroutine. All take keyword arguments matching the [Binance WebSocket API](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-api) parameters and return the parsed `result`.
+Every method is an `await`-able coroutine. All take keyword arguments matching the [Binance WebSocket API](https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/general-api-information) parameters and return the parsed `result`.
 
 General / market-data (public, no credentials):
 
@@ -842,7 +842,7 @@ A `RateLimitWindow` describes one pool: `scope` (`ip`/`account`/`connection`), `
   - **limit?** `int=1000` — snapshot depth (default 1000, max 5000)
   - **retry_policy?** `RetryPolicy`
 
-`OrderBookHandlerBase` maintains the order book according to [the official documentation](https://github.com/binance-exchange/binance-official-api-docs/blob/master/web-socket-streams.md#how-to-manage-a-local-order-book-correctly), handling reconnection and message-loss automatically.
+`OrderBookHandlerBase` maintains the order book according to [the official documentation](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams#how-to-manage-a-local-order-book-correctly), handling reconnection and message-loss automatically.
 
 ```python
 async def main():

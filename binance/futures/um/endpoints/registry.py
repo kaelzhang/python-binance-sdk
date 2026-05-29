@@ -28,9 +28,9 @@ WS-API endpoints go through the shared ``wss://ws-fapi.binance.com/ws-fapi/v1``
 connection; REST endpoints use ``https://fapi.binance.com``.
 
 Ref:
-- https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data
-- https://developers.binance.com/docs/derivatives/usds-margined-futures/trade
-- https://developers.binance.com/docs/derivatives/usds-margined-futures/account
+- https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api
+- https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api
+- https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api
 """
 
 from binance.core.common.constants import SecurityType, RequestMethod

@@ -10,8 +10,8 @@ REST_API_HOST = 'https://api.binance.com'
 STREAM_HOST = 'wss://stream.binance.com'
 WS_API_HOST = 'wss://ws-api.binance.com/ws-api/v3'
 
-# Spot rate-limit defaults — verified 2026-05-23 against Binance Spot API docs
-# (rest-api.md LIMITS, faqs/rate_limits.md)
+# Spot rate-limit defaults — verified 2026-05-29 against Binance Spot API docs
+# (https://developers.binance.com/docs/binance-spot-api-docs/rest-api/limits).
 DEFAULT_REQUEST_WEIGHT_LIMIT = 6000      # weight / interval / IP (since 2023-08-25)
 DEFAULT_REQUEST_WEIGHT_INTERVAL = 60.0   # seconds
 DEFAULT_WEIGHT_SAFETY_RATIO = 0.9        # only use 90% of the budget client-side

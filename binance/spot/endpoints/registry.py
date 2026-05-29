@@ -9,8 +9,8 @@ combined :class:`WsApiGetters` class with a real coroutine.
 Each entry's ``weight`` may be an ``int`` OR a callable ``(kwargs) -> int``
 for endpoints whose weight depends on the request params (see ``weights.py``).
 
-WS-API trading endpoints ref:
-https://github.com/binance/binance-spot-api-docs/blob/master/web-socket-api.md
+WS-API documentation:
+https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/general-api-information
 """
 
 from binance.core.common.constants import SecurityType

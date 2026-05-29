@@ -34,8 +34,8 @@ connection; REST endpoints use ``https://dapi.binance.com``.
 Confirmed COIN-M trading/account endpoint facts (2026-05-25):
 - WS-API: ``order.place``, ``order.modify``, ``order.cancel``, ``order.status``,
   ``account.status``, ``account.balance`` — same method names as USDⓈ-M.
-  Source: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade
-  Source: https://developers.binance.com/docs/derivatives/coin-margined-futures/account
+  Source: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api
+  Source: https://developers.binance.com/docs/derivatives/coin-margined-futures/account/rest-api
 - REST paths use ``/dapi/v1/`` (not ``/fapi/v3/``).
   ``positionRisk`` is ``/dapi/v1/positionRisk`` (not ``/fapi/v3/positionRisk``).
 - COIN-M does NOT have ``multiAssetsMargin`` (USDⓈ-M-only endpoint; omitted here).
@@ -52,9 +52,9 @@ Key COIN-M parameter difference vs USDⓈ-M:
   pair is the base asset, e.g. ``'BTCUSD'``).
 
 Ref:
-- https://developers.binance.com/docs/derivatives/coin-margined-futures/market-data
-- https://developers.binance.com/docs/derivatives/coin-margined-futures/trade
-- https://developers.binance.com/docs/derivatives/coin-margined-futures/account
+- https://developers.binance.com/docs/derivatives/coin-margined-futures/market-data/rest-api
+- https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api
+- https://developers.binance.com/docs/derivatives/coin-margined-futures/account/rest-api
 """
 
 from binance.core.common.constants import SecurityType, RequestMethod
