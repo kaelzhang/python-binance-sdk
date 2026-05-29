@@ -425,10 +425,10 @@ class FuturesAlgoUpdateHandlerBase(FuturesSimpleHandler):
                 "X":    "<status>",            # NEW | CANCELED | TRIGGERING |
                                                #  TRIGGERED | FINISHED |
                                                #  REJECTED | EXPIRED
-                "ai":   "<algo_info>",
+                "ai":   "<order_id_matching_engine>",  # string; empty when not triggered
                 "ap":   "<avg_price>",
                 "aq":   "<executed_qty>",
-                "act":  "<algo_cancel_type>",
+                "act":  "<actual_order_type>",          # actual order type in matching engine
                 "tp":   "<trigger_price>",
                 "p":    "<order_price>",
                 "V":    "<stp_mode>",
@@ -437,7 +437,7 @@ class FuturesAlgoUpdateHandlerBase(FuturesSimpleHandler):
                 "cp":   <close_all>,
                 "pP":   <price_protection>,
                 "R":    <reduce_only>,
-                "tt":   <trailing_type>,
+                "tt":   <trigger_time>,                 # ms timestamp
                 "gtd":  <gtd_cancel_time>,
                 "rm":   "<reject_message>"
             }

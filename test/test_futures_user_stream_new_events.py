@@ -340,6 +340,38 @@ async def test_algo_update_routed_on_um_data_envelope(um_client):
 
 
 # ---------------------------------------------------------------------------
+# ALGO_UPDATE docstring must describe ai/act/tt per Binance docs:
+#   ai  = "Order ID in matching engine (string; empty when not triggered)"
+#   act = "Actual order type in matching engine"
+#   tt  = "Trigger time" (ms timestamp)
+# https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Algo-Order-Update
+# ---------------------------------------------------------------------------
+
+
+def test_algo_update_docstring_describes_ai_as_order_id_matching_engine():
+    """FuturesAlgoUpdateHandlerBase docstring must call ``ai`` the matching-engine order id, NOT 'algo_info'."""
+    doc = FuturesAlgoUpdateHandlerBase.__doc__ or ''
+    # Stale mislabel must be gone.
+    assert 'algo_info' not in doc
+    # Docs-correct meaning must be present.
+    assert 'order_id_matching_engine' in doc
+
+
+def test_algo_update_docstring_describes_act_as_actual_order_type():
+    """FuturesAlgoUpdateHandlerBase docstring must call ``act`` the actual order type, NOT 'algo_cancel_type'."""
+    doc = FuturesAlgoUpdateHandlerBase.__doc__ or ''
+    assert 'algo_cancel_type' not in doc
+    assert 'actual_order_type' in doc
+
+
+def test_algo_update_docstring_describes_tt_as_trigger_time():
+    """FuturesAlgoUpdateHandlerBase docstring must call ``tt`` the trigger time, NOT 'trailing_type'."""
+    doc = FuturesAlgoUpdateHandlerBase.__doc__ or ''
+    assert 'trailing_type' not in doc
+    assert 'trigger_time' in doc
+
+
+# ---------------------------------------------------------------------------
 # Public API: all 5 new handler bases importable from top-level 'binance' package
 # ---------------------------------------------------------------------------
 
