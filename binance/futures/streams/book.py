@@ -22,6 +22,11 @@ from binance.core.common.types import DictPayload
 from binance.core.common.utils import normalize_symbol
 from binance.core.handlers.base import Handler
 from binance.core.handlers.orderbook import OrderBookHandlerBase
+from binance.core.orderbook import (
+    KEY_BIDS,
+    KEY_ASKS,
+    KEY_LAST_UPDATE_ID,
+)
 from binance.core.processors.base import Processor
 
 from binance.futures.streams._common import (
@@ -118,11 +123,14 @@ class AllMarketBookTickerHandlerBase(Handler):
 # ---------------------------------------------------------------------------
 # Futures Partial Order Book (depth snapshot)
 # Confirmed fields per developers.binance.com (UM + CM, 2026-05):
-#   { lastUpdateId, E, T, bids, asks }
-# bids/asks each: [ [price, quantity], ... ]
-# The handler surfaces ``lastUpdateId`` alongside the bids/asks dataframes so
-# downstream consumers can reconcile the snapshot against the diff-depth
-# stream's ``U`` / ``u`` / ``pu`` cursor.
+#   { e, E, T, s, [ps], U, u, [pu], b, a }
+# (distinct from the Spot REST-snapshot shape, which is
+#  { lastUpdateId, bids, asks } - DO NOT confuse the two).
+# b/a each: [ [price, quantity], ... ].  U/u/pu are first/final/previous-final
+# update IDs (same diff-cursor semantics as the diff-depth stream).
+# The handler surfaces ``u`` (final update id in event) as ``last_update_id``
+# alongside the bids/asks dataframes so downstream consumers can reconcile
+# the snapshot against the diff-depth stream's cursor.
 # ---------------------------------------------------------------------------
 
 FUTURES_PARTIAL_ORDER_BOOK_COLUMNS_MAP = {
@@ -136,13 +144,19 @@ FUTURES_PARTIAL_ORDER_BOOK_COLUMNS = FUTURES_PARTIAL_ORDER_BOOK_COLUMNS_MAP.keys
 class PartialOrderBookHandlerBase(Handler):
     """Base handler for the futures ``SubType.PARTIAL_ORDER_BOOK`` (partial depth snapshot) stream.
 
-    Shared across USDⓈ-M and COIN-M markets.  The raw payload has
-    ``lastUpdateId`` plus separate ``bids`` and ``asks`` lists of
-    ``[price, quantity]`` pairs.  The internal ``_receive`` converts each side
-    into a ``StockDataFrame`` with ``price`` and ``quantity`` columns; the
-    snapshot's ``lastUpdateId`` is preserved so consumers can reconcile against
-    the diff-depth cursor.  The handler returns a
-    ``(last_update_id, bids_df, asks_df)`` tuple.
+    Shared across USDⓈ-M and COIN-M markets.  Per developers.binance.com the
+    futures partial-depth payload exposes ``b`` and ``a`` arrays of
+    ``[price, quantity]`` pairs plus ``U`` / ``u`` / ``pu`` update IDs
+    (first / final / previous-final).  These are the SAME diff-cursor fields
+    as the diff-depth stream — distinct from the Spot REST-snapshot shape
+    (``lastUpdateId`` / ``bids`` / ``asks``); do NOT confuse the two.
+
+    The internal ``_receive`` converts each side into a ``StockDataFrame``
+    with ``price`` and ``quantity`` columns and surfaces ``u`` (the final
+    update id in the event) as ``last_update_id`` so consumers can reconcile
+    against the diff-depth cursor.  The handler returns a
+    ``(last_update_id, bids_df, asks_df)`` tuple — same shape as the Spot
+    PartialOrderBookHandlerBase.
 
     Docs:
     - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Partial-Book-Depth-Streams
@@ -155,9 +169,9 @@ class PartialOrderBookHandlerBase(Handler):
     def _receive(  # type: ignore[override]
         self, payload: DictPayload, index: Optional[List[int]] = None
     ):
-        last_update_id = payload.get('lastUpdateId')
-        bids_data = [{'price': x[0], 'quantity': x[1]} for x in payload['bids']]
-        asks_data = [{'price': x[0], 'quantity': x[1]} for x in payload['asks']]
+        last_update_id = payload[KEY_LAST_UPDATE_ID]
+        bids_data = [{'price': x[0], 'quantity': x[1]} for x in payload[KEY_BIDS]]
+        asks_data = [{'price': x[0], 'quantity': x[1]} for x in payload[KEY_ASKS]]
         bids = super()._receive(bids_data, list(range(len(bids_data))) or [0])
         asks = super()._receive(asks_data, list(range(len(asks_data))) or [0])
         return last_update_id, bids, asks
@@ -238,8 +252,8 @@ class PartialOrderBookProcessor(Processor):
         if (
             payload is None
             or type(payload) is not dict
-            or 'bids' not in payload
-            or 'asks' not in payload
+            or KEY_BIDS not in payload
+            or KEY_ASKS not in payload
         ):
             return False, None
 

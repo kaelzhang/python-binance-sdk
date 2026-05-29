@@ -419,10 +419,27 @@ async def test_futures_book_ticker_handler_columns(um_client):
 # SHARED: PartialOrderBook
 # ===========================================================================
 
+# Futures partial-depth wire shape per developers.binance.com (UM + CM):
+#   {e, E, T, s, [ps], U, u, [pu], b, a}
+# distinct from Spot's snapshot shape ({lastUpdateId, bids, asks}); the futures
+# stream emits `b` / `a` arrays of [price, qty] pairs and exposes both first
+# (`U`) and final (`u`) update IDs alongside the previous-event final
+# (`pu`) so consumers can walk the diff cursor.  The handler returns
+# (last_update_id, bids_df, asks_df) using `u` as last_update_id, matching
+# the Spot PartialOrderBookHandlerBase tuple shape.
+# Docs:
+# - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Partial-Book-Depth-Streams
+# - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Partial-Book-Depth-Streams
 PARTIAL_DEPTH_PAYLOAD = {
-    'lastUpdateId': 1234,
-    'bids': [['50000.0', '1.0'], ['49999.0', '2.0']],
-    'asks': [['50001.0', '0.5'], ['50002.0', '1.5']],
+    'e': 'depthUpdate',
+    'E': 1591270260907,
+    'T': 1591270260891,
+    's': 'BTCUSDT',
+    'U': 7654320,
+    'u': 7654321,
+    'pu': 7654319,
+    'b': [['50000.0', '1.0'], ['49999.0', '2.0']],
+    'a': [['50001.0', '0.5'], ['50002.0', '1.5']],
 }
 
 
@@ -517,25 +534,40 @@ def test_cm_order_book_subscribe_param_with_250ms_speed():
 # ``lastUpdateId`` / bids / asks so consumers can route by pair.
 # ---------------------------------------------------------------------------
 
+# Futures CM partial-depth payload shape per docs:
+#   {e, E, T, s, ps, U, u, pu, b, a} -- same as UM plus the CM-only ``ps``
 CM_PARTIAL_DEPTH_PAYLOAD = {
-    'lastUpdateId': 17276701,
-    'pair': 'BTCUSD',
-    'bids': [['9523.0', '5'], ['9522.8', '8']],
-    'asks': [['9524.6', '2'], ['9524.7', '3']],
+    'e': 'depthUpdate',
+    'E': 1591270260907,
+    'T': 1591270260891,
+    's': 'BTCUSD_PERP',
+    'ps': 'BTCUSD',
+    'U': 17276700,
+    'u': 17276701,
+    'pu': 17276699,
+    'b': [['9523.0', '5'], ['9522.8', '8']],
+    'a': [['9524.6', '2'], ['9524.7', '3']],
 }
 
 
 def test_cm_partial_order_book_handler_exposes_pair():
     """CM PartialOrderBookHandlerBase MUST return ``(pair, last_update_id, bids, asks)``
-    per the CM docs that publish ``ps``.
+    per the CM docs that publish ``ps``.  Uses the docs-confirmed futures
+    wire shape with ``b`` / ``a`` arrays and ``u`` as the final update id.
     """
     from binance.futures.cm.streams import PartialOrderBookHandlerBase
     handler = PartialOrderBookHandlerBase()
     result = handler._receive({
-        'lastUpdateId': 17276701,
+        'e': 'depthUpdate',
+        'E': 1591270260907,
+        'T': 1591270260891,
+        's': 'BTCUSD_PERP',
         'ps': 'BTCUSD',
-        'bids': [['9523.0', '5']],
-        'asks': [['9524.6', '2']],
+        'U': 17276700,
+        'u': 17276701,
+        'pu': 17276699,
+        'b': [['9523.0', '5']],
+        'a': [['9524.6', '2']],
     })
     pair, last_update_id, bids, asks = result
     assert pair == 'BTCUSD'
@@ -630,13 +662,49 @@ async def test_futures_partial_order_book_handler(um_client):
     df = await run_handler(
         um_client, FuturesPartialOrderBookHandlerBase, PARTIAL_DEPTH_PAYLOAD, 'btcusdt@depth5'
     )
-    # Partial-depth snapshots per developers.binance.com include lastUpdateId;
-    # the handler returns (last_update_id, bids_df, asks_df) so downstream
-    # consumers can reconcile against the diff-depth stream.
+    # Per developers.binance.com (UM/CM Partial Book Depth Streams), the futures
+    # partial-depth payload exposes ``b`` / ``a`` arrays and ``U`` / ``u`` / ``pu``
+    # update IDs; the handler returns ``(last_update_id, bids_df, asks_df)``
+    # using ``u`` (final update id in event) as ``last_update_id`` so downstream
+    # consumers can reconcile against the diff-depth stream's cursor.
     last_update_id, bids, asks = df
-    assert last_update_id == 1234
+    assert last_update_id == 7654321  # PARTIAL_DEPTH_PAYLOAD['u']
     assert bids.iloc[0]['price'] == '50000.0'
     assert asks.iloc[0]['price'] == '50001.0'
+
+
+def test_futures_partial_order_book_handler_rejects_spot_shape():
+    """Futures partial-depth handler MUST read ``b`` / ``a`` keys (not Spot
+    ``bids`` / ``asks``).  A spot-shape payload missing ``b`` / ``a``
+    raises ``KeyError`` rather than silently NaN-ing.  Pins the futures vs
+    spot wire shape distinction per docs.
+    """
+    from binance.futures.streams import PartialOrderBookHandlerBase
+    handler = PartialOrderBookHandlerBase()
+    spot_shape = {
+        'lastUpdateId': 1234,
+        'bids': [['50000.0', '1.0']],
+        'asks': [['50001.0', '0.5']],
+    }
+    with pytest.raises(KeyError):
+        handler._receive(spot_shape)
+
+
+def test_futures_partial_order_book_is_message_type_rejects_spot_shape():
+    """Futures PartialOrderBookProcessor MUST gate by futures ``b`` / ``a``
+    keys, not Spot ``bids`` / ``asks``.
+    """
+    from binance.futures.streams import PartialOrderBookProcessor
+    proc = PartialOrderBookProcessor(None)
+    is_match, _ = proc.is_message_type({
+        'stream': 'btcusdt@depth5',
+        'data': {
+            'lastUpdateId': 1234,
+            'bids': [['50000.0', '1.0']],
+            'asks': [['50001.0', '0.5']],
+        },
+    })
+    assert not is_match
 
 
 # ===========================================================================
