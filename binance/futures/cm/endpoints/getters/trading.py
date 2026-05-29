@@ -141,16 +141,20 @@ class CMTradingGetters:
         ...  # pragma: no cover
 
     def get_all_orders(self, **kwargs) -> Awaitable:
-        """Gets all orders (active, cancelled, or filled) for a COIN-M symbol.
+        """Gets all orders (active, cancelled, or filled) for a COIN-M contract.
 
-        Weight: 5
+        Weight: 20 with `symbol`; 40 with `pair`.
+        Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/All-Orders
 
         Args:
-            symbol (str): The COIN-M futures symbol.
+            symbol (:obj:`str`, optional): The COIN-M futures symbol. One of
+                ``symbol`` or ``pair`` is required.
+            pair (:obj:`str`, optional): The underlying pair (e.g. ``'BTCUSD'``).
+                One of ``symbol`` or ``pair`` is required.
             orderId (:obj:`long`, optional): Fetch orders >= this id.
             startTime (:obj:`long`, optional):
             endTime (:obj:`long`, optional):
-            limit (:obj:`int`, optional): Default 500; max 1000.
+            limit (:obj:`int`, optional): Default 50; max 100.
             recvWindow (:obj:`long`, optional): Max 60000.
 
         Returns:
@@ -175,7 +179,8 @@ class CMTradingGetters:
     def cancel_batch_orders(self, **kwargs) -> Awaitable:
         """Cancels multiple COIN-M orders in a single request.
 
-        Weight: 5
+        Weight: 1
+        Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Cancel-Multiple-Orders
 
         Args:
             symbol (str): The COIN-M futures symbol.

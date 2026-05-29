@@ -62,8 +62,8 @@ class CMMarketDataGetters:
 
         Args:
             pair (str): The underlying asset pair, e.g. ``'BTCUSD'``.
-            contractType (str): Contract type -- one of ``'CURRENT_QUARTER'``,
-                ``'NEXT_QUARTER'``, ``'PERPETUAL'``.
+            contractType (str): Contract type -- one of ``'ALL'``,
+                ``'CURRENT_QUARTER'``, ``'NEXT_QUARTER'``, ``'PERPETUAL'``.
             period (str): Statistical period -- one of
                 ``'5m'``, ``'15m'``, ``'30m'``, ``'1h'``, ``'2h'``, ``'4h'``,
                 ``'6h'``, ``'12h'``, ``'1d'``.
@@ -141,7 +141,9 @@ class CMMarketDataGetters:
     def get_premium_index(self, **kwargs) -> Awaitable:
         """Gets the current mark price, index price, and funding rate for a COIN-M symbol.
 
-        Weight: 1 when ``symbol`` or ``pair`` is given; 10 when both are omitted (returns all).
+        Weight: 10 (flat — CM docs do NOT publish a dynamic 1/10 split as UM
+        does; CM premiumIndex is fixed at 10 regardless of ``symbol`` / ``pair``).
+        Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/market-data/rest-api/Index-Price-and-Mark-Price
 
         Args:
             symbol (:obj:`str`, optional): The COIN-M futures symbol,

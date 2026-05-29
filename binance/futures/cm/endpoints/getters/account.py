@@ -66,7 +66,8 @@ class CMAccountGetters:
     def get_position_risk(self, **kwargs) -> Awaitable:
         """Gets position risk information for COIN-M contracts.
 
-        Weight: 5
+        Weight: 1
+        Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Position-Information
 
         Args:
             marginAsset (:obj:`str`, optional): The margin asset (e.g. ``'BTC'``).
@@ -79,17 +80,21 @@ class CMAccountGetters:
         ...  # pragma: no cover
 
     def get_user_trades(self, **kwargs) -> Awaitable:
-        """Gets trades for a specific COIN-M account and symbol.
+        """Gets trades for a specific COIN-M account and symbol/pair.
 
-        Weight: 5
+        Weight: 20 with `symbol`; 40 with `pair`.
+        Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Account-Trade-List
 
         Args:
-            symbol (str): The COIN-M futures symbol.
+            symbol (:obj:`str`, optional): The COIN-M futures symbol. One of
+                ``symbol`` or ``pair`` is required.
+            pair (:obj:`str`, optional): The underlying pair (e.g. ``'BTCUSD'``).
+                One of ``symbol`` or ``pair`` is required.
             orderId (:obj:`long`, optional):
             startTime (:obj:`long`, optional):
             endTime (:obj:`long`, optional):
             fromId (:obj:`long`, optional): Trade id to fetch from.
-            limit (:obj:`int`, optional): Default 500; max 1000.
+            limit (:obj:`int`, optional): Default 50; max 1000.
             recvWindow (:obj:`long`, optional): Max 60000.
 
         Returns:
@@ -114,14 +119,15 @@ class CMAccountGetters:
     def get_income(self, **kwargs) -> Awaitable:
         """Gets income history for COIN-M.
 
-        Weight: 30
+        Weight: 20
+        Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/account/rest-api/Get-Income-History
 
         Args:
             symbol (:obj:`str`, optional): The COIN-M futures symbol.
             incomeType (:obj:`str`, optional): Income type filter.
             startTime (:obj:`long`, optional):
             endTime (:obj:`long`, optional):
-            limit (:obj:`int`, optional): Default 1000; max 1000.
+            limit (:obj:`int`, optional): Default 100; max 1000.
             recvWindow (:obj:`long`, optional): Max 60000.
 
         Returns:

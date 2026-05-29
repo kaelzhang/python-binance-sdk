@@ -440,3 +440,101 @@ def test_cm_request_weight_limit(client):
             assert w.limit == expected_safety_limit
             return
     raise AssertionError('REQUEST_WEIGHT window not found')
+
+
+# ---------------------------------------------------------------------------
+# CM REST docstring drift pins.
+# Pinned via inspect.getdoc + substring checks so any drift trips CI.
+# Each test cites the docs URL that the docstring MUST match.
+# ---------------------------------------------------------------------------
+
+def _doc(method) -> str:
+    import inspect
+    return inspect.getdoc(method) or ''
+
+
+def test_cm_get_premium_index_docstring_weight_is_flat_10():
+    """CM premiumIndex weight is a FLAT 10 (no symbol/no-symbol split as UM has).
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/market-data/rest-api/Index-Price-and-Mark-Price
+    """
+    doc = _doc(CMFuturesClient.get_premium_index)
+    assert 'Weight: 10' in doc
+    # Stale dynamic claim must be gone.
+    assert 'Weight: 1 when' not in doc
+
+
+def test_cm_get_user_trades_docstring_limit_default_50():
+    """CM userTrades ``limit`` default is 50 (not 500).
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Account-Trade-List
+    """
+    doc = _doc(CMFuturesClient.get_user_trades)
+    assert 'Default 50; max 1000' in doc
+
+
+def test_cm_get_user_trades_docstring_weight_is_dynamic():
+    """CM userTrades weight is 20 with ``symbol``, 40 with ``pair``.
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Account-Trade-List
+    """
+    doc = _doc(CMFuturesClient.get_user_trades)
+    assert '20 with `symbol`; 40 with `pair`' in doc
+    assert 'Weight: 5' not in doc
+
+
+def test_cm_get_open_interest_hist_docstring_includes_all_contract_type():
+    """CM openInterestHist ``contractType`` valid values include ``'ALL'``.
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/market-data/rest-api/Open-Interest-Statistics
+    """
+    doc = _doc(CMFuturesClient.get_open_interest_hist)
+    assert "'ALL'" in doc
+
+
+def test_cm_get_income_docstring_weight_is_20():
+    """CM income weight is 20 (matches registry; the docstring used to claim 30).
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/account/rest-api/Get-Income-History
+    """
+    doc = _doc(CMFuturesClient.get_income)
+    assert 'Weight: 20' in doc
+    assert 'Weight: 30' not in doc
+
+
+def test_cm_get_income_docstring_limit_default_100():
+    """CM income ``limit`` default is 100 (not 1000).
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/account/rest-api/Get-Income-History
+    """
+    doc = _doc(CMFuturesClient.get_income)
+    assert 'Default 100; max 1000' in doc
+
+
+def test_cm_get_all_orders_docstring_weight_is_dynamic():
+    """CM allOrders weight is 20 with ``symbol``, 40 with ``pair``.
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/All-Orders
+    """
+    doc = _doc(CMFuturesClient.get_all_orders)
+    assert '20 with `symbol`; 40 with `pair`' in doc
+    assert 'Weight: 5' not in doc
+
+
+def test_cm_get_all_orders_docstring_limit_default_50_max_100():
+    """CM allOrders ``limit`` default is 50; max 100 (NOT max 1000).
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/All-Orders
+    """
+    doc = _doc(CMFuturesClient.get_all_orders)
+    assert 'Default 50; max 100' in doc
+
+
+def test_cm_get_position_risk_docstring_weight_is_1():
+    """CM positionRisk weight is 1 (matches registry; the docstring used to claim 5).
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Position-Information
+    """
+    doc = _doc(CMFuturesClient.get_position_risk)
+    assert 'Weight: 1' in doc
+    assert 'Weight: 5' not in doc
+
+
+def test_cm_cancel_batch_orders_docstring_weight_is_1():
+    """CM cancel_batch_orders weight is 1 (matches registry; docstring used to claim 5).
+    Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Cancel-Multiple-Orders
+    """
+    doc = _doc(CMFuturesClient.cancel_batch_orders)
+    assert 'Weight: 1' in doc
+    assert 'Weight: 5' not in doc
