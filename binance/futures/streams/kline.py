@@ -23,8 +23,7 @@ from binance.core.processors.base import Processor
 
 # ---------------------------------------------------------------------------
 # Futures Kline
-# Confirmed fields (UM + CM identical, 2026-05-26):
-# Same nested 'k' structure as Spot kline.  The shared Spot column map applies.
+# Confirmed fields per developers.binance.com (UM + CM, 2026-05).
 # Fields in nested 'k':
 #   t  open time
 #   T  close time
@@ -39,7 +38,8 @@ from binance.core.processors.base import Processor
 #   V  taker volume
 #   Q  taker quote volume
 #   n  total trades
-# Outer: E event time (lifted into k['E'] by _receive)
+# Outer: E event time (lifted into k['E'] by _receive).
+# Futures klines start at the ``1m`` interval; ``1s`` is Spot-only.
 # ---------------------------------------------------------------------------
 
 FUTURES_KLINE_COLUMNS_MAP = {
@@ -76,9 +76,9 @@ VALID_FUTURES_KLINE_INTERVALS = frozenset((
 class KlineHandlerBase(Handler):
     """Base handler for the futures ``SubType.KLINE`` stream.
 
-    Shared across USDⓈ-M and COIN-M markets.  The nested ``k`` payload structure
-    is identical to the Spot kline; the internal ``_receive`` lifts ``E`` (event
-    time) from the outer envelope into the flattened ``k`` dict before converting.
+    Shared across USDⓈ-M and COIN-M markets.  The internal ``_receive`` lifts
+    ``E`` (event time) from the outer envelope into the flattened ``k`` dict
+    before column conversion.
 
     Subclass this and override ``receive(payload)`` to handle events.  The base
     ``receive`` returns a ``StockDataFrame`` with human-readable column names
@@ -86,7 +86,7 @@ class KlineHandlerBase(Handler):
 
     Docs:
     - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Kline-Candlestick-Streams
-    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams
+    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Kline-Candlestick-Streams
     """
 
     COLUMNS_MAP = FUTURES_KLINE_COLUMNS_MAP
@@ -103,15 +103,15 @@ class KlineHandlerBase(Handler):
 # ---------------------------------------------------------------------------
 # Futures ContinuousKline
 # Wire stream: <pair>_<contractType>@continuousKline_<interval>
-# Confirmed fields (UM + CM identical, 2026-05-26):
+# Confirmed fields per developers.binance.com (UM + CM, 2026-05):
 # Outer:
 #   e  'continuous_kline'
 #   E  event time
 #   ps pair  (e.g. 'BTCUSDT' for UM, 'BTCUSD' for CM)
 #   ct contract type (e.g. 'PERPETUAL', 'CURRENT_QUARTER')
 # Nested 'k':
-#   same kline fields as regular kline (t,T,i,f,L,o,h,l,c,v,n,q,V,Q,x)
-#   but 's' is set to '' (empty string) in continuous kline
+#   same kline fields as regular kline (t, T, i, f, L, o, h, l, c, v, n, q,
+#   V, Q, x).  ``s`` is set to '' (empty string) in continuous kline events.
 # ---------------------------------------------------------------------------
 
 FUTURES_CONTINUOUS_KLINE_COLUMNS_MAP = {

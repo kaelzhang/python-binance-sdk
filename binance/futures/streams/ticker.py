@@ -22,13 +22,18 @@ from binance.core.processors.base import Processor
 
 # ---------------------------------------------------------------------------
 # Futures MiniTicker
-# Confirmed fields (UM + CM identical to Spot miniTicker, 2026-05-26):
+# Common fields per developers.binance.com (UM + CM, 2026-05):
 #   e  '24hrMiniTicker'
 #   E  event time
 #   s  symbol
 #   o, h, l, c  OHLC
 #   v  volume
 #   q  quote volume
+# CM additionally publishes ``ps`` (pair); the CM-specific column map
+# (in binance.futures.cm.streams) extends this base with that field.
+# Docs:
+# - UM https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Individual-Symbol-Mini-Ticker-Stream
+# - CM https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Individual-Symbol-Mini-Ticker-Stream
 # ---------------------------------------------------------------------------
 
 FUTURES_MINI_TICKER_COLUMNS_MAP = {
@@ -46,14 +51,14 @@ FUTURES_MINI_TICKER_COLUMNS = FUTURES_MINI_TICKER_COLUMNS_MAP.keys()
 class MiniTickerHandlerBase(Handler):
     """Base handler for the futures ``SubType.MINI_TICKER`` (24hrMiniTicker) stream.
 
-    Shared across USDⓈ-M and COIN-M markets.  The payload is structurally identical
-    to the Spot miniTicker.
+    USDⓈ-M uses this base directly.  COIN-M extends it with ``ps`` (pair) via
+    ``binance.futures.cm.streams.MiniTickerHandlerBase``.
 
     Subclass this and override ``receive(payload)`` to handle events.
 
     Docs:
     - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Individual-Symbol-Mini-Ticker-Stream
-    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams
+    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Individual-Symbol-Mini-Ticker-Stream
     """
 
     COLUMNS_MAP = FUTURES_MINI_TICKER_COLUMNS_MAP
@@ -97,14 +102,14 @@ FUTURES_TICKER_COLUMNS = FUTURES_TICKER_COLUMNS_MAP.keys()
 class TickerHandlerBase(Handler):
     """Base handler for the futures ``SubType.TICKER`` (24hrTicker) stream.
 
-    Shared across USDⓈ-M and COIN-M markets.  The payload is structurally identical
-    to the Spot ticker.
+    USDⓈ-M uses this base directly.  COIN-M extends it with ``ps`` (pair)
+    via ``binance.futures.cm.streams.TickerHandlerBase``.
 
     Subclass this and override ``receive(payload)`` to handle events.
 
     Docs:
     - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Individual-Symbol-Ticker-Streams
-    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams
+    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Individual-Symbol-Ticker-Streams
     """
 
     COLUMNS_MAP = FUTURES_TICKER_COLUMNS_MAP
@@ -114,20 +119,20 @@ class TickerHandlerBase(Handler):
 # ---------------------------------------------------------------------------
 # All-market arrays: AllMarketMiniTickers
 # Wire stream: !miniTicker@arr
-# Each element is a 24hrMiniTicker dict.
+# Each element matches the per-symbol 24hrMiniTicker payload.
 # ---------------------------------------------------------------------------
 
 class AllMarketMiniTickersHandlerBase(Handler):
     """Base handler for the futures ``SubType.ALL_MARKET_MINI_TICKERS`` stream (``!miniTicker@arr``).
 
-    Shared by USDⓈ-M and COIN-M markets.  Receives an array of ``24hrMiniTicker``
-    events for every actively traded futures symbol.
+    USDⓈ-M uses this base directly.  COIN-M extends it with ``ps`` (pair)
+    via ``binance.futures.cm.streams.AllMarketMiniTickersHandlerBase``.
 
     Subclass this and override ``receive(payload)`` to handle events.
 
     Docs:
     - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/All-Market-Mini-Tickers-Stream
-    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams
+    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/All-Market-Mini-Tickers-Stream
     """
 
     COLUMNS_MAP = FUTURES_MINI_TICKER_COLUMNS_MAP
@@ -137,20 +142,20 @@ class AllMarketMiniTickersHandlerBase(Handler):
 # ---------------------------------------------------------------------------
 # All-market arrays: AllMarketTickers
 # Wire stream: !ticker@arr
-# Each element is a 24hrTicker dict.
+# Each element matches the per-symbol 24hrTicker payload.
 # ---------------------------------------------------------------------------
 
 class AllMarketTickersHandlerBase(Handler):
     """Base handler for the futures ``SubType.ALL_MARKET_TICKERS`` stream (``!ticker@arr``).
 
-    Shared by USDⓈ-M and COIN-M markets.  Receives an array of full ``24hrTicker``
-    events for every actively traded futures symbol.
+    USDⓈ-M uses this base directly.  COIN-M extends it with ``ps`` (pair)
+    via ``binance.futures.cm.streams.AllMarketTickersHandlerBase``.
 
     Subclass this and override ``receive(payload)`` to handle events.
 
     Docs:
     - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/All-Market-Tickers-Streams
-    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams
+    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/All-Market-Tickers-Streams
     """
 
     COLUMNS_MAP = FUTURES_TICKER_COLUMNS_MAP
