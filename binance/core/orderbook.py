@@ -216,14 +216,28 @@ class OrderBook(ABC):
         """Set the depth-snapshot limit (number of price levels to fetch).
 
         This controls how many price levels are requested via the depth
-        endpoint when (re-)initialising the order book. Binance accepts any
-        integer value up to 5000 and caps it there server-side. The SDK
-        default is ``DEFAULT_DEPTH_LIMIT`` (1000).
+        endpoint when (re-)initialising the order book.  The accepted shape
+        differs by market per developers.binance.com:
+
+        * **Spot** WebSocket-API ``depth``: any integer ``1``–``5000``
+          (5000 hard cap; server caps at 5000).  Default per docs: 100.
+        * **Futures** REST ``/fapi/v1/depth`` (UM) and ``/dapi/v1/depth``
+          (CM): discrete value from ``{5, 10, 20, 50, 100, 500, 1000}``;
+          max 1000.  Non-listed values are rejected by the server.
+
+        The SDK default is ``DEFAULT_DEPTH_LIMIT`` (1000), valid on every
+        market.
 
         Args:
             limit (int): Number of price levels per side to include in each
-                depth snapshot request. Default 1000, max 5000 (any value;
-                Binance caps at 5000).
+                depth snapshot request.  Spot accepts 1–5000 (hard cap
+                5000); Futures (UM + CM) accepts one of the discrete values
+                ``{5, 10, 20, 50, 100, 500, 1000}`` (max 1000).
+
+        Docs:
+        - Spot: https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/market-data-requests
+        - UM:   https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Order-Book
+        - CM:   https://developers.binance.com/docs/derivatives/coin-margined-futures/market-data/rest-api/Order-Book
         """
         self._limit = limit
 

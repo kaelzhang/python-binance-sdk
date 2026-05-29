@@ -568,3 +568,56 @@ async def test_spot_orderbook_step4_equal_ids_is_acceptable():
     # so it should be applied; final last_update_id is 110.
     assert orderbook._last_update_id == 110
     assert orderbook._unsolved_queue == []
+
+
+def test_orderbook_set_limit_docstring_distinguishes_spot_and_futures_caps():
+    """The Binance depth endpoint accepts different ``limit`` shapes per
+    market.  Per developers.binance.com:
+
+    * Spot WebSocket-API ``depth``: 1–5000, default 100; weight scales with
+      bracket; Binance hard-caps at 5000.
+    * UM REST ``/fapi/v1/depth``: discrete values
+      ``{5, 10, 20, 50, 100, 500, 1000}``; max 1000.
+    * CM REST ``/dapi/v1/depth``: same discrete values
+      ``{5, 10, 20, 50, 100, 500, 1000}``; max 1000.
+
+    The previous docstring claimed "max 5000 (any value; Binance caps at
+    5000)" — only true for Spot — which would silently mislead any user
+    pointing the handler at UM/CM (where the server rejects out-of-set
+    values).  Pin the market-aware wording.
+    """
+    import inspect
+    from binance.core.orderbook import OrderBook
+    doc = inspect.getdoc(OrderBook.set_limit) or ''
+    assert 'Spot' in doc
+    assert '5000' in doc
+    assert 'Futures' in doc
+    assert '{5, 10, 20, 50, 100, 500, 1000}' in doc
+    assert '1000' in doc
+
+
+def test_orderbook_handler_orderbook_docstring_distinguishes_spot_and_futures_caps():
+    """``OrderBookHandlerBase.orderbook(..., limit=...)`` carries the same
+    cap claim — pin the same market-aware wording so handler-level users
+    see the cap difference too.
+    """
+    import inspect
+    from binance import OrderBookHandlerBase
+    doc = inspect.getdoc(OrderBookHandlerBase.orderbook) or ''
+    assert 'Spot' in doc
+    assert '5000' in doc
+    assert 'Futures' in doc
+    assert '{5, 10, 20, 50, 100, 500, 1000}' in doc
+
+
+def test_orderbook_handler_init_docstring_distinguishes_spot_and_futures_caps():
+    """``OrderBookHandlerBase.__init__`` ``limit`` argument docs must also
+    carry the market-aware cap.  Pin the same wording.
+    """
+    import inspect
+    from binance import OrderBookHandlerBase
+    doc = inspect.getdoc(OrderBookHandlerBase) or ''
+    assert 'Spot' in doc
+    assert '5000' in doc
+    assert 'Futures' in doc
+    assert '{5, 10, 20, 50, 100, 500, 1000}' in doc

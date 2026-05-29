@@ -155,9 +155,11 @@ class OrderBookHandlerBase(Handler):
 
     Args:
         limit (int): Depth snapshot size (number of price levels) to request
-            when (re-)initialising an ``OrderBook``. Default 1000, max 5000
-            (any value; Binance caps at 5000). Defaults to
-            ``DEFAULT_DEPTH_LIMIT`` (1000).
+            when (re-)initialising an ``OrderBook``.  Cap differs by market
+            per developers.binance.com: Spot accepts 1–5000 (5000 hard cap);
+            Futures (UM + CM) requires one of the discrete values
+            ``{5, 10, 20, 50, 100, 500, 1000}`` (max 1000).  Defaults to
+            ``DEFAULT_DEPTH_LIMIT`` (1000), which is valid on every market.
         retry_policy (RetryPolicy): Retry strategy used when a snapshot
             fetch fails.  Defaults to ``DEFAULT_RETRY_POLICY`` (bounded
             exponential back-off with jitter).
@@ -220,11 +222,13 @@ class OrderBookHandlerBase(Handler):
         Args:
             symbol (str): The symbol name.
             limit (:obj:`int`, optional): REST depth-snapshot size for THIS
-                symbol's book, overriding the handler-level default. Only
+                symbol's book, overriding the handler-level default.  Only
                 applied when the book is first created -- call this before
-                subscribing to choose a per-symbol depth. Default 1000, max
-                5000 (any value; Binance caps at 5000). Defaults to the
-                handler's ``limit``.
+                subscribing to choose a per-symbol depth.  Cap differs by
+                market per developers.binance.com: Spot accepts 1–5000
+                (5000 hard cap); Futures (UM + CM) requires one of the
+                discrete values ``{5, 10, 20, 50, 100, 500, 1000}`` (max
+                1000).  Defaults to the handler's ``limit``.
 
         Returns:
             OrderBook: The orderbook for ``symbol``.
