@@ -30,3 +30,79 @@ jobs:
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
+
+  # Build the wheel + sdist and install them into an *isolated* venv, then
+  # import every public submodule. The source-layout `pytest` job above
+  # cannot catch packaging regressions (missing `__init__.py`, stale
+  # `[tool.setuptools].packages` list, MANIFEST gaps, etc.) because it
+  # imports directly from the working tree; only an installed build artifact
+  # can. See commit `5c201bf` (5.0.0 / 5.0.1 wheels were silently missing 7
+  # R8 subpackages because the explicit packages list had gone stale).
+  package-smoke:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Build sdist + wheel
+      run: |
+        python -m pip install --upgrade pip build
+        python -m build
+        ls -la dist/
+    - name: Install wheel into an isolated venv
+      run: |
+        python -m venv /tmp/smoke-wheel
+        /tmp/smoke-wheel/bin/pip install --quiet dist/*.whl
+    - name: Smoke-import every public submodule (wheel)
+      # `cd /tmp` so the installed wheel is found, not the source tree.
+      run: |
+        cd /tmp
+        /tmp/smoke-wheel/bin/python - <<'PY'
+        import binance
+        print('binance.__version__ =', binance.__version__)
+        print('binance.__file__    =', binance.__file__)
+        assert '/site-packages/' in binance.__file__, \
+            f'expected installed wheel, got source: {binance.__file__}'
+
+        # Top-level public surface.
+        from binance import (
+            SpotClient, UMFuturesClient, CMFuturesClient, Credentials,
+            SubType, Stream, OrderBook,
+            OrderBookHandlerBase, TickerHandlerBase, MarkPriceHandlerBase,
+        )
+        # Every subpackage created by the R8 split — these are the ones the
+        # stale explicit-packages list dropped in 5.0.0 / 5.0.1.
+        import binance.spot.endpoints
+        import binance.spot.endpoints.getters
+        import binance.futures.streams
+        import binance.futures.um.endpoints
+        import binance.futures.um.endpoints.getters
+        import binance.futures.cm.endpoints
+        import binance.futures.cm.endpoints.getters
+        # And the registries each one publishes.
+        from binance.spot.endpoints import WS_APIS
+        from binance.futures.um.endpoints import WS_API_ENDPOINTS as UM_WS
+        from binance.futures.cm.endpoints import WS_API_ENDPOINTS as CM_WS
+
+        # Instantiate every client (no network calls — just object construction).
+        SpotClient(); UMFuturesClient(); CMFuturesClient()
+
+        print(f'SMOKE OK: spot WS_APIS={len(WS_APIS)} '
+              f'um WS_API={len(UM_WS)} cm WS_API={len(CM_WS)}')
+        PY
+    - name: Install sdist into a second isolated venv and smoke-import
+      # sdist install path also exercises the source distribution layout,
+      # catching MANIFEST.in / data-file mistakes that wheel install masks.
+      run: |
+        python -m venv /tmp/smoke-sdist
+        /tmp/smoke-sdist/bin/pip install --quiet dist/*.tar.gz
+        cd /tmp
+        /tmp/smoke-sdist/bin/python -c "
+        import binance, binance.spot.endpoints, binance.futures.streams
+        import binance.futures.um.endpoints, binance.futures.cm.endpoints
+        from binance import SpotClient, UMFuturesClient, CMFuturesClient
+        SpotClient(); UMFuturesClient(); CMFuturesClient()
+        print('SDIST SMOKE OK:', binance.__version__)
+        "
