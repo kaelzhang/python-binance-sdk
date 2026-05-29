@@ -75,14 +75,22 @@ class UserProcessor(Processor):
         return params
 
     def is_message_type(self, msg):
-        """Match user-event messages from either the WS-API (``msg['event']``) or data-stream (``msg['data']``) envelope."""
+        """Match user-event messages from either the WS-API (``msg['event']``) or data-stream (``msg['data']``) envelope.
+
+        The 2025-08-12 Spot CHANGELOG added a top-level ``subscriptionId``
+        outside the ``event`` container that identifies which subscription
+        produced the event.  When present it is attached to the dispatched
+        payload (raw key ``subscriptionId``) so downstream handlers can
+        route by subscription; the renamed ``subscription_id`` surface is
+        produced by each handler's COLUMNS_MAP rename.
+        """
         event = msg.get('event')
         if (
             event is not None
             and type(event) is dict
             and event.get(KEY_PAYLOAD_TYPE) in self.PAYLOAD_TYPES
         ):
-            return True, event
+            return True, self._with_subscription_id(msg, event)
 
         payload = msg.get(KEY_PAYLOAD)
 
@@ -91,9 +99,21 @@ class UserProcessor(Processor):
             and type(payload) is dict
             and payload.get(KEY_PAYLOAD_TYPE) in self.PAYLOAD_TYPES
         ):
-            return True, payload
+            return True, self._with_subscription_id(msg, payload)
 
         return False, None
+
+    @staticmethod
+    def _with_subscription_id(envelope, event):
+        """Return a copy of ``event`` with the envelope's ``subscriptionId``
+        attached when present.  The 2025-08-12 Spot CHANGELOG added this
+        top-level field to user-data events delivered via the WS-API so
+        multi-subscription connections can route by subscription.
+        """
+        sub_id = envelope.get('subscriptionId')
+        if sub_id is None:
+            return event
+        return {'subscriptionId': sub_id, **event}
 
     def supports_handler(
         self,

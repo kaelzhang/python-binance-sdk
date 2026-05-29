@@ -105,6 +105,15 @@ async def test_balance_update(client):
 
 @pytest.mark.asyncio
 async def test_order_update(client):
+    # The handler MUST apply EXECUTION_REPORT_COLUMNS_MAP to rename keys.
+    def expect(p):
+        assert p['type'] == 'executionReport'
+        assert p['event_time'] == 1499405658658
+        assert p['symbol'] == 'ETHBTC'
+        assert p['client_order_id'] == 'mUvoqJxFIILMdfAW5iGSOW'
+        assert p['side'] == 'BUY'
+        assert p['order_type'] == 'LIMIT'
+
     await run_handler(client, OrderUpdateHandlerBase, {
         'e': 'executionReport',
         'E': 1499405658658,
@@ -112,7 +121,207 @@ async def test_order_update(client):
         'c': 'mUvoqJxFIILMdfAW5iGSOW',
         'S': 'BUY',
         'o': 'LIMIT'
+    }, expect)
+
+
+def test_execution_report_columns_map_covers_all_documented_fields():
+    """Per developers.binance.com (executionReport section), the COLUMNS_MAP
+    MUST cover every documented field — standard + conditional — so callers
+    that introspect the map know the full surface.
+    Docs: https://developers.binance.com/docs/binance-spot-api-docs/user-data-stream
+    """
+    from binance.spot.user_handlers import EXECUTION_REPORT_COLUMNS_MAP
+    # Standard fields
+    expected_standard = {
+        'e', 'E', 's', 'c', 'S', 'o', 'f', 'q', 'p', 'P', 'F', 'g', 'C',
+        'x', 'X', 'r', 'i', 'l', 'z', 'L', 'n', 'N', 'T', 't', 'I', 'w',
+        'm', 'M', 'O', 'Z', 'Y', 'Q', 'V',
+    }
+    # Conditional fields documented in 2025-08-12 CHANGELOG and earlier
+    expected_conditional = {
+        'd', 'D', 'j', 'J', 'v', 'A', 'B', 'u', 'U', 'Cs',
+        'pl', 'pL', 'pY', 'W', 'b', 'a', 'k', 'uS',
+        'gP', 'gOT', 'gOV', 'gp', 'eR',
+    }
+    expected = expected_standard | expected_conditional
+    missing = expected - set(EXECUTION_REPORT_COLUMNS_MAP.keys())
+    assert not missing, f'EXECUTION_REPORT_COLUMNS_MAP missing keys: {missing}'
+
+
+def test_execution_report_columns_map_documented_ignore_M():
+    """`M` is explicitly marked "Ignore" in the docs — but it IS documented.
+    Per strict coverage it must appear in the COLUMNS_MAP with an
+    ``_ignore`` marker so downstream code knows the field exists.
+    """
+    from binance.spot.user_handlers import EXECUTION_REPORT_COLUMNS_MAP
+    assert EXECUTION_REPORT_COLUMNS_MAP.get('M', '').startswith('_ignore')
+
+
+@pytest.mark.asyncio
+async def test_order_update_full_payload_every_field_preserved(client):
+    """Docs-shaped executionReport payload — assert every documented field
+    is preserved in the renamed handler output."""
+    payload = {
+        'e': 'executionReport',
+        'E': 1499405658658,
+        's': 'ETHBTC',
+        'c': 'mUvoqJxFIILMdfAW5iGSOW',
+        'S': 'BUY',
+        'o': 'LIMIT',
+        'f': 'GTC',
+        'q': '1.00000000',
+        'p': '0.10264410',
+        'P': '0.00000000',
+        'F': '0.00000000',
+        'g': -1,
+        'C': '',
+        'x': 'NEW',
+        'X': 'NEW',
+        'r': 'NONE',
+        'i': 4293153,
+        'l': '0.00000000',
+        'z': '0.00000000',
+        'L': '0.00000000',
+        'n': '0',
+        'N': None,
+        'T': 1499405658657,
+        't': -1,
+        'I': 8641984,
+        'w': True,
+        'm': False,
+        'M': False,
+        'O': 1499405658657,
+        'Z': '0.00000000',
+        'Y': '0.00000000',
+        'Q': '0.00000000',
+        'V': 'NONE',
+        # Conditional fields per docs
+        'd': 5000,
+        'D': 1499405658657,
+        'j': 123,
+        'J': 456,
+        'v': 100,
+        'A': '0.5',
+        'B': '0.25',
+        'u': 12345,
+        'U': 67890,
+        'Cs': 'BNBETH',
+        'pl': '0.1',
+        'pL': '0.2',
+        'pY': '0.3',
+        'W': 1499405658658,
+        'b': 'ONE_PARTY_TRADE_REPORT',
+        'a': 5,
+        'k': 'SOR',
+        'uS': True,
+        'gP': 'PRIMARY_PEG',
+        'gOT': 'PRICE_LEVEL',
+        'gOV': 1,
+        'gp': '0.10000000',
+        'eR': 'OCO_TRIGGER',
+    }
+
+    def expect(p):
+        # Renamed scalar fields
+        assert p['type'] == 'executionReport'
+        assert p['event_time'] == 1499405658658
+        assert p['symbol'] == 'ETHBTC'
+        assert p['client_order_id'] == 'mUvoqJxFIILMdfAW5iGSOW'
+        assert p['side'] == 'BUY'
+        assert p['order_type'] == 'LIMIT'
+        assert p['time_in_force'] == 'GTC'
+        assert p['orig_quantity'] == '1.00000000'
+        assert p['orig_price'] == '0.10264410'
+        assert p['stop_price'] == '0.00000000'
+        assert p['iceberg_quantity'] == '0.00000000'
+        assert p['order_list_id'] == -1
+        assert p['orig_client_order_id'] == ''
+        assert p['execution_type'] == 'NEW'
+        assert p['order_status'] == 'NEW'
+        assert p['reject_reason'] == 'NONE'
+        assert p['order_id'] == 4293153
+        assert p['last_filled_qty'] == '0.00000000'
+        assert p['cumulative_filled_qty'] == '0.00000000'
+        assert p['last_filled_price'] == '0.00000000'
+        assert p['commission_amount'] == '0'
+        assert p['commission_asset'] is None
+        assert p['transaction_time'] == 1499405658657
+        assert p['trade_id'] == -1
+        assert p['execution_id'] == 8641984
+        assert p['is_on_book'] is True
+        assert p['is_maker'] is False
+        # Docs explicitly mark `M` as Ignore — preserved as _ignore_M.
+        assert p['_ignore_M'] is False
+        assert p['order_creation_time'] == 1499405658657
+        assert p['cumulative_quote_qty'] == '0.00000000'
+        assert p['last_quote_qty'] == '0.00000000'
+        assert p['quote_order_qty'] == '0.00000000'
+        assert p['stp_mode'] == 'NONE'
+        # Conditional fields
+        assert p['trailing_delta'] == 5000
+        assert p['trailing_time'] == 1499405658657
+        assert p['strategy_id'] == 123
+        assert p['strategy_type'] == 456
+        assert p['prevented_match_id'] == 100
+        assert p['prevented_quantity'] == '0.5'
+        assert p['last_prevented_quantity'] == '0.25'
+        assert p['trade_group_id'] == 12345
+        assert p['counter_order_id'] == 67890
+        assert p['counter_symbol'] == 'BNBETH'
+        assert p['prevented_execution_qty'] == '0.1'
+        assert p['prevented_execution_price'] == '0.2'
+        assert p['prevented_execution_quote_qty'] == '0.3'
+        assert p['working_time'] == 1499405658658
+        assert p['match_type'] == 'ONE_PARTY_TRADE_REPORT'
+        assert p['allocation_id'] == 5
+        assert p['working_floor'] == 'SOR'
+        assert p['used_sor'] is True
+        assert p['pegged_price_type'] == 'PRIMARY_PEG'
+        assert p['pegged_offset_type'] == 'PRICE_LEVEL'
+        assert p['pegged_offset_value'] == 1
+        assert p['pegged_price'] == '0.10000000'
+        assert p['expiry_reason'] == 'OCO_TRIGGER'
+
+    await run_handler(client, OrderUpdateHandlerBase, payload, expect)
+
+
+@pytest.mark.asyncio
+async def test_order_update_surfaces_subscription_id(client):
+    """The 2025-08-12 Spot CHANGELOG added a top-level ``subscriptionId``
+    field to user-data events delivered via the WS-API; the SDK MUST
+    preserve and surface it so multi-subscription routing works.
+    Docs: https://developers.binance.com/docs/binance-spot-api-docs/CHANGELOG
+    """
+    from binance.core.common.utils import create_future
+
+    future = create_future()
+
+    class Handler(OrderUpdateHandlerBase):
+        def receive(self, p):
+            p = super().receive(p)
+            if not future.done():
+                future.set_result(p)
+
+    client.start()
+    client.handler(Handler())
+
+    # WS-API user-data envelope: top-level subscriptionId + event dict.
+    await client._receive({
+        'subscriptionId': 7,
+        'event': {
+            'e': 'executionReport',
+            'E': 1499405658658,
+            's': 'ETHBTC',
+            'c': 'cid',
+            'S': 'BUY',
+            'o': 'LIMIT',
+        },
     })
+
+    received = await future
+    assert received['subscription_id'] == 7
+    assert received['type'] == 'executionReport'
+    assert received['symbol'] == 'ETHBTC'
 
 
 @pytest.mark.asyncio
