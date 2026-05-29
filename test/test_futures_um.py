@@ -8,11 +8,11 @@ Covers:
 - subscribe_param: MarkPriceProcessor returns correct stream names (base and 1s).
 - SubType enum values for MARK_PRICE and FORCE_ORDER.
 
-Endpoint weights confirmed against live Binance USDⓈ-M API responses (2026-05-25):
+Endpoint weights confirmed against developers.binance.com docs (2026-05-30):
 - /fapi/v1/openInterest         weight 1
-- /futures/data/openInterestHist weight 1
+- /futures/data/openInterestHist weight 0 (shares 1000/5min/IP data pool)
 - /fapi/v1/fundingRate          weight 1
-- /fapi/v1/fundingInfo          weight 1
+- /fapi/v1/fundingInfo          weight 0 (shares 500/5min/IP pool with fundingRate)
 - /fapi/v1/premiumIndex         weight 1 (symbol given) / 10 (all symbols)
 """
 
@@ -115,7 +115,20 @@ async def test_get_open_interest_hist_weight(client):
         m.get(_RE_OI_HIST, payload=[], status=200)
         await client.get_open_interest_hist(symbol='BTCUSDT', period='1h')
 
+    # Documented weight is 0 on the /futures/data sub-path; the SDK bucket
+    # clamps cost to max(1, weight) so the consumed bucket usage is 1.
     assert _weight_used(client) == 1
+
+
+def test_get_open_interest_hist_registry_weight_is_zero():
+    """Registry weight reflects the documented 0 weight.
+
+    Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/
+    market-data/rest-api/Open-Interest-Statistics — Request Weight: 0.
+    """
+    from binance.futures.um.endpoints import REST_ENDPOINTS
+    by_name = {e['name']: e for e in REST_ENDPOINTS}
+    assert by_name['get_open_interest_hist']['weight'] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +185,20 @@ async def test_get_funding_info_weight(client):
         m.get(_RE_FUNDING_INFO, payload=[], status=200)
         await client.get_funding_info()
 
+    # Documented weight is 0 (shares 500/5min/IP pool with fundingRate); the
+    # SDK bucket clamps cost to max(1, weight) so consumed usage is 1.
     assert _weight_used(client) == 1
+
+
+def test_get_funding_info_registry_weight_is_zero():
+    """Registry weight reflects the documented 0 weight.
+
+    Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/
+    market-data/rest-api/Get-Funding-Rate-Info — Request Weight: 0.
+    """
+    from binance.futures.um.endpoints import REST_ENDPOINTS
+    by_name = {e['name']: e for e in REST_ENDPOINTS}
+    assert by_name['get_funding_info']['weight'] == 0
 
 
 # ---------------------------------------------------------------------------

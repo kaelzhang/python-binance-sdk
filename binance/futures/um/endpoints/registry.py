@@ -14,13 +14,13 @@ Covers two groups of endpoints:
 **Market data** (``SecurityType.NONE``, REST GET):
 All on ``https://fapi.binance.com``.
 
-Confirmed weights (2026-05-25) via live ``x-mbx-used-weight-1m`` response
-headers and official Binance developer docs:
+Confirmed weights (2026-05-30) against developers.binance.com:
 
 - ``GET /fapi/v1/openInterest``         weight 1
-- ``GET /futures/data/openInterestHist`` weight 1 (shared 500/5min pool with rate-limit headers absent on data sub-path; 0 documented but behaves as 1)
-- ``GET /fapi/v1/fundingRate``           shares 500/5min/IP pool with fundingInfo; counted as weight 1 in REQUEST_WEIGHT
-- ``GET /fapi/v1/fundingInfo``           same shared pool; weight 1
+- ``GET /futures/data/openInterestHist`` weight 0 (shares the 1000/5min/IP
+  ``/futures/data`` sub-path pool; SDK bucket clamps cost to max(1, weight))
+- ``GET /fapi/v1/fundingRate``          weight 1; shares 500/5min/IP pool with fundingInfo
+- ``GET /fapi/v1/fundingInfo``          weight 0; shares the same 500/5min/IP pool
 - ``GET /fapi/v1/premiumIndex``          weight 1 (symbol given), 10 (all symbols)
 
 **Trading / account / position** (signed, WS-API + REST):
@@ -91,9 +91,11 @@ WS_API_ENDPOINTS = [
         weight=5,
     ),
     dict(
+        # Position Info V2 -- docs:
+        # https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/websocket-api/Position-Info-V2
         name='get_position',
         transport='ws_api',
-        ws_method='account.position',
+        ws_method='v2/account.position',
         security_type=SecurityType.USER_DATA,
         weight=5,
     ),
@@ -115,11 +117,13 @@ WS_API_ENDPOINTS = [
         is_order=False,
     ),
     dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/websocket-api/Cancel-Algo-Order
+        # Request Weight: 1.
         name='cancel_algo_order',
         transport='ws_api',
         ws_method='algoOrder.cancel',
         security_type=SecurityType.TRADE,
-        weight=0,
+        weight=1,
     ),
 ]
 
@@ -146,10 +150,11 @@ REST_ENDPOINTS = [
         transport='rest',
         rest_url=UM_REST_HOST + '/futures/data/openInterestHist',
         security_type=SecurityType.NONE,
-        # Documented weight is 0 on the /futures/data sub-path; we treat it as
-        # 1 to stay consistent with the REQUEST_WEIGHT accounting model (a
-        # request that costs 0 would never be tracked).
-        weight=1,
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest-Statistics
+        # Request Weight: 0 (shares the 1000/5min/IP /futures/data sub-path
+        # pool); the SDK bucket clamps cost to max(1, weight) so a single
+        # request still consumes 1 unit in the local REQUEST_WEIGHT window.
+        weight=0,
     ),
     dict(
         name='get_funding_rate',
@@ -163,7 +168,10 @@ REST_ENDPOINTS = [
         transport='rest',
         rest_url=UM_REST_HOST + '/fapi/v1/fundingInfo',
         security_type=SecurityType.NONE,
-        weight=1,
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-Info
+        # Request Weight: 0 (shares the 500/5min/IP pool with fundingRate);
+        # SDK bucket clamps cost to max(1, weight) so consumed usage is 1.
+        weight=0,
     ),
     dict(
         name='get_premium_index',
@@ -212,12 +220,14 @@ REST_ENDPOINTS = [
         weight=5,
     ),
     dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Cancel-Multiple-Orders
+        # Request Weight: 1.
         name='cancel_batch_orders',
         transport='rest',
         method=RequestMethod.DELETE,
         rest_url=UM_REST_HOST + '/fapi/v1/batchOrders',
         security_type=SecurityType.TRADE,
-        weight=5,
+        weight=1,
     ),
     # ----- Account / Position ------------------------------------------------
     dict(

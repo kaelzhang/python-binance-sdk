@@ -10,6 +10,9 @@ asserts:
 
 v2 migration (2026-05-26): ``get_account`` now uses ``v2/account.status``;
 ``get_balance`` now uses ``v2/account.balance``.  v1 entries are dropped.
+
+v2 migration (2026-05-30): ``get_position`` now uses ``v2/account.position``
+per developers.binance.com Position-Info-V2 docs; v1 entry is dropped.
 """
 
 import pytest
@@ -203,20 +206,23 @@ async def test_um_get_balance_via_v2_account_balance():
 
 
 # ---------------------------------------------------------------------------
-# get_position: is_order=False, weight=5, ws_method='account.position'
+# get_position: is_order=False, weight=5, ws_method='v2/account.position'
+# (Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/
+# trade/websocket-api/Position-Info-V2 — V2 is the documented latest variant,
+# legacy v1 ``account.position`` retired.)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_um_get_position_via_account_position():
+async def test_um_get_position_via_v2_account_position():
     server = WSAPIServer(port=_PORT)
-    server.on('account.position', result=[{'symbol': 'BTCUSDT', 'positionAmt': '0.1'}])
+    server.on('v2/account.position', result=[{'symbol': 'BTCUSDT', 'positionAmt': '0.1'}])
     await server.run()
     try:
         client = _make_client(server)
         result = await client.get_position(symbol='BTCUSDT')
         assert result == [{'symbol': 'BTCUSDT', 'positionAmt': '0.1'}]
         sent = server.received[0]
-        assert sent['method'] == 'account.position'
+        assert sent['method'] == 'v2/account.position'
         assert sent['params']['symbol'] == 'BTCUSDT'
         assert sent['params']['apiKey'] == 'K'
         assert 'signature' in sent['params']
@@ -284,7 +290,9 @@ async def test_um_create_algo_order_via_algo_order_place():
 
 
 # ---------------------------------------------------------------------------
-# cancel_algo_order: is_order=False, weight=0, ws_method='algoOrder.cancel'
+# cancel_algo_order: is_order=False, weight=1, ws_method='algoOrder.cancel'
+# (Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/
+# trade/websocket-api/Cancel-Algo-Order — Request Weight: 1.)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -302,7 +310,7 @@ async def test_um_cancel_algo_order_via_algo_order_cancel():
         assert sent['params']['apiKey'] == 'K'
         assert 'signature' in sent['params']
         assert _orders_used(client) == 0
-        # Documented weight is 0; SDK bucket clamps to max(1, weight) = 1.
+        # Documented weight is 1 (developers.binance.com).
         assert _weight_used(client) == 1
     finally:
         await client.close()
@@ -324,10 +332,10 @@ def test_ws_api_endpoints_registry_matches_spec():
         'get_order': ('order.status', SecurityType.USER_DATA, False, 1),
         'get_account': ('v2/account.status', SecurityType.USER_DATA, False, 5),
         'get_balance': ('v2/account.balance', SecurityType.USER_DATA, False, 5),
-        'get_position': ('account.position', SecurityType.USER_DATA, False, 5),
+        'get_position': ('v2/account.position', SecurityType.USER_DATA, False, 5),
         'get_position_mode': ('positionSide.dual.get', SecurityType.USER_DATA, False, 30),
         'create_algo_order': ('algoOrder.place', SecurityType.TRADE, False, 0),
-        'cancel_algo_order': ('algoOrder.cancel', SecurityType.TRADE, False, 0),
+        'cancel_algo_order': ('algoOrder.cancel', SecurityType.TRADE, False, 1),
     }
 
     assert set(expected) == set(by_name)

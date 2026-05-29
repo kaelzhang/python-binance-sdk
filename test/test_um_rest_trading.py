@@ -130,16 +130,18 @@ async def test_create_batch_orders_post_weight_5():
 
 
 # ---------------------------------------------------------------------------
-# cancel_batch_orders  DELETE /fapi/v1/batchOrders  weight 5
+# cancel_batch_orders  DELETE /fapi/v1/batchOrders  weight 1
+# (Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/
+# trade/rest-api/Cancel-Multiple-Orders — Request Weight: 1.)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_cancel_batch_orders_delete_weight_5():
+async def test_cancel_batch_orders_delete_weight_1():
     client = _signed_client()
     with aioresponses() as m:
         m.delete(_re('/fapi/v1/batchOrders'), payload=[], status=200)
         await client.cancel_batch_orders(symbol='BTCUSDT', orderIdList=[1, 2])
-    assert _weight_used(client) == 5
+    assert _weight_used(client) == 1
 
 
 # ---------------------------------------------------------------------------
