@@ -11,10 +11,6 @@ from binance.core.common.types import (
 )
 
 from binance.core.handlers.base import Handler
-from binance.core.handlers.framework import (  # noqa: F401  re-exported for backward compatibility
-    StreamErrorHandlerBase,
-    HandlerExceptionHandlerBase,
-)
 
 
 BASE_TRADE_COLUMNS_MAP = {

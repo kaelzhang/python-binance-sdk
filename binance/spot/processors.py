@@ -22,7 +22,7 @@ from binance.spot.handlers import (
     AllMarketWindowTickersHandlerBase,
 )
 
-from binance.core.processors.framework import (  # noqa: F401  re-exported for backward compatibility
+from binance.core.processors.framework import (  # noqa: F401  re-exported for binance.spot.client / spec
     StreamErrorProcessor,
     ExceptionProcessor,
 )
