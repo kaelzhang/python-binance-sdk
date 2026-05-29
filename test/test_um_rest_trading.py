@@ -243,6 +243,35 @@ async def test_cancel_batch_orders_delete_weight_1():
 
 
 # ---------------------------------------------------------------------------
+# modify_batch_orders  PUT /fapi/v1/batchOrders  weight 5 (TRADE)
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Modify-Multiple-Orders
+# Rate limits: IP 5, ORDERS-10s 5, ORDERS-1m 1. Consumes the ORDERS pool.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_modify_batch_orders_put_weight_5():
+    client = _signed_client()
+    with aioresponses() as m:
+        m.put(_re('/fapi/v1/batchOrders'), payload=[], status=200)
+        await client.modify_batch_orders(batchOrders=[
+            {'orderId': 1, 'symbol': 'BTCUSDT', 'side': 'BUY',
+             'quantity': '0.01', 'price': '20000'},
+        ])
+    assert _weight_used(client) == 5
+
+
+def test_modify_batch_orders_registry_shape():
+    """PUT /fapi/v1/batchOrders, TRADE, weight 5, consumes ORDERS pool."""
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['modify_batch_orders']
+    assert str(entry['method']).lower() == 'put'
+    assert entry['rest_url'].endswith('/fapi/v1/batchOrders')
+    assert entry['weight'] == 5
+    assert entry['security_type'] == SecurityType.TRADE
+    assert entry.get('is_order') is True
+
+
+# ---------------------------------------------------------------------------
 # get_adl_quantile  GET /fapi/v1/adlQuantile  weight 5  (USER_DATA)
 # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Position-ADL-Quantile-Estimation
 # Used for risk monitoring — exposes ADL queue position (0-4) per side.
@@ -574,6 +603,7 @@ def test_rest_endpoints_registry_contains_trading_entries():
         'get_order_modify_history': ('get', '/fapi/v1/orderAmendment'),
         'get_all_orders': ('get', '/fapi/v1/allOrders'),
         'create_batch_orders': ('post', '/fapi/v1/batchOrders'),
+        'modify_batch_orders': ('put', '/fapi/v1/batchOrders'),
         'cancel_batch_orders': ('delete', '/fapi/v1/batchOrders'),
         'get_position_risk': ('get', '/fapi/v3/positionRisk'),
         'get_user_trades': ('get', '/fapi/v1/userTrades'),

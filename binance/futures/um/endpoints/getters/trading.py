@@ -294,6 +294,33 @@ class UMTradingGetters:
         """
         ...  # pragma: no cover
 
+    def modify_batch_orders(self, **kwargs) -> Awaitable:
+        """Modifies multiple existing UM Futures orders in one request
+        (``PUT /fapi/v1/batchOrders``).
+
+        Weight: 5. Consumes the account ORDERS pool (``is_order=True``);
+        the docs also list ORDERS-10s 5 and ORDERS-1m 1 against the
+        order rate-limit windows.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Modify-Multiple-Orders
+
+        Companion to :py:meth:`create_batch_orders` /
+        :py:meth:`cancel_batch_orders`. Each entry in ``batchOrders`` MUST
+        identify the order via ``orderId`` OR ``origClientOrderId`` and
+        supply the new ``symbol`` / ``side`` / ``quantity`` / ``price``
+        (per docs).
+
+        Args:
+            batchOrders (list): List of order modification dicts (max 5).
+                Each dict requires ``symbol``, ``side``, ``quantity``,
+                ``price``, and ``orderId`` OR ``origClientOrderId``;
+                ``priceMatch`` and ``stopPrice`` are optional.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            list: One result per input modification.
+        """
+        ...  # pragma: no cover
+
     def cancel_batch_orders(self, **kwargs) -> Awaitable:
         """Cancels multiple orders in a single request.
 

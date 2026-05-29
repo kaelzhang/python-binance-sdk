@@ -270,6 +270,21 @@ REST_ENDPOINTS = [
         weight=5,
     ),
     dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Modify-Multiple-Orders
+        # Request Weight: 5 IP, 5 ORDERS-10s, 1 ORDERS-1m. TRADE.
+        # Companion to create_batch_orders / cancel_batch_orders; modifies
+        # up to 5 existing orders atomically. Consumes the ORDERS pool
+        # (`is_order=True`) — Binance counts modifies the same way as new
+        # orders against the 10s/1m ORDERS windows.
+        name='modify_batch_orders',
+        transport='rest',
+        method=RequestMethod.PUT,
+        rest_url=UM_REST_HOST + '/fapi/v1/batchOrders',
+        security_type=SecurityType.TRADE,
+        weight=5,
+        is_order=True,
+    ),
+    dict(
         # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Cancel-Multiple-Orders
         # Request Weight: 1.
         name='cancel_batch_orders',
