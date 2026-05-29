@@ -11,6 +11,7 @@ with real coroutines via ``define_getter``.
 from binance.futures.um.endpoints.weights import (
     _depth_weight,
     _premium_index_weight,
+    _um_force_orders_weight,
     _um_open_algo_orders_weight,
     _um_open_orders_weight,
 )
@@ -35,6 +36,7 @@ __all__ = [
     # Weight helpers
     '_depth_weight',
     '_premium_index_weight',
+    '_um_force_orders_weight',
     '_um_open_algo_orders_weight',
     '_um_open_orders_weight',
 ]

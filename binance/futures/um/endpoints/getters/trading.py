@@ -387,6 +387,34 @@ class UMTradingGetters:
         """
         ...  # pragma: no cover
 
+    def get_force_orders(self, **kwargs) -> Awaitable:
+        """Queries the caller's force-order (liquidation / ADL) history
+        (``GET /fapi/v1/forceOrders``).
+
+        Weight: 20 when ``symbol`` is given; 50 otherwise.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Users-Force-Orders
+
+        Returns force-order events (auto-liquidation or ADL) for the user.
+        Query window is the last 90 days only (2026-04-06 changelog). When
+        ``startTime`` is omitted, the server returns the 7 days before
+        ``endTime``.
+
+        Args:
+            symbol (:obj:`str`, optional): The futures symbol. If omitted,
+                returns force orders across all symbols (weight 50 — use
+                with care).
+            autoCloseType (:obj:`str`, optional): ``'LIQUIDATION'`` or
+                ``'ADL'``; returns both kinds if omitted.
+            startTime (:obj:`long`, optional): Inclusive lower bound (ms).
+            endTime (:obj:`long`, optional): Inclusive upper bound (ms).
+            limit (:obj:`int`, optional): Default 50; max 100.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            list: Force-order records (price, quantity, status, etc.).
+        """
+        ...  # pragma: no cover
+
     def cancel_all_open_algo_orders(self, **kwargs) -> Awaitable:
         """Cancels all open algo orders for ``symbol``
         (``DELETE /fapi/v1/algoOpenOrders``).

@@ -370,6 +370,49 @@ def test_cancel_all_open_algo_orders_registry_shape():
 
 
 # ---------------------------------------------------------------------------
+# get_force_orders  GET /fapi/v1/forceOrders  weight 20 (symbol) / 50 (no symbol)
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Users-Force-Orders
+# USER_DATA. 90-day query window per 2026-04-06 changelog. Returns user
+# liquidation / ADL history.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_force_orders_with_symbol_weight_20():
+    client = _signed_client()
+    payload = [{'orderId': 6071079525, 'symbol': 'BTCUSDT', 'type': 'LIQUIDATION'}]
+    with aioresponses() as m:
+        m.get(_re('/fapi/v1/forceOrders'), payload=payload, status=200)
+        result = await client.get_force_orders(symbol='BTCUSDT')
+    assert result == payload
+    assert _weight_used(client) == 20
+
+
+@pytest.mark.asyncio
+async def test_get_force_orders_without_symbol_weight_50():
+    client = _signed_client()
+    with aioresponses() as m:
+        m.get(_re('/fapi/v1/forceOrders'), payload=[], status=200)
+        await client.get_force_orders()
+    assert _weight_used(client) == 50
+
+
+def test_get_force_orders_registry_shape():
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['get_force_orders']
+    assert str(entry.get('method', 'get')).lower() == 'get'
+    assert entry['rest_url'].endswith('/fapi/v1/forceOrders')
+    assert callable(entry['weight'])
+    assert entry['security_type'] == SecurityType.USER_DATA
+
+
+def test_um_force_orders_weight_helper():
+    """Helper returns 20 with `symbol`, 50 otherwise (per docs)."""
+    from binance.futures.um.endpoints import _um_force_orders_weight
+    assert _um_force_orders_weight({'symbol': 'BTCUSDT'}) == 20
+    assert _um_force_orders_weight({}) == 50
+
+
+# ---------------------------------------------------------------------------
 # get_adl_quantile  GET /fapi/v1/adlQuantile  weight 5  (USER_DATA)
 # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Position-ADL-Quantile-Estimation
 # Used for risk monitoring — exposes ADL queue position (0-4) per side.
@@ -706,6 +749,7 @@ def test_rest_endpoints_registry_contains_trading_entries():
         'get_algo_orders': ('get', '/fapi/v1/allAlgoOrders'),
         'get_open_algo_orders': ('get', '/fapi/v1/openAlgoOrders'),
         'cancel_all_open_algo_orders': ('delete', '/fapi/v1/algoOpenOrders'),
+        'get_force_orders': ('get', '/fapi/v1/forceOrders'),
         'get_position_risk': ('get', '/fapi/v3/positionRisk'),
         'get_user_trades': ('get', '/fapi/v1/userTrades'),
         'get_commission': ('get', '/fapi/v1/commissionRate'),

@@ -40,6 +40,7 @@ from binance.futures.um.endpoints.getters import UMFuturesGetters
 from binance.futures.um.endpoints.weights import (
     _depth_weight,
     _premium_index_weight,
+    _um_force_orders_weight,
     _um_open_algo_orders_weight,
     _um_open_orders_weight,
 )
@@ -329,6 +330,17 @@ REST_ENDPOINTS = [
         rest_url=UM_REST_HOST + '/fapi/v1/algoOpenOrders',
         security_type=SecurityType.TRADE,
         weight=1,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Users-Force-Orders
+        # Request Weight: 20 with `symbol`, 50 without. USER_DATA. 90-day
+        # query window only (per 2026-04-06 changelog). Returns the user's
+        # auto-liquidation / ADL history.
+        name='get_force_orders',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/forceOrders',
+        security_type=SecurityType.USER_DATA,
+        weight=_um_force_orders_weight,
     ),
     # ----- Account / Position ------------------------------------------------
     dict(
