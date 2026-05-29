@@ -57,7 +57,7 @@ class FuturesAccountUpdateHandlerBase(FuturesSimpleHandler):
     Receives a balance and position snapshot whenever an order is placed,
     filled, cancelled, or when a fund transfer occurs.
 
-    Payload structure (confirmed from Binance USDⓈ-M docs, 2026-05-25)::
+    Shared shape (UM + CM) confirmed from Binance USDⓈ-M docs (2026-05-25)::
 
         {
             "e": "ACCOUNT_UPDATE",
@@ -91,6 +91,13 @@ class FuturesAccountUpdateHandlerBase(FuturesSimpleHandler):
             }
         }
 
+    **CM-only** top-level fields (delivered only on COIN-M streams; **absent
+    on USDⓈ-M**)::
+
+        "i": "<account_alias>"   # CM-only: Account alias
+
+    Source (CM): https://developers.binance.com/docs/derivatives/coin-margined-futures/user-data-streams/Event-Balance-and-Position-Update
+
     Subclass and override ``receive(payload)`` to handle the event.
     The raw Binance payload dict is passed unchanged.
     """
@@ -104,7 +111,7 @@ class FuturesOrderUpdateHandlerBase(FuturesSimpleHandler):
     Receives an order-lifecycle update whenever a futures order is created,
     partially filled, fully filled, cancelled, or expired.
 
-    Payload structure (confirmed from Binance USDⓈ-M docs, 2026-05-25)::
+    Shared shape (UM + CM) confirmed from Binance USDⓈ-M docs (2026-05-25)::
 
         {
             "e": "ORDER_TRADE_UPDATE",
@@ -149,6 +156,14 @@ class FuturesOrderUpdateHandlerBase(FuturesSimpleHandler):
             }
         }
 
+    **CM-only** fields (delivered only on COIN-M streams; **absent on
+    USDⓈ-M**)::
+
+        "i":      "<account_alias>"   # CM-only top-level: Account alias
+        "o.ma":   "<margin_asset>"    # CM-only nested in 'o': contract margin coin
+
+    Source (CM): https://developers.binance.com/docs/derivatives/coin-margined-futures/user-data-streams/Event-Order-Update
+
     Subclass and override ``receive(payload)`` to handle the event.
     The raw Binance payload dict is passed unchanged.
     """
@@ -163,7 +178,7 @@ class FuturesMarginCallHandlerBase(FuturesSimpleHandler):
     maintenance margin threshold.  This is risk guidance only; Binance does
     not guarantee it precedes every liquidation.
 
-    Payload structure (confirmed from Binance USDⓈ-M docs, 2026-05-25)::
+    Shared shape (UM + CM) confirmed from Binance USDⓈ-M docs (2026-05-25)::
 
         {
             "e": "MARGIN_CALL",
@@ -183,6 +198,13 @@ class FuturesMarginCallHandlerBase(FuturesSimpleHandler):
                 ...
             ]
         }
+
+    **CM-only** top-level fields (delivered only on COIN-M streams; **absent
+    on USDⓈ-M**)::
+
+        "i": "<account_alias>"   # CM-only: Account alias
+
+    Source (CM): https://developers.binance.com/docs/derivatives/coin-margined-futures/user-data-streams/Event-Margin-Call
 
     Subclass and override ``receive(payload)`` to handle the event.
     The raw Binance payload dict is passed unchanged.

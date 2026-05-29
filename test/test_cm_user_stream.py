@@ -343,6 +343,153 @@ async def test_cm_order_trade_update_routed_to_handler(cm_client):
 
 
 # ---------------------------------------------------------------------------
+# CM-only fields: top-level ``i`` (Account alias) and o.ma (Margin Asset)
+# Docs:
+# - Event-Balance-and-Position-Update (CM): https://developers.binance.com/docs/derivatives/coin-margined-futures/user-data-streams/Event-Balance-and-Position-Update
+# - Event-Order-Update (CM):              https://developers.binance.com/docs/derivatives/coin-margined-futures/user-data-streams/Event-Order-Update
+# - Event-Margin-Call (CM):               https://developers.binance.com/docs/derivatives/coin-margined-futures/user-data-streams/Event-Margin-Call
+# ---------------------------------------------------------------------------
+
+CM_ACCOUNT_UPDATE_WITH_ALIAS_PAYLOAD = {
+    'e': 'ACCOUNT_UPDATE',
+    'E': 1564745798939,
+    'T': 1564745798938,
+    'i': 'SfsR',  # CM-only: account alias (uid in alias form for COIN-M)
+    'a': {
+        'm': 'ORDER',
+        'B': [{'a': 'BTC', 'wb': '1.00000000', 'cw': '0.50000000', 'bc': '0.01'}],
+        'P': [{'s': 'BTCUSD_PERP', 'pa': '1', 'ep': '30000', 'bep': '30000',
+               'cr': '0', 'up': '0', 'mt': 'isolated', 'iw': '0.01', 'ps': 'BOTH'}],
+    },
+}
+
+
+CM_ORDER_TRADE_UPDATE_WITH_ALIAS_AND_MA_PAYLOAD = {
+    'e': 'ORDER_TRADE_UPDATE',
+    'E': 1568879465651,
+    'T': 1568879465650,
+    'i': 'SfsR',  # CM-only: account alias
+    'o': {
+        's': 'BTCUSD_PERP',
+        'c': 'abc123',
+        'S': 'SELL',
+        'o': 'LIMIT',
+        'f': 'GTC',
+        'q': '1',
+        'p': '30000',
+        'ap': '30000',
+        'sp': '0',
+        'x': 'TRADE',
+        'X': 'FILLED',
+        'i': 8886774,
+        'l': '1',
+        'z': '1',
+        'L': '30000',
+        'ma': 'BTC',   # CM-only: margin asset of the contract
+        'N': 'BTC',
+        'n': '0.00001',
+        'T': 1568879465651,
+        't': 1,
+        'rp': '0',
+        'ps': 'BOTH',
+        'cp': False,
+        'm': False,
+        'R': False,
+    },
+}
+
+
+CM_MARGIN_CALL_WITH_ALIAS_PAYLOAD = {
+    'e': 'MARGIN_CALL',
+    'E': 1587727187525,
+    'i': 'SfsR',  # CM-only: account alias
+    'cw': '3.16812045',
+    'p': [
+        {
+            's': 'BTCUSD_PERP',
+            'ps': 'BOTH',
+            'pa': '1',
+            'mt': 'CROSSED',
+            'iw': '0',
+            'mp': '30000',
+            'up': '-1.166074',
+            'mm': '1.614445',
+        }
+    ],
+}
+
+
+@pytest.mark.asyncio
+async def test_cm_account_update_preserves_top_level_account_alias(cm_client):
+    """CM ACCOUNT_UPDATE keeps the CM-only top-level ``i`` (Account alias)."""
+    received = await _run_cm_futures_handler(
+        cm_client, FuturesAccountUpdateHandlerBase, CM_ACCOUNT_UPDATE_WITH_ALIAS_PAYLOAD
+    )
+    assert received['e'] == 'ACCOUNT_UPDATE'
+    # The CM-only Account alias must reach the handler unchanged.
+    assert received['i'] == 'SfsR'
+
+
+@pytest.mark.asyncio
+async def test_cm_order_trade_update_preserves_top_level_account_alias_and_ma(cm_client):
+    """CM ORDER_TRADE_UPDATE keeps the CM-only top-level ``i`` and nested ``o.ma`` (Margin Asset)."""
+    received = await _run_cm_futures_handler(
+        cm_client,
+        FuturesOrderUpdateHandlerBase,
+        CM_ORDER_TRADE_UPDATE_WITH_ALIAS_AND_MA_PAYLOAD,
+    )
+    assert received['e'] == 'ORDER_TRADE_UPDATE'
+    assert received['i'] == 'SfsR'
+    assert received['o']['ma'] == 'BTC'
+
+
+@pytest.mark.asyncio
+async def test_cm_margin_call_preserves_top_level_account_alias(cm_client):
+    """CM MARGIN_CALL keeps the CM-only top-level ``i`` (Account alias)."""
+    from binance import FuturesMarginCallHandlerBase
+
+    received = await _run_cm_futures_handler(
+        cm_client, FuturesMarginCallHandlerBase, CM_MARGIN_CALL_WITH_ALIAS_PAYLOAD
+    )
+    assert received['e'] == 'MARGIN_CALL'
+    assert received['i'] == 'SfsR'
+
+
+# ---------------------------------------------------------------------------
+# Handler docstrings must document the CM-only fields explicitly so SDK users
+# do not assume they appear on USDⓈ-M streams.
+# ---------------------------------------------------------------------------
+
+
+def test_account_update_docstring_documents_cm_only_account_alias_i():
+    """FuturesAccountUpdateHandlerBase docstring must mention the CM-only top-level ``i`` (Account alias)."""
+    doc = FuturesAccountUpdateHandlerBase.__doc__ or ''
+    # The CM-only top-level Account alias must be documented and marked CM-only
+    # so UM users do not assume it appears on UM payloads.
+    assert 'account_alias' in doc.lower() or '"i":' in doc
+    assert 'CM-only' in doc or 'COIN-M' in doc
+
+
+def test_order_trade_update_docstring_documents_cm_only_account_alias_i_and_ma():
+    """FuturesOrderUpdateHandlerBase docstring must mention the CM-only top-level ``i`` and nested ``o.ma``."""
+    doc = FuturesOrderUpdateHandlerBase.__doc__ or ''
+    # CM-only top-level Account alias.
+    assert 'account_alias' in doc.lower() or '"i":' in doc
+    # CM-only margin asset under o.
+    assert 'margin_asset' in doc.lower() or '"ma":' in doc
+    assert 'CM-only' in doc or 'COIN-M' in doc
+
+
+def test_margin_call_docstring_documents_cm_only_account_alias_i():
+    """FuturesMarginCallHandlerBase docstring must mention the CM-only top-level ``i`` (Account alias)."""
+    from binance import FuturesMarginCallHandlerBase
+
+    doc = FuturesMarginCallHandlerBase.__doc__ or ''
+    assert 'account_alias' in doc.lower() or '"i":' in doc
+    assert 'CM-only' in doc or 'COIN-M' in doc
+
+
+# ---------------------------------------------------------------------------
 # No Spot subscribe method sent (correct futures lifecycle)
 # ---------------------------------------------------------------------------
 
