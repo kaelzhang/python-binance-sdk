@@ -18,3 +18,8 @@ UM_STREAM_HOST = 'wss://fstream.binance.com'
 
 # WebSocket API base host (order / account endpoints; reserved for future use).
 UM_WS_API_HOST = 'wss://ws-fapi.binance.com/ws-fapi/v1'
+
+# USDⓈ-M WS streams incoming-message rate-limit (docs:
+# https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams
+# — "WebSocket connections have a limit of 10 incoming messages per second.").
+WS_MAX_MESSAGES_PER_SEC = 10

@@ -19,9 +19,11 @@ market's default rule set.
 from binance.core.common.constants import (
     WS_CONNECTION_SAFETY, WS_CONNECTION_WINDOW,
 )
+from binance.core.rate_limit.defaults import build_ws_message_rule
 from binance.core.rate_limit.types import (
     RateLimitRule, RateLimitScope, RateLimitType, RateLimitKind, EnforceMode
 )
+from binance.futures.um.constants import WS_MAX_MESSAGES_PER_SEC
 
 # Confirmed from GET /fapi/v1/exchangeInfo rateLimits (2026-05-25):
 #   {'rateLimitType': 'REQUEST_WEIGHT', 'interval': 'MINUTE', 'intervalNum': 1, 'limit': 2400}
@@ -64,4 +66,7 @@ DEFAULT_RULES = (
     ),
 )
 
-__all__ = ['DEFAULT_RULES']
+# USDⓈ-M WS streams: 10 incoming messages per second per connection.
+WS_MESSAGE_RULE = build_ws_message_rule(WS_MAX_MESSAGES_PER_SEC)
+
+__all__ = ['DEFAULT_RULES', 'WS_MESSAGE_RULE']

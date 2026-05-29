@@ -18,7 +18,7 @@ from binance.core.rate_limit.types import RateLimitType, RateLimitRule, RateLimi
 from binance.core.rate_limit.bucket import RateLimitBucket
 from binance.core.rate_limit.snapshot import RateLimitWindow, RateLimitSnapshot
 from binance.core.rate_limit.defaults import (
-    WS_MESSAGE_RULE, WS_STREAMS_RULE
+    WS_STREAMS_RULE, build_ws_message_rule,
 )
 
 
@@ -45,12 +45,34 @@ class RateLimiter:
         self,
         *,
         rules: Iterable[RateLimitRule] = (),
-        enabled: bool = True
+        enabled: bool = True,
+        ws_message_rule: Optional[RateLimitRule] = None,
     ) -> None:
+        """Build a rate limiter.
+
+        Args:
+            rules: shared IP/account-scope rules (REQUEST_WEIGHT, RAW_REQUESTS,
+                ORDERS, WS_CONNECTIONS). One bucket per rule lives here.
+            enabled: when False, ``acquire_*`` calls only record usage
+                (monitoring still works) and never block or raise; the
+                ws-streams CAP is always enforced.
+            ws_message_rule: the per-connection ws-messages rule built for the
+                bound market. Spot caps incoming messages at 5/s; futures cap
+                at 10/s — see
+                :func:`binance.core.rate_limit.defaults.build_ws_message_rule`.
+                When ``None`` defaults to a conservative 5/s rule (Spot), which
+                matches the legacy stand-alone ``Stream`` behavior.
+        """
         self._enabled = enabled
         self._shared: List[RateLimitBucket] = [RateLimitBucket(r) for r in rules]
         self._connections: Dict[str, Dict[RateLimitType, RateLimitBucket]] = {}
         self._retry_after_until: Optional[float] = None
+        # Conservative fallback: 5/s (Spot) matches the previous module-level
+        # default and is safe even if a caller forgets to inject a market rule.
+        self._ws_message_rule: RateLimitRule = (
+            ws_message_rule if ws_message_rule is not None
+            else build_ws_message_rule(5)
+        )
 
     def _buckets_of(self, limit_type: RateLimitType) -> List[RateLimitBucket]:
         return [b for b in self._shared if b.rule.type == limit_type]
@@ -247,7 +269,7 @@ class RateLimiter:
         """
         if connection_id not in self._connections:
             self._connections[connection_id] = {
-                RateLimitType.WS_MESSAGES: RateLimitBucket(WS_MESSAGE_RULE),
+                RateLimitType.WS_MESSAGES: RateLimitBucket(self._ws_message_rule),
                 RateLimitType.WS_STREAMS: RateLimitBucket(WS_STREAMS_RULE),
             }
 

@@ -9,7 +9,7 @@ from binance.futures.um.constants import (
     UM_WS_API_HOST,
 )
 from binance.futures.um.endpoints import REST_ENDPOINTS, WS_API_ENDPOINTS
-from binance.futures.um.rate_limit import DEFAULT_RULES
+from binance.futures.um.rate_limit import DEFAULT_RULES, WS_MESSAGE_RULE
 from binance.futures.um.processors import (
     ExceptionProcessor,
     StreamErrorProcessor,
@@ -22,6 +22,7 @@ UM_MARKET = MarketSpec(
     ws_api_host=UM_WS_API_HOST,
     stream_host=UM_STREAM_HOST,
     rules=tuple(DEFAULT_RULES),
+    ws_message_rule=WS_MESSAGE_RULE,
     processors=PROCESSORS,
     exception_processor=ExceptionProcessor,
     stream_error_processor=StreamErrorProcessor,

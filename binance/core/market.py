@@ -30,6 +30,11 @@ class MarketSpec:
             ``wss://stream.binance.com``).
         rules: the market's default rate-limit rules; a per-client
             :class:`~binance.core.rate_limit.RateLimiter` is built from these.
+        ws_message_rule: the per-connection ws-messages rule for this market.
+            Spot caps incoming messages at 5/s, futures at 10/s (per
+            ``developers.binance.com``); each market builds its rule with
+            :func:`~binance.core.rate_limit.defaults.build_ws_message_rule`
+            and the value from its own constants module.
         processors: the subtype stream-processor classes (SubType routing).
         exception_processor: the processor class for handler exceptions.
         stream_error_processor: the processor class for stream-control errors.
@@ -51,6 +56,7 @@ class MarketSpec:
     ws_api_host: str
     stream_host: str
     rules: Tuple[RateLimitRule, ...]
+    ws_message_rule: RateLimitRule
     processors: List[Type[Processor]]
     exception_processor: Type[Processor]
     stream_error_processor: Type[Processor]

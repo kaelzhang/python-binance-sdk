@@ -13,6 +13,7 @@ Numeric limits are reconciled at runtime against response headers and
 from binance.core.common.constants import (
     WS_CONNECTION_SAFETY, WS_CONNECTION_WINDOW,
 )
+from binance.core.rate_limit.defaults import build_ws_message_rule
 from binance.core.rate_limit.types import (
     RateLimitRule, RateLimitScope, RateLimitType, RateLimitKind, EnforceMode
 )
@@ -22,6 +23,7 @@ from binance.spot.constants import (
     DEFAULT_RAW_REQUESTS_LIMIT, DEFAULT_RAW_REQUESTS_INTERVAL,
     DEFAULT_ORDERS_10S_LIMIT, DEFAULT_ORDERS_10S_INTERVAL,
     DEFAULT_ORDERS_1D_LIMIT, DEFAULT_ORDERS_1D_INTERVAL,
+    WS_MAX_MESSAGES_PER_SEC,
 )
 
 
@@ -55,4 +57,7 @@ DEFAULT_RULES = (
                   RateLimitKind.COUNT, EnforceMode.SLEEP),
 )
 
-__all__ = ['depth_weight', 'DEFAULT_RULES']
+# Spot WS streams: 5 incoming messages per second per connection.
+WS_MESSAGE_RULE = build_ws_message_rule(WS_MAX_MESSAGES_PER_SEC)
+
+__all__ = ['depth_weight', 'DEFAULT_RULES', 'WS_MESSAGE_RULE']

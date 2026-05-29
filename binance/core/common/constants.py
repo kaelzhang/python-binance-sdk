@@ -430,10 +430,12 @@ HTTP_IP_BANNED = 418
 
 # WebSocket streams (Spot WS streams limits;
 # https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams#websocket-limits)
+# Connection / stream caps are shared across markets (Binance's general WS
+# policy); the incoming-message cap differs (Spot 5/s, futures 10/s) so
+# ``WS_MAX_MESSAGES_PER_SEC`` lives in each market's constants module.
 WS_MAX_CONNECTIONS = 300
 WS_CONNECTION_WINDOW = 300.0             # seconds (5 minutes)
 WS_CONNECTION_SAFETY = 290               # stay below the 300 hard cap
-WS_MAX_MESSAGES_PER_SEC = 5
 WS_MESSAGE_WINDOW = 1.0
 WS_MAX_STREAMS_PER_CONNECTION = 1024
 

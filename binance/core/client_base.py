@@ -120,7 +120,10 @@ class BaseClient(  # type: ignore[misc]  # diamond mixin: _ws_api_request is a C
             self._rate_limiter = rate_limiter
         else:
             self._rate_limiter = RateLimiter(
-                rules=market.rules, enabled=bool(rate_limit_guard))
+                rules=market.rules,
+                enabled=bool(rate_limit_guard),
+                ws_message_rule=market.ws_message_rule,
+            )
         self._time_offset = 0
         self._time_synced = False
         # Shared REST session — lazily opened on first REST call (F-12 / F-42).

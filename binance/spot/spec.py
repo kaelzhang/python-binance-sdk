@@ -9,7 +9,7 @@ from binance.spot.constants import (
 )
 from binance.spot.endpoints import WS_APIS
 from binance.spot.orderbook import SpotOrderBook
-from binance.spot.rate_limit import DEFAULT_RULES
+from binance.spot.rate_limit import DEFAULT_RULES, WS_MESSAGE_RULE
 from binance.spot.processors import (
     ExceptionProcessor,
     StreamErrorProcessor,
@@ -22,6 +22,7 @@ SPOT_MARKET = MarketSpec(
     ws_api_host=WS_API_HOST,
     stream_host=STREAM_HOST,
     rules=tuple(DEFAULT_RULES),
+    ws_message_rule=WS_MESSAGE_RULE,
     processors=PROCESSORS,
     exception_processor=ExceptionProcessor,
     stream_error_processor=StreamErrorProcessor,

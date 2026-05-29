@@ -18,3 +18,8 @@ CM_STREAM_HOST = 'wss://dstream.binance.com'
 
 # WebSocket API base host (order / account endpoints; reserved for future use).
 CM_WS_API_HOST = 'wss://ws-dapi.binance.com/ws-dapi/v1'
+
+# COIN-M WS streams incoming-message rate-limit (docs:
+# https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams
+# — "WebSocket connections have a limit of 10 incoming messages per second.").
+WS_MAX_MESSAGES_PER_SEC = 10
