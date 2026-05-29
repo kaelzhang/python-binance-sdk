@@ -6,14 +6,27 @@ weight from request kwargs for endpoints whose cost depends on whether a
 """
 
 
-def _premium_index_weight(kwargs) -> int:
-    """`premiumIndex` weight: 1 when ``symbol`` or ``pair`` is given, 10 otherwise."""
-    return 1 if ('symbol' in kwargs or 'pair' in kwargs) else 10
-
-
 def _cm_open_orders_weight(kwargs) -> int:
     """`openOrders` weight: 1 when scoped to a ``symbol``, else 40."""
     return 1 if 'symbol' in kwargs else 40
+
+
+def _cm_all_orders_weight(kwargs) -> int:
+    """`allOrders` weight: 20 with ``symbol``; 40 with ``pair``.
+
+    Docs:
+    https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/All-Orders
+    """
+    return 40 if 'pair' in kwargs else 20
+
+
+def _cm_user_trades_weight(kwargs) -> int:
+    """`userTrades` weight: 20 with ``symbol``; 40 with ``pair``.
+
+    Docs:
+    https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Account-Trade-List
+    """
+    return 40 if 'pair' in kwargs else 20
 
 
 def _depth_weight(kwargs) -> int:

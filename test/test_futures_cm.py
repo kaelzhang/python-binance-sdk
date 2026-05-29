@@ -202,12 +202,14 @@ async def test_cm_get_funding_info_weight(client):
 
 
 # ---------------------------------------------------------------------------
-# REST: get_premium_index (symbol given -> weight 1; omitted -> weight 10)
-# COIN-M always returns a list (unlike USDⓈ-M which returns a dict for single symbol)
+# REST: get_premium_index — flat weight 10 per CM docs (no dynamic 1/10 split
+# unlike UM).
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/market-data/rest-api/Index-Price-and-Mark-Price
+# COIN-M always returns a list (unlike USDⓈ-M which returns a dict for single symbol).
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_cm_get_premium_index_with_symbol_weight_1(client):
+async def test_cm_get_premium_index_with_symbol_weight_10(client):
     payload = [
         {
             'symbol': 'BTCUSD_PERP',
@@ -227,17 +229,17 @@ async def test_cm_get_premium_index_with_symbol_weight_1(client):
         result = await client.get_premium_index(symbol='BTCUSD_PERP')
 
     assert result == payload
-    assert _weight_used(client) == 1
+    assert _weight_used(client) == 10
 
 
 @pytest.mark.asyncio
-async def test_cm_get_premium_index_with_pair_weight_1(client):
-    """Weight is 1 when 'pair' is given (in addition to 'symbol')."""
+async def test_cm_get_premium_index_with_pair_weight_10(client):
+    """CM premiumIndex weight is flat 10 regardless of params."""
     with aioresponses() as m:
         m.get(_RE_PREMIUM_INDEX, payload=[], status=200)
         await client.get_premium_index(pair='BTCUSD')
 
-    assert _weight_used(client) == 1
+    assert _weight_used(client) == 10
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,7 @@
 """COIN-M Futures endpoint registry and getter mixins.
 
 Public surface preserves the pre-split flat-module imports:
-``WS_API_ENDPOINTS``, ``REST_ENDPOINTS``, ``CMFuturesGetters`` and the two
+``WS_API_ENDPOINTS``, ``REST_ENDPOINTS``, ``CMFuturesGetters`` and the
 ``_*_weight`` helpers used by tests. Importing this package triggers
 ``registry.py`` which patches the stub methods on :class:`CMFuturesGetters`
 with real coroutines via ``define_getter``.
@@ -9,9 +9,10 @@ with real coroutines via ``define_getter``.
 
 # Weight helpers (used by registry and tests).
 from binance.futures.cm.endpoints.weights import (
+    _cm_all_orders_weight,
     _cm_open_orders_weight,
+    _cm_user_trades_weight,
     _depth_weight,
-    _premium_index_weight,
 )
 
 # Combined getter class (consumed by ``binance.futures.cm.client``).
@@ -32,7 +33,8 @@ __all__ = [
     # Combined getter mixin
     'CMFuturesGetters',
     # Weight helpers
+    '_cm_all_orders_weight',
     '_cm_open_orders_weight',
+    '_cm_user_trades_weight',
     '_depth_weight',
-    '_premium_index_weight',
 ]

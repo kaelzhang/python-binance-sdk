@@ -57,7 +57,10 @@ def _orders_used(client) -> int:
 
 
 # ---------------------------------------------------------------------------
-# create_order: is_order=True, weight=1, ws_method='order.place'
+# create_order: is_order=True, weight=0 (IP-pool), ws_method='order.place'
+# ORDERS pool is consumed separately (is_order=True). The SDK bucket clamps
+# REQUEST_WEIGHT cost to max(1, weight), so observed REQUEST_WEIGHT usage is 1.
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/websocket-api
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -85,6 +88,8 @@ async def test_cm_create_order_places_via_order_place():
 
         # order.place is an order-placing endpoint -> ORDERS pool consumed.
         assert _orders_used(client) == 1
+        # weight=0 per docs; SDK bucket clamps cost to max(1, weight) so 1 is
+        # observed on the local REQUEST_WEIGHT window.
         assert _weight_used(client) == 1
     finally:
         await client.close()
@@ -244,7 +249,10 @@ def test_cm_ws_api_endpoints_registry_matches_spec():
 
     expected = {
         # name: (ws_method, security, is_order, weight)
-        'create_order': ('order.place', SecurityType.TRADE, True, 1),
+        # create_order weight is 0 (IP) per docs; ORDERS pool consumed
+        # separately. Docs:
+        # https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/websocket-api
+        'create_order': ('order.place', SecurityType.TRADE, True, 0),
         'modify_order': ('order.modify', SecurityType.TRADE, True, 1),
         'cancel_order': ('order.cancel', SecurityType.TRADE, False, 1),
         'get_order': ('order.status', SecurityType.USER_DATA, False, 1),

@@ -25,7 +25,9 @@ header deltas and official Binance COIN-M developer docs:
 - ``GET /dapi/v1/fundingRate``           weight 1
 - ``GET /dapi/v1/fundingInfo``           weight 1 (endpoint exists; header absent
                                                    on this path; treated as 1)
-- ``GET /dapi/v1/premiumIndex``          weight 1 (symbol given), 10 (all symbols)
+- ``GET /dapi/v1/premiumIndex``          weight 10 (flat; CM docs do not list
+                                                    the dynamic 1/10 split that
+                                                    UM has)
 
 **Trading / account / position** (signed, WS-API + REST):
 WS-API endpoints go through the shared ``wss://ws-dapi.binance.com/ws-dapi/v1``
@@ -62,9 +64,10 @@ from binance.core.getters import define_getter
 from binance.futures.cm.constants import CM_REST_HOST
 from binance.futures.cm.endpoints.getters import CMFuturesGetters
 from binance.futures.cm.endpoints.weights import (
+    _cm_all_orders_weight,
     _cm_open_orders_weight,
+    _cm_user_trades_weight,
     _depth_weight,
-    _premium_index_weight,
 )
 
 
@@ -76,7 +79,11 @@ WS_API_ENDPOINTS = [
         transport='ws_api',
         ws_method='order.place',
         security_type=SecurityType.TRADE,
-        weight=1,
+        # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/websocket-api
+        # IP Request Weight: 0 (ORDERS pool consumed separately via is_order=True);
+        # the SDK bucket clamps cost to max(1, weight) so the local
+        # REQUEST_WEIGHT window still counts ≥1 — intentional defensive behavior.
+        weight=0,
         is_order=True,
     ),
     dict(
@@ -170,7 +177,10 @@ REST_ENDPOINTS = [
         transport='rest',
         rest_url=CM_REST_HOST + '/dapi/v1/premiumIndex',
         security_type=SecurityType.NONE,
-        weight=_premium_index_weight,
+        # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/market-data/rest-api/Index-Price-and-Mark-Price
+        # CM premiumIndex is flat weight 10 (CM docs do not list the dynamic
+        # 1/10 split that UM has).
+        weight=10,
     ),
     # ----- Trading -----------------------------------------------------------
     dict(
@@ -201,7 +211,9 @@ REST_ENDPOINTS = [
         transport='rest',
         rest_url=CM_REST_HOST + '/dapi/v1/allOrders',
         security_type=SecurityType.USER_DATA,
-        weight=5,
+        # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/All-Orders
+        # 20 with `symbol`; 40 with `pair`.
+        weight=_cm_all_orders_weight,
     ),
     dict(
         name='create_batch_orders',
@@ -217,7 +229,8 @@ REST_ENDPOINTS = [
         method=RequestMethod.DELETE,
         rest_url=CM_REST_HOST + '/dapi/v1/batchOrders',
         security_type=SecurityType.TRADE,
-        weight=5,
+        # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Cancel-Multiple-Orders
+        weight=1,
     ),
     # ----- Account / Position ------------------------------------------------
     dict(
@@ -225,14 +238,17 @@ REST_ENDPOINTS = [
         transport='rest',
         rest_url=CM_REST_HOST + '/dapi/v1/positionRisk',
         security_type=SecurityType.USER_DATA,
-        weight=5,
+        # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Position-Information
+        weight=1,
     ),
     dict(
         name='get_user_trades',
         transport='rest',
         rest_url=CM_REST_HOST + '/dapi/v1/userTrades',
         security_type=SecurityType.USER_DATA,
-        weight=5,
+        # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Account-Trade-List
+        # 20 with `symbol`; 40 with `pair`.
+        weight=_cm_user_trades_weight,
     ),
     dict(
         name='get_commission',
@@ -246,7 +262,8 @@ REST_ENDPOINTS = [
         transport='rest',
         rest_url=CM_REST_HOST + '/dapi/v1/income',
         security_type=SecurityType.USER_DATA,
-        weight=30,
+        # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/account/rest-api/Get-Income-History
+        weight=20,
     ),
     dict(
         name='get_leverage_bracket',

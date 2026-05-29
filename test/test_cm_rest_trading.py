@@ -20,7 +20,9 @@ from binance import CMFuturesClient, Credentials
 from binance.core.rate_limit.types import RateLimitType
 from binance.futures.cm.endpoints import (
     REST_ENDPOINTS,
+    _cm_all_orders_weight,
     _cm_open_orders_weight,
+    _cm_user_trades_weight,
     _depth_weight,
 )
 
@@ -105,16 +107,26 @@ async def test_cm_get_open_orders_without_symbol_weight_40():
 
 
 # ---------------------------------------------------------------------------
-# get_all_orders  GET /dapi/v1/allOrders  weight 5
+# get_all_orders  GET /dapi/v1/allOrders  weight 20 (symbol) / 40 (pair)
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/All-Orders
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_cm_get_all_orders_weight_5():
+async def test_cm_get_all_orders_with_symbol_weight_20():
     client = _signed_client()
     with aioresponses() as m:
         m.get(_re('/dapi/v1/allOrders'), payload=[], status=200)
         await client.get_all_orders(symbol='BTCUSD_PERP')
-    assert _weight_used(client) == 5
+    assert _weight_used(client) == 20
+
+
+@pytest.mark.asyncio
+async def test_cm_get_all_orders_with_pair_weight_40():
+    client = _signed_client()
+    with aioresponses() as m:
+        m.get(_re('/dapi/v1/allOrders'), payload=[], status=200)
+        await client.get_all_orders(pair='BTCUSD')
+    assert _weight_used(client) == 40
 
 
 # ---------------------------------------------------------------------------
@@ -131,45 +143,57 @@ async def test_cm_create_batch_orders_post_weight_5():
 
 
 # ---------------------------------------------------------------------------
-# cancel_batch_orders  DELETE /dapi/v1/batchOrders  weight 5
+# cancel_batch_orders  DELETE /dapi/v1/batchOrders  weight 1
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Cancel-Multiple-Orders
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_cm_cancel_batch_orders_delete_weight_5():
+async def test_cm_cancel_batch_orders_delete_weight_1():
     client = _signed_client()
     with aioresponses() as m:
         m.delete(_re('/dapi/v1/batchOrders'), payload=[], status=200)
         await client.cancel_batch_orders(symbol='BTCUSD_PERP', orderIdList=[1, 2])
-    assert _weight_used(client) == 5
+    assert _weight_used(client) == 1
 
 
 # ---------------------------------------------------------------------------
-# get_position_risk  GET /dapi/v1/positionRisk  weight 5
-# NOTE: COIN-M uses /dapi/v1/positionRisk (not /fapi/v3/positionRisk)
+# get_position_risk  GET /dapi/v1/positionRisk  weight 1
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Position-Information
+# NOTE: COIN-M uses /dapi/v1/positionRisk (not /fapi/v3/positionRisk).
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_cm_get_position_risk_weight_5():
+async def test_cm_get_position_risk_weight_1():
     client = _signed_client()
     payload = [{'symbol': 'BTCUSD_PERP', 'positionAmt': '1'}]
     with aioresponses() as m:
         m.get(_re('/dapi/v1/positionRisk'), payload=payload, status=200)
         result = await client.get_position_risk(pair='BTCUSD')
     assert result == payload
-    assert _weight_used(client) == 5
+    assert _weight_used(client) == 1
 
 
 # ---------------------------------------------------------------------------
-# get_user_trades  GET /dapi/v1/userTrades  weight 5
+# get_user_trades  GET /dapi/v1/userTrades  weight 20 (symbol) / 40 (pair)
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Account-Trade-List
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_cm_get_user_trades_weight_5():
+async def test_cm_get_user_trades_with_symbol_weight_20():
     client = _signed_client()
     with aioresponses() as m:
         m.get(_re('/dapi/v1/userTrades'), payload=[], status=200)
         await client.get_user_trades(symbol='BTCUSD_PERP')
-    assert _weight_used(client) == 5
+    assert _weight_used(client) == 20
+
+
+@pytest.mark.asyncio
+async def test_cm_get_user_trades_with_pair_weight_40():
+    client = _signed_client()
+    with aioresponses() as m:
+        m.get(_re('/dapi/v1/userTrades'), payload=[], status=200)
+        await client.get_user_trades(pair='BTCUSD')
+    assert _weight_used(client) == 40
 
 
 # ---------------------------------------------------------------------------
@@ -186,16 +210,17 @@ async def test_cm_get_commission_weight_20():
 
 
 # ---------------------------------------------------------------------------
-# get_income  GET /dapi/v1/income  weight 30
+# get_income  GET /dapi/v1/income  weight 20
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/account/rest-api/Get-Income-History
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_cm_get_income_weight_30():
+async def test_cm_get_income_weight_20():
     client = _signed_client()
     with aioresponses() as m:
         m.get(_re('/dapi/v1/income'), payload=[], status=200)
         await client.get_income(symbol='BTCUSD_PERP')
-    assert _weight_used(client) == 30
+    assert _weight_used(client) == 20
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +318,28 @@ def test_cm_open_orders_weight_with_symbol():
 
 def test_cm_open_orders_weight_without_symbol():
     assert _cm_open_orders_weight({}) == 40
+
+
+# `_cm_all_orders_weight`: 20 with `symbol`; 40 with `pair`.
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/All-Orders
+
+def test_cm_all_orders_weight_with_symbol():
+    assert _cm_all_orders_weight({'symbol': 'BTCUSD_PERP'}) == 20
+
+
+def test_cm_all_orders_weight_with_pair():
+    assert _cm_all_orders_weight({'pair': 'BTCUSD'}) == 40
+
+
+# `_cm_user_trades_weight`: 20 with `symbol`; 40 with `pair`.
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Account-Trade-List
+
+def test_cm_user_trades_weight_with_symbol():
+    assert _cm_user_trades_weight({'symbol': 'BTCUSD_PERP'}) == 20
+
+
+def test_cm_user_trades_weight_with_pair():
+    assert _cm_user_trades_weight({'pair': 'BTCUSD'}) == 40
 
 
 # ---------------------------------------------------------------------------
