@@ -56,18 +56,24 @@ def _re(path: str) -> re.Pattern:
 
 
 # ---------------------------------------------------------------------------
-# create_test_order  POST /dapi/v1/order/test  weight 1
+# create_test_order — NOT documented on COIN-M (CM Trade REST docs lack a
+# "Test New Order" page; POST /dapi/v1/order/test is not listed).  Dropped
+# from the CM surface.  See Phase G audit.
+# Source: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api
 # ---------------------------------------------------------------------------
 
-@pytest.mark.asyncio
-async def test_cm_create_test_order_post_correct_url_and_weight():
-    client = _signed_client()
-    with aioresponses() as m:
-        m.post(_re('/dapi/v1/order/test'), payload={}, status=200)
-        result = await client.create_test_order(
-            symbol='BTCUSD_PERP', side='BUY', type='MARKET', quantity='1')
-    assert result == {}
-    assert _weight_used(client) == 1
+def test_cm_create_test_order_removed_from_client():
+    """``CMFuturesClient`` MUST NOT expose ``create_test_order`` —
+    POST /dapi/v1/order/test is not documented on COIN-M.
+    """
+    client = CMFuturesClient(Credentials(api_key='K', api_secret='S'))
+    assert not hasattr(client, 'create_test_order')
+
+
+def test_cm_create_test_order_removed_from_registry():
+    """The CM REST registry MUST NOT carry a ``create_test_order`` entry."""
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    assert 'create_test_order' not in by_name
 
 
 # ---------------------------------------------------------------------------
@@ -409,8 +415,9 @@ def test_cm_rest_endpoints_registry_contains_trading_entries():
     by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
 
     # Trading/account entries with expected HTTP method and path.
+    # NOTE: ``create_test_order`` is intentionally absent — POST /dapi/v1/order/test
+    # is not documented on the CM Trade REST docs.
     expected_method_path = {
-        'create_test_order': ('post', '/dapi/v1/order/test'),
         'cancel_all_orders': ('delete', '/dapi/v1/allOpenOrders'),
         'get_open_orders': ('get', '/dapi/v1/openOrders'),
         'get_all_orders': ('get', '/dapi/v1/allOrders'),

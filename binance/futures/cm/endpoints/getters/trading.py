@@ -2,10 +2,14 @@
 
 WS-API order placement / modification / cancellation / status
 (``create_order``, ``modify_order``, ``cancel_order``, ``get_order``) plus
-REST trading endpoints (``create_test_order``, ``cancel_all_orders``,
-``get_open_orders``, ``get_all_orders``, ``create_batch_orders``,
-``cancel_batch_orders``). These are pre-declared stubs whose bodies are
-replaced by ``define_getter`` at import time (see ``registry.py``).
+REST trading endpoints (``cancel_all_orders``, ``get_open_orders``,
+``get_all_orders``, ``create_batch_orders``, ``cancel_batch_orders``).
+These are pre-declared stubs whose bodies are replaced by ``define_getter``
+at import time (see ``registry.py``).
+
+Note: COIN-M does NOT expose a "Test New Order" endpoint (POST
+/dapi/v1/order/test); that endpoint is documented only on UM Futures and
+Spot.
 """
 
 from typing import Awaitable
@@ -106,19 +110,6 @@ class CMTradingGetters:
         ...  # pragma: no cover
 
     # ----- REST: trading ----------------------------------------------------
-
-    def create_test_order(self, **kwargs) -> Awaitable:
-        """Tests a new COIN-M futures order without submitting it.
-
-        Weight: 1
-
-        Args:
-            Same parameters as ``create_order``.
-
-        Returns:
-            dict: An empty dict ``{}`` on success.
-        """
-        ...  # pragma: no cover
 
     def cancel_all_orders(self, **kwargs) -> Awaitable:
         """Cancels all open orders for a COIN-M symbol.

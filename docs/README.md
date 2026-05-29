@@ -386,6 +386,7 @@ Note: COIN-M symbols contain underscores (e.g. `'btcusd_perp'`); pass them lower
 - `get_premium_index` accepts `symbol` or `pair`; always returns a list.
 - `get_position_risk` filters by `marginAsset` or `pair` (not `symbol`).
 - **No `get_multi_assets_mode` / `set_multi_assets_mode`** — USDⓈ-M only.
+- **No `create_test_order`** — COIN-M does not document a "Test New Order" endpoint; that endpoint is UM-Futures-only and Spot-only.
 - No 10-second ORDERS pool (only 1-minute ORDERS pool).
 
 ```python

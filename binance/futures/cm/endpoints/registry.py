@@ -183,14 +183,13 @@ REST_ENDPOINTS = [
         weight=10,
     ),
     # ----- Trading -----------------------------------------------------------
-    dict(
-        name='create_test_order',
-        transport='rest',
-        method=RequestMethod.POST,
-        rest_url=CM_REST_HOST + '/dapi/v1/order/test',
-        security_type=SecurityType.TRADE,
-        weight=1,
-    ),
+    # NOTE: ``create_test_order`` (POST /dapi/v1/order/test) is intentionally
+    # absent — Binance does not document a "Test New Order" endpoint for the
+    # COIN-M Futures product (the CM Trade REST navigation lists only "New
+    # Order", "Place Multiple Orders", "Modify Order", "Cancel Order", "Query
+    # Order", etc., and the direct slugs "Test-New-Order" / "Test-Order" 404).
+    # The endpoint exists only on UM Futures and Spot.
+    # Source: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api
     dict(
         name='cancel_all_orders',
         transport='rest',
