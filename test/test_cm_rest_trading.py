@@ -248,6 +248,34 @@ def test_cm_get_adl_quantile_registry_shape():
 
 
 # ---------------------------------------------------------------------------
+# get_position_margin_history  GET /dapi/v1/positionMargin/history  weight 1
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Get-Position-Margin-Change-History
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_cm_get_position_margin_history_weight_1():
+    client = _signed_client()
+    payload = [{
+        'symbol': 'BTCUSD_PERP', 'type': 1, 'amount': '0.01',
+        'asset': 'BTC', 'time': 1578047897183, 'positionSide': 'BOTH',
+    }]
+    with aioresponses() as m:
+        m.get(_re('/dapi/v1/positionMargin/history'), payload=payload, status=200)
+        result = await client.get_position_margin_history(symbol='BTCUSD_PERP')
+    assert result == payload
+    assert _weight_used(client) == 1
+
+
+def test_cm_get_position_margin_history_registry_shape():
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['get_position_margin_history']
+    assert str(entry.get('method', 'get')).lower() == 'get'
+    assert entry['rest_url'].endswith('/dapi/v1/positionMargin/history')
+    assert entry['weight'] == 1
+    assert entry['security_type'] == SecurityType.TRADE
+
+
+# ---------------------------------------------------------------------------
 # get_position_risk  GET /dapi/v1/positionRisk  weight 1
 # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Position-Information
 # NOTE: COIN-M uses /dapi/v1/positionRisk (not /fapi/v3/positionRisk).

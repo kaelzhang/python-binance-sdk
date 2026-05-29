@@ -326,6 +326,17 @@ REST_ENDPOINTS = [
         weight=1,
     ),
     dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Get-Position-Margin-Change-History
+        # Request Weight: 1; security TRADE (docs heading: "(TRADE)").
+        # Returns isolated-margin add/reduce events for ``symbol`` over a
+        # 30-day window. Companion read endpoint to ``set_position_margin``.
+        name='get_position_margin_history',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/positionMargin/history',
+        security_type=SecurityType.TRADE,
+        weight=1,
+    ),
+    dict(
         name='set_position_mode',
         transport='rest',
         method=RequestMethod.POST,

@@ -225,6 +225,29 @@ class CMAccountGetters:
         """
         ...  # pragma: no cover
 
+    def get_position_margin_history(self, **kwargs) -> Awaitable:
+        """Gets isolated-margin add/reduce history for a COIN-M symbol.
+
+        Weight: 1.
+        Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Get-Position-Margin-Change-History
+
+        Companion read endpoint to ``set_position_margin``.
+
+        Args:
+            symbol (str): The COIN-M futures symbol.
+            type (:obj:`int`, optional): ``1`` = add margin events only;
+                ``2`` = reduce margin events only.
+            startTime (:obj:`long`, optional):
+            endTime (:obj:`long`, optional):
+            limit (:obj:`int`, optional): Default 50.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            list: Margin-change events with ``symbol``, ``type``,
+            ``amount``, ``asset``, ``time``, ``positionSide``.
+        """
+        ...  # pragma: no cover
+
     def get_position_mode(self, **kwargs) -> Awaitable:
         """Gets the current position mode (one-way vs hedge) for COIN-M.
 

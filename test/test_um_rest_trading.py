@@ -203,6 +203,35 @@ def test_get_adl_quantile_registry_shape():
 
 
 # ---------------------------------------------------------------------------
+# get_position_margin_history  GET /fapi/v1/positionMargin/history  weight 1
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Get-Position-Margin-Change-History
+# TRADE security per the doc page heading "(TRADE)".
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_position_margin_history_weight_1():
+    client = _signed_client()
+    payload = [{
+        'symbol': 'BTCUSDT', 'type': 1, 'amount': '23',
+        'asset': 'USDT', 'time': 1578047897183, 'positionSide': 'BOTH',
+    }]
+    with aioresponses() as m:
+        m.get(_re('/fapi/v1/positionMargin/history'), payload=payload, status=200)
+        result = await client.get_position_margin_history(symbol='BTCUSDT')
+    assert result == payload
+    assert _weight_used(client) == 1
+
+
+def test_get_position_margin_history_registry_shape():
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['get_position_margin_history']
+    assert str(entry.get('method', 'get')).lower() == 'get'
+    assert entry['rest_url'].endswith('/fapi/v1/positionMargin/history')
+    assert entry['weight'] == 1
+    assert entry['security_type'] == SecurityType.TRADE
+
+
+# ---------------------------------------------------------------------------
 # get_position_risk  GET /fapi/v3/positionRisk  weight 5
 # ---------------------------------------------------------------------------
 
@@ -405,6 +434,7 @@ def test_rest_endpoints_registry_contains_trading_entries():
         'cancel_all_orders': ('delete', '/fapi/v1/allOpenOrders'),
         'countdown_cancel_all_orders': ('post', '/fapi/v1/countdownCancelAll'),
         'get_adl_quantile': ('get', '/fapi/v1/adlQuantile'),
+        'get_position_margin_history': ('get', '/fapi/v1/positionMargin/history'),
         'get_open_orders': ('get', '/fapi/v1/openOrders'),
         'get_all_orders': ('get', '/fapi/v1/allOrders'),
         'create_batch_orders': ('post', '/fapi/v1/batchOrders'),

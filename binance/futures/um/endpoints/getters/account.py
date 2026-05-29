@@ -228,6 +228,32 @@ class UMAccountGetters:
         """
         ...  # pragma: no cover
 
+    def get_position_margin_history(self, **kwargs) -> Awaitable:
+        """Gets isolated-margin add/reduce history for a symbol.
+
+        Weight: 1.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Get-Position-Margin-Change-History
+
+        Server retains 30 days of history; the span between ``startTime``
+        and ``endTime`` cannot exceed 30 days. Companion read endpoint
+        to ``set_position_margin``.
+
+        Args:
+            symbol (str): The futures symbol.
+            type (:obj:`int`, optional): ``1`` = add margin events only;
+                ``2`` = reduce margin events only.
+            startTime (:obj:`long`, optional):
+            endTime (:obj:`long`, optional): Defaults to the server's
+                current time.
+            limit (:obj:`int`, optional): Default 500.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            list: Margin-change events
+            ``[{'symbol': ..., 'type': 1/2, 'deltaType': ..., 'amount': ..., 'asset': ..., 'time': ..., 'positionSide': ...}, ...]``.
+        """
+        ...  # pragma: no cover
+
     def set_position_mode(self, **kwargs) -> Awaitable:
         """Changes the position mode (one-way vs hedge).
 
