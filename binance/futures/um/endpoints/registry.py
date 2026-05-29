@@ -281,6 +281,28 @@ REST_ENDPOINTS = [
     ),
     # ----- Account / Position ------------------------------------------------
     dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Account-Information-V3
+        # Request Weight: 5. REST V3 returns a richer aggregated-account
+        # field set than the v2 WS-API ``v2/account.status``; the SDK
+        # keeps WS-API V2 as the low-latency primary and exposes REST V3
+        # as a richer fallback. Distinct method name to avoid shadowing
+        # the WS-API ``get_account``. CM has no V3 — UM only.
+        name='get_account_rest_v3',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v3/account',
+        security_type=SecurityType.USER_DATA,
+        weight=5,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Futures-Account-Balance-V3
+        # Request Weight: 5. Same V3-vs-V2 rationale as ``get_account_rest_v3``.
+        name='get_balance_rest_v3',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v3/balance',
+        security_type=SecurityType.USER_DATA,
+        weight=5,
+    ),
+    dict(
         name='get_position_risk',
         transport='rest',
         rest_url=UM_REST_HOST + '/fapi/v3/positionRisk',

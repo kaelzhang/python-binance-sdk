@@ -47,6 +47,49 @@ class UMAccountGetters:
         """
         ...  # pragma: no cover
 
+    def get_account_rest_v3(self, **kwargs) -> Awaitable:
+        """Gets USDⓈ-M Futures account information via REST V3
+        (``GET /fapi/v3/account``).
+
+        Weight: 5.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Account-Information-V3
+
+        REST V3 carries a richer aggregated-account field set than the
+        WS-API V2 (:py:meth:`get_account`); both surfaces stay available
+        so callers pick the latency / richness tradeoff. CM has no V3
+        equivalent.
+
+        Args:
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            dict: Account snapshot with ``totalInitialMargin``,
+            ``totalMaintMargin``, ``totalWalletBalance``,
+            ``totalUnrealizedProfit``, ``totalMarginBalance``,
+            ``assets`` (per-asset detail), and ``positions``.
+        """
+        ...  # pragma: no cover
+
+    def get_balance_rest_v3(self, **kwargs) -> Awaitable:
+        """Gets USDⓈ-M Futures balance via REST V3
+        (``GET /fapi/v3/balance``).
+
+        Weight: 5.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Futures-Account-Balance-V3
+
+        See :py:meth:`get_account_rest_v3` for the V3-vs-V2 rationale.
+
+        Args:
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            list: Per-asset balance records with ``accountAlias``,
+            ``asset``, ``balance``, ``crossWalletBalance``, ``crossUnPnl``,
+            ``availableBalance``, ``maxWithdrawAmount``,
+            ``marginAvailable``, ``updateTime``.
+        """
+        ...  # pragma: no cover
+
     def get_position(self, **kwargs) -> Awaitable:
         """Gets USDⓈ-M Futures position information over the WebSocket API.
 

@@ -299,6 +299,71 @@ def test_get_position_margin_history_registry_shape():
 
 
 # ---------------------------------------------------------------------------
+# get_account_rest_v3  GET /fapi/v3/account  weight 5  (USER_DATA)
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Account-Information-V3
+# REST V3 carries a richer field set than the v2 WS-API (`get_account`); the
+# SDK keeps WS-API V2 as the primary low-latency surface and exposes the REST
+# V3 endpoint as a richer fallback for batch / risk analysis. CM has no V3.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_account_rest_v3_weight_5():
+    client = _signed_client()
+    payload = {'totalWalletBalance': '23.72469206', 'assets': [], 'positions': []}
+    with aioresponses() as m:
+        m.get(_re('/fapi/v3/account'), payload=payload, status=200)
+        result = await client.get_account_rest_v3()
+    assert result == payload
+    assert _weight_used(client) == 5
+
+
+def test_get_account_rest_v3_registry_shape():
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['get_account_rest_v3']
+    assert str(entry.get('method', 'get')).lower() == 'get'
+    assert entry['rest_url'].endswith('/fapi/v3/account')
+    assert entry['weight'] == 5
+    assert entry['security_type'] == SecurityType.USER_DATA
+
+
+# ---------------------------------------------------------------------------
+# get_balance_rest_v3  GET /fapi/v3/balance  weight 5  (USER_DATA)
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Futures-Account-Balance-V3
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_balance_rest_v3_weight_5():
+    client = _signed_client()
+    payload = [{'asset': 'USDT', 'balance': '122607.35137903'}]
+    with aioresponses() as m:
+        m.get(_re('/fapi/v3/balance'), payload=payload, status=200)
+        result = await client.get_balance_rest_v3()
+    assert result == payload
+    assert _weight_used(client) == 5
+
+
+def test_get_balance_rest_v3_registry_shape():
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['get_balance_rest_v3']
+    assert str(entry.get('method', 'get')).lower() == 'get'
+    assert entry['rest_url'].endswith('/fapi/v3/balance')
+    assert entry['weight'] == 5
+    assert entry['security_type'] == SecurityType.USER_DATA
+
+
+def test_rest_v3_does_not_clash_with_ws_api():
+    """``get_account_rest_v3`` / ``get_balance_rest_v3`` are distinct
+    method names from the WS-API V2 ``get_account`` / ``get_balance``
+    surface — both surfaces stay available, callers pick the latency /
+    richness tradeoff."""
+    client = _signed_client()
+    assert hasattr(client, 'get_account')         # WS-API V2 still installed
+    assert hasattr(client, 'get_balance')         # WS-API V2 still installed
+    assert hasattr(client, 'get_account_rest_v3')  # REST V3 new
+    assert hasattr(client, 'get_balance_rest_v3')  # REST V3 new
+
+
+# ---------------------------------------------------------------------------
 # get_position_risk  GET /fapi/v3/positionRisk  weight 5
 # ---------------------------------------------------------------------------
 
@@ -502,6 +567,8 @@ def test_rest_endpoints_registry_contains_trading_entries():
         'countdown_cancel_all_orders': ('post', '/fapi/v1/countdownCancelAll'),
         'get_adl_quantile': ('get', '/fapi/v1/adlQuantile'),
         'get_position_margin_history': ('get', '/fapi/v1/positionMargin/history'),
+        'get_account_rest_v3': ('get', '/fapi/v3/account'),
+        'get_balance_rest_v3': ('get', '/fapi/v3/balance'),
         'get_open_order': ('get', '/fapi/v1/openOrder'),
         'get_open_orders': ('get', '/fapi/v1/openOrders'),
         'get_order_modify_history': ('get', '/fapi/v1/orderAmendment'),
