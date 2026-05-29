@@ -62,9 +62,19 @@ class MiniTickerHandlerBase(Handler):
 
 # ---------------------------------------------------------------------------
 # Futures Ticker (24hrTicker)
-# Confirmed fields (UM + CM identical to Spot ticker, 2026-05-26):
+# Confirmed fields against developers.binance.com (UM + CM, 2026-05):
 # Extends mini-ticker with: price change, percent, weighted avg price,
-# last price (c), last quantity, best bid/ask, open/close time, trade ids.
+# last price (c), last quantity, open/close stat time, trade ids.
+# Futures ticker payloads do NOT include the Spot-only fields
+# ``x`` (first trade price), ``b``/``B`` (best bid price / qty), or
+# ``a``/``A`` (best ask price / qty) — those are exclusive to the Spot ticker.
+# Best bid/ask are delivered via the separate book-ticker stream on futures.
+# Docs (per-symbol):
+#   UM https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Individual-Symbol-Ticker-Streams
+#   CM https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Individual-Symbol-Ticker-Streams
+# Docs (all-market):
+#   UM https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/All-Market-Tickers-Streams
+#   CM https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/All-Market-Tickers-Streams
 # ---------------------------------------------------------------------------
 
 FUTURES_TICKER_COLUMNS_MAP = {
@@ -73,12 +83,7 @@ FUTURES_TICKER_COLUMNS_MAP = {
     'p': 'price_change',
     'P': 'percent',
     'w': 'weighted_average_price',
-    'x': 'first_trade_price',
     'Q': 'last_quantity',
-    'b': 'best_bid_price',
-    'B': 'best_bid_quantity',
-    'a': 'best_ask_price',
-    'A': 'best_ask_quantity',
     'O': 'stat_open_time',
     'C': 'stat_close_time',
     'F': 'first_trade_id',

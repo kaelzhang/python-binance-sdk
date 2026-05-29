@@ -226,6 +226,10 @@ async def test_futures_mini_ticker_handler_columns(um_client):
 # SHARED: Ticker (24hrTicker)
 # ===========================================================================
 
+# UM and CM ticker payloads per developers.binance.com (2026-05) include only:
+# e, E, s, p, P, w, c, Q, o, h, l, v, q, O, C, F, L, n.
+# Spot-only fields x (first_trade_price), b/B (best bid), a/A (best ask) are NOT
+# present in futures ticker payloads.
 TICKER_PAYLOAD = {
     'e': '24hrTicker',
     'E': 1638747660000,
@@ -233,13 +237,8 @@ TICKER_PAYLOAD = {
     'p': '3000.0',
     'P': '6.00',
     'w': '52000.0',
-    'x': '50000.0',
     'c': '53000.0',
     'Q': '0.5',
-    'b': '52990.0',
-    'B': '1.0',
-    'a': '53010.0',
-    'A': '2.0',
     'o': '50000.0',
     'h': '55000.0',
     'l': '49000.0',
@@ -259,6 +258,20 @@ def test_futures_ticker_subscribe_param():
     assert proc.subscribe_param(True, SubType.TICKER, 'BTCUSDT') == 'btcusdt@ticker'
 
 
+def test_futures_ticker_columns_map_excludes_spot_only_fields():
+    """Per developers.binance.com, futures ticker payloads do not include the
+    Spot-only fields ``x`` (first trade price), ``b``/``B`` (best bid price/qty),
+    or ``a``/``A`` (best ask price/qty).  These keys must not appear in the
+    shared FUTURES_TICKER_COLUMNS_MAP for either UM or CM.
+    """
+    from binance.futures.streams import FUTURES_TICKER_COLUMNS_MAP
+    for stale_key in ('x', 'b', 'B', 'a', 'A'):
+        assert stale_key not in FUTURES_TICKER_COLUMNS_MAP, (
+            f'stale spot-only key {stale_key!r} must not appear in '
+            f'FUTURES_TICKER_COLUMNS_MAP'
+        )
+
+
 @pytest.mark.asyncio
 async def test_futures_ticker_handler_columns(um_client):
     df = await run_handler(
@@ -270,7 +283,8 @@ async def test_futures_ticker_handler_columns(um_client):
     assert row['price_change'] == '3000.0'
     assert row['percent'] == '6.00'
     assert row['last_price'] == '53000.0'
-    assert row['best_bid_price'] == '52990.0'
+    assert row['weighted_average_price'] == '52000.0'
+    assert row['last_quantity'] == '0.5'
     assert row['total_trades'] == 100
 
 
