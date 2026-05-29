@@ -208,7 +208,13 @@ def expect_book_ticker(payload):
 
 
 def expect_partial_order_book(payload):
-    bids, asks = payload
+    # Per developers.binance.com (Spot Web-Socket Streams "Partial Book Depth"),
+    # the snapshot payload carries `lastUpdateId` alongside bids/asks so
+    # consumers can reconcile against the diff-depth stream.  The handler
+    # surfaces the triple ``(last_update_id, bids_df, asks_df)``.
+    last_update_id, bids, asks = payload
+
+    assert last_update_id == 160
 
     bid_row = bids.iloc[0]
     ask_row = asks.iloc[0]
@@ -254,6 +260,25 @@ async def test_partial_order_book_handler(client):
             ['0.0026', '100']
         ]
     }, expect_partial_order_book, 'bnbbtc@depth20')
+
+
+def test_spot_partial_order_book_exposes_last_update_id_explicitly():
+    """Per docs the Spot partial-book payload includes ``lastUpdateId``
+    so consumers can reconcile snapshots against the diff-depth stream's
+    ``U`` / ``u`` cursor.  The handler's ``_receive`` MUST surface it
+    as the first element of the returned tuple."""
+    handler = PartialOrderBookHandlerBase()
+    result = handler._receive({
+        'lastUpdateId': 1234,
+        'bids': [['50000.0', '1.0'], ['49999.0', '2.0']],
+        'asks': [['50001.0', '0.5'], ['50002.0', '1.5']],
+    })
+    last_update_id, bids, asks = result
+    assert last_update_id == 1234
+    assert bids.iloc[0]['price'] == '50000.0'
+    assert bids.iloc[1]['price'] == '49999.0'
+    assert asks.iloc[0]['price'] == '50001.0'
+    assert asks.iloc[1]['quantity'] == '1.5'
 
 
 @pytest.mark.asyncio

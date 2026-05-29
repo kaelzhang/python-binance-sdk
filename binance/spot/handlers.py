@@ -179,14 +179,22 @@ class PartialOrderBookHandlerBase(Handler):
 
     Receives a snapshot of the top-N levels of the order book for the
     subscribed symbol (5, 10, or 20 levels depending on the subscription
-    parameter).  Each payload contains separate lists of bids and asks, each
-    entry being a (price, quantity) pair.
+    parameter).  Per developers.binance.com (Spot Web-Socket Streams, "Partial
+    Book Depth Streams"), each payload contains three top-level fields:
+    ``lastUpdateId`` (the most recent update id), ``bids`` and ``asks`` -- each
+    of the latter being an array of ``[price, quantity]`` string pairs.
 
-    Subclass this and override ``receive(payload)`` to handle the event.
-    The internal ``_receive`` splits the raw payload into two ``StockDataFrame``
-    objects — one for bids and one for asks — each with ``price`` and
-    ``quantity`` columns; these are forwarded to ``receive`` as a tuple
-    ``(bids_df, asks_df)``.
+    Subclass this and override ``receive(payload)`` to handle the event.  The
+    internal ``_receive`` splits the raw payload into two ``StockDataFrame``
+    objects -- one for bids and one for asks -- each with ``price`` and
+    ``quantity`` columns, and surfaces the snapshot's ``lastUpdateId``
+    alongside so consumers can reconcile the snapshot against the
+    diff-depth stream's ``U`` / ``u`` cursor.  The handler returns a
+    ``(last_update_id, bids_df, asks_df)`` triple (matches the futures
+    :class:`~binance.futures.streams.PartialOrderBookHandlerBase` shape).
+
+    Docs:
+    https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams
     """
 
     COLUMNS_MAP = PARTIAL_ORDER_BOOK_COLUMNS_MAP
@@ -195,15 +203,12 @@ class PartialOrderBookHandlerBase(Handler):
     def _receive(  # type: ignore[override]  # intentional narrowing: only dict payloads are valid for this handler
         self, payload: DictPayload, index: Optional[List[int]] = None
     ):
-        bids = super()._receive([
-            {'price': x[0], 'quantity': x[1]}
-            for x in payload['bids']
-        ], None)
-        asks = super()._receive([
-            {'price': x[0], 'quantity': x[1]}
-            for x in payload['asks']
-        ], None)
-        return bids, asks
+        last_update_id = payload.get('lastUpdateId')
+        bids_data = [{'price': x[0], 'quantity': x[1]} for x in payload['bids']]
+        asks_data = [{'price': x[0], 'quantity': x[1]} for x in payload['asks']]
+        bids = super()._receive(bids_data, list(range(len(bids_data))) or [0])
+        asks = super()._receive(asks_data, list(range(len(asks_data))) or [0])
+        return last_update_id, bids, asks
 
 
 KLINE_COLUMNS_MAP = {
