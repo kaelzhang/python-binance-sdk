@@ -62,8 +62,12 @@ FUTURES_KLINE_COLUMNS_MAP = {
 
 FUTURES_KLINE_COLUMNS = FUTURES_KLINE_COLUMNS_MAP.keys()
 
+# Per developers.binance.com (UM + CM kline / continuousKline /
+# indexPriceKline / markPriceKline streams), the smallest supported kline
+# interval on futures is ``1m``.  ``1s`` is Spot-only and is NOT accepted on
+# any futures kline stream.
 VALID_FUTURES_KLINE_INTERVALS = frozenset((
-    '1s', '1m', '3m', '5m', '15m', '30m',
+    '1m', '3m', '5m', '15m', '30m',
     '1h', '2h', '4h', '6h', '8h', '12h',
     '1d', '3d', '1w', '1M'
 ))

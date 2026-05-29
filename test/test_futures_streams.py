@@ -182,6 +182,54 @@ def test_futures_kline_subscribe_param_invalid_interval():
         proc.subscribe_param(True, SubType.KLINE, 'BTCUSDT', TimeFrame.Y1)
 
 
+def test_futures_kline_intervals_exclude_1s():
+    """Per developers.binance.com, futures kline streams start at ``1m``.
+
+    The ``1s`` interval is Spot-only and is not accepted on UM, CM, or any of
+    the futures-derived kline streams (kline, continuousKline, indexPriceKline,
+    markPriceKline).
+    """
+    from binance.futures.streams import VALID_FUTURES_KLINE_INTERVALS
+    assert '1s' not in VALID_FUTURES_KLINE_INTERVALS
+
+
+def test_futures_kline_subscribe_param_rejects_1s():
+    from binance.futures.streams import KlineProcessor
+    proc = KlineProcessor(None)
+    with pytest.raises(InvalidSubTypeParamException, match='invalid kline interval'):
+        proc.subscribe_param(True, SubType.KLINE, 'BTCUSDT', TimeFrame.s1)
+
+
+def test_futures_continuous_kline_subscribe_param_rejects_1s():
+    from binance.futures.streams import ContinuousKlineProcessor
+    proc = ContinuousKlineProcessor(None)
+    with pytest.raises(InvalidSubTypeParamException, match='invalid kline interval'):
+        proc.subscribe_param(
+            True, SubType.CONTINUOUS_KLINE, 'BTCUSDT', 'PERPETUAL', TimeFrame.s1
+        )
+
+
+def test_cm_kline_subscribe_param_rejects_1s():
+    from binance.futures.cm.streams import KlineProcessor
+    proc = KlineProcessor(None)
+    with pytest.raises(InvalidSubTypeParamException, match='invalid kline interval'):
+        proc.subscribe_param(True, SubType.KLINE, 'BTCUSD_PERP', TimeFrame.s1)
+
+
+def test_cm_index_price_kline_subscribe_param_rejects_1s():
+    from binance.futures.cm.streams import IndexPriceKlineProcessor
+    proc = IndexPriceKlineProcessor(None)
+    with pytest.raises(InvalidSubTypeParamException, match='invalid kline interval'):
+        proc.subscribe_param(True, SubType.INDEX_PRICE_KLINE, 'BTCUSD', TimeFrame.s1)
+
+
+def test_cm_mark_price_kline_subscribe_param_rejects_1s():
+    from binance.futures.cm.streams import MarkPriceKlineProcessor
+    proc = MarkPriceKlineProcessor(None)
+    with pytest.raises(InvalidSubTypeParamException, match='invalid kline interval'):
+        proc.subscribe_param(True, SubType.MARK_PRICE_KLINE, 'BTCUSD_PERP', TimeFrame.s1)
+
+
 def test_futures_kline_subscribe_param_no_interval():
     from binance.futures.streams import KlineProcessor
     proc = KlineProcessor(None)
