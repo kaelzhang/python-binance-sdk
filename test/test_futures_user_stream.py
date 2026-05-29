@@ -744,6 +744,27 @@ def test_handler_bases_importable_from_binance():
     assert hasattr(binance, 'FuturesEventStreamTerminatedHandlerBase')
 
 
+# ---------------------------------------------------------------------------
+# ACCOUNT_CONFIG_UPDATE docstring must clarify that ``ai`` (multi-assets-mode
+# change) is delivered ONLY on USDⓈ-M.  CM has no multi-assets margin mode
+# (only USDⓈ-M supports the multi-assets account), so CM payloads NEVER
+# carry the ``ai`` variant.
+#
+# UM docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Account-Configuration-Update-previous-Leverage-Update
+# CM docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/user-data-streams/Event-Account-Configuration-Update
+# ---------------------------------------------------------------------------
+
+
+def test_account_config_update_docstring_marks_ai_as_um_only():
+    """FuturesAccountConfigUpdateHandlerBase docstring must mark the ``ai`` variant as USDⓈ-M-only."""
+    doc = FuturesAccountConfigUpdateHandlerBase.__doc__ or ''
+    # ``ai`` (multi-assets-mode change) is documented as USDⓈ-M-only.
+    assert 'UM-only' in doc or 'USDⓈ-M-only' in doc or 'UM only' in doc or 'USDⓈ-M only' in doc
+    # The docstring must explicitly mention CM has no multi-assets mode.
+    assert 'multi-assets' in doc.lower()
+    assert 'CM' in doc
+
+
 def test_handler_bases_are_handler_subclasses():
     """All futures user handler bases are subclasses of core Handler."""
     from binance.core.handlers.base import Handler

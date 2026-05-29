@@ -11,8 +11,12 @@ Event types confirmed from official Binance USDⓈ-M Futures docs (2026-05-25):
   Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Order-Update
 - ``MARGIN_CALL``:       pushed when position risk ratio exceeds maintenance margin
   Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Margin-Call
-- ``ACCOUNT_CONFIG_UPDATE``: leverage or multi-assets-mode change
-  (task spec; payload: ac{s,l} for leverage, ai{j} for multi-assets mode)
+- ``ACCOUNT_CONFIG_UPDATE``: leverage change (UM + CM) or multi-assets-mode
+  change (USDⓈ-M-only; CM has no multi-assets mode so the ``ai`` variant is
+  delivered ONLY on UM).
+  Sources:
+  - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Account-Configuration-Update-previous-Leverage-Update
+  - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/user-data-streams/Event-Account-Configuration-Update
 - ``listenKeyExpired``:  connection key expired; payload confirmed from docs
   Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-User-Data-Stream-Expired
 - ``TRADE_LITE``:        low-latency fill event (**UM only** — not delivered on CM)
@@ -216,10 +220,10 @@ class FuturesMarginCallHandlerBase(FuturesSimpleHandler):
 class FuturesAccountConfigUpdateHandlerBase(FuturesSimpleHandler):
     """Base handler for the ``ACCOUNT_CONFIG_UPDATE`` futures user-data-stream event.
 
-    Receives a notification when the account leverage or multi-assets margin
-    mode changes.  Two payload shapes are used:
+    Receives a notification when account leverage (UM + CM) or multi-assets
+    margin mode (UM only) changes.
 
-    **Leverage change** (``ac`` present)::
+    **Leverage change** (``ac`` present) — delivered on both UM and CM::
 
         {
             "e": "ACCOUNT_CONFIG_UPDATE",
@@ -231,7 +235,9 @@ class FuturesAccountConfigUpdateHandlerBase(FuturesSimpleHandler):
             }
         }
 
-    **Multi-assets mode change** (``ai`` present)::
+    **Multi-assets mode change** (``ai`` present) — **USDⓈ-M-only**; the
+    multi-assets margin mode does NOT exist on COIN-M, so CM payloads NEVER
+    carry the ``ai`` variant::
 
         {
             "e": "ACCOUNT_CONFIG_UPDATE",
@@ -241,6 +247,10 @@ class FuturesAccountConfigUpdateHandlerBase(FuturesSimpleHandler):
                 "j": <is_multi_assets_margin>
             }
         }
+
+    Sources:
+    - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Account-Configuration-Update-previous-Leverage-Update
+    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/user-data-streams/Event-Account-Configuration-Update
 
     Subclass and override ``receive(payload)`` to handle the event.
     The raw Binance payload dict is passed unchanged.
