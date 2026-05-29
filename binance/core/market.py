@@ -11,11 +11,21 @@ local order book for that venue.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Tuple, Type
+from typing import Callable, List, Tuple, Type
 
 from binance.core.orderbook import OrderBook
 from binance.core.processors.base import Processor
 from binance.core.rate_limit import RateLimitRule
+
+
+def _default_data_stream_router(_stream_name: str) -> str:
+    """Default router for markets with a single ``/stream`` connection.
+
+    Spot and COIN-M both use one data-stream connection at
+    ``<stream_host>/stream`` for every subscription, so the router returns the
+    legacy ``/stream`` path regardless of the stream name.
+    """
+    return '/stream'
 
 
 @dataclass(frozen=True)
@@ -50,6 +60,24 @@ class MarketSpec:
             abstract :class:`~binance.core.orderbook.OrderBook` as a sentinel:
             constructing it raises :class:`TypeError`, surfacing markets that
             forgot to override.
+        data_stream_paths: the path(s) appended to ``stream_host`` for
+            market-data subscriptions.  Spot and COIN-M open a single
+            connection at ``/stream``; USDⓈ-M splits subscriptions across
+            ``/public/stream`` (depth + bookTicker + rpiDepth) and
+            ``/market/stream`` (aggTrade, markPrice, klines, tickers,
+            liquidations, compositeIndex, contractInfo, assetIndex,
+            tradingSession) -- per the 2026-04-23 decommission notice.
+            Defaults to ``('/stream',)``.
+        data_stream_router: a callable mapping a stream name (e.g.
+            ``'btcusdt@depth'``) to its path key.  The returned value MUST be
+            one of the strings in ``data_stream_paths``.  Defaults to
+            :func:`_default_data_stream_router` which returns ``'/stream'``.
+        user_stream_path_template: the path template for the dedicated
+            listenKey-based user-data stream (futures only).  Spot does NOT
+            open a per-listenKey stream so the value is unused there.  USDⓈ-M
+            uses ``'/private/ws/{listen_key}'`` after the 2026-04-23
+            decommission; COIN-M keeps the legacy ``'/ws/{listen_key}'``.
+            The placeholder is the literal text ``{listen_key}``.
     """
 
     rest_host: str
@@ -67,3 +95,10 @@ class MarketSpec:
     # but the sentinel value is intentional and surfaces a clear ``TypeError``
     # at first instantiation if a market forgets to override.
     orderbook_impl: Type[OrderBook] = OrderBook  # type: ignore[type-abstract]
+    # Data-stream path layout — see attribute docs.  Defaults model Spot/CM.
+    data_stream_paths: Tuple[str, ...] = ('/stream',)
+    data_stream_router: Callable[[str], str] = field(
+        default=_default_data_stream_router
+    )
+    # Futures user-data fstream path template — see attribute docs.
+    user_stream_path_template: str = '/ws/{listen_key}'

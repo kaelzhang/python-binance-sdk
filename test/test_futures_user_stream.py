@@ -466,7 +466,12 @@ async def test_subscribe_user_calls_userDataStream_start(patch_fstream):
 
 @pytest.mark.asyncio
 async def test_subscribe_user_opens_dedicated_stream_at_correct_uri(patch_fstream):
-    """subscribe(SubType.USER) opens a dedicated Stream to stream_host/ws/<listenKey>."""
+    """subscribe(SubType.USER) opens a dedicated Stream to stream_host/private/ws/<listenKey>.
+
+    Per the 2026-04-23 Important WebSocket Change Notice, the UM user-data
+    fstream URL is ``wss://fstream.binance.com/private/ws/<listenKey>`` —
+    NOT the legacy ``/ws/<listenKey>`` which was decommissioned.
+    """
     listen_key = 'my-futures-listen-key-xyz'
     server = WSAPIServer(port=_FAPI_PORT)
     server.on('userDataStream.start', result={'listenKey': listen_key})
@@ -475,8 +480,8 @@ async def test_subscribe_user_opens_dedicated_stream_at_correct_uri(patch_fstrea
         client = _make_um_client_for_lifecycle(server)
         await client.subscribe(SubType.USER)
 
-        # The fstream was opened at the correct URI.
-        expected_uri = 'wss://fstream.binance.com/ws/' + listen_key
+        # The fstream was opened at the correct UM URI.
+        expected_uri = 'wss://fstream.binance.com/private/ws/' + listen_key
         assert expected_uri in _FakeStream.connected_uris
     finally:
         client._cancel_futures_keepalive()
@@ -676,7 +681,7 @@ async def test_listen_key_expired_triggers_stream_restart(monkeypatch, patch_fst
 
         # The client should have re-obtained a new listen key.
         assert client._futures_listen_key == new_key
-        assert 'wss://fstream.binance.com/ws/' + new_key in _FakeStream.connected_uris
+        assert 'wss://fstream.binance.com/private/ws/' + new_key in _FakeStream.connected_uris
 
     finally:
         client._cancel_futures_keepalive()

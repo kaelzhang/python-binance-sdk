@@ -284,7 +284,7 @@ um.handler(MyOrderUpdate())
 await um.subscribe(SubType.USER)
 ```
 
-The futures user-data stream uses the **listenKey flow**: the SDK calls `userDataStream.start` over the WS-API connection to obtain a listenKey, then opens a dedicated `fstream` connection (`wss://fstream.binance.com/ws/<listenKey>`) for the events, sends periodic `userDataStream.ping` keepalives (every 50 min), and automatically re-obtains the key and reconnects on `listenKeyExpired`. All of this is managed internally.
+The futures user-data stream uses the **listenKey flow**: the SDK calls `userDataStream.start` over the WS-API connection to obtain a listenKey, then opens a dedicated `fstream` connection for the events (USDⓈ-M: `wss://fstream.binance.com/private/ws/<listenKey>`; COIN-M: `wss://dstream.binance.com/ws/<listenKey>`), sends periodic `userDataStream.ping` keepalives (every 50 min), and automatically re-obtains the key and reconnects on `listenKeyExpired`. All of this is managed internally. USDⓈ-M's per-category URL split (`/public/stream` for depth/bookTicker, `/market/stream` for everything else, `/private/ws/<listenKey>` for user-data) was mandated by Binance's 2026-04-23 decommission of the legacy `/ws` and `/stream` paths and is fully transparent to client code.
 
 Handler bases to subclass (from `binance`):
 

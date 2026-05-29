@@ -150,7 +150,7 @@ async def test_resubscribe_data_failure_logs_and_dispatches(caplog):
             recycled.append(True)
 
     client._subscribe_only = failing_subscribe_only
-    client._data_stream = FakeDataStream()
+    client._data_streams = {'/stream': FakeDataStream()}
     client._subscribed = {(SubType.TRADE, 'BTCUSDT')}
 
     with caplog.at_level(logging.ERROR, logger='binance'):
@@ -343,7 +343,7 @@ async def test_resubscribe_failure_without_handler_ctx(caplog):
         raise boom
 
     client._subscribe_only = failing_subscribe_only
-    client._data_stream = None
+    client._data_streams = {}
     client._handler_ctx = None
     client._subscribed = {(SubType.TRADE, 'BTCUSDT')}
 
@@ -418,7 +418,7 @@ async def test_buggy_stream_error_handler_does_not_break_recovery():
             recycled.append(True)
 
     client._subscribe_only = failing_subscribe_only
-    client._data_stream = FakeDataStream()
+    client._data_streams = {'/stream': FakeDataStream()}
     client._subscribed = {(SubType.TRADE, 'BTCUSDT')}
 
     # The buggy handler raises inside dispatch, but recycle must still be

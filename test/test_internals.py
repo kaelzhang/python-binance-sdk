@@ -84,7 +84,8 @@ async def test_receive_server_shutdown_recycles_data_stream():
         async def recycle(self):
             recycled.append(True)
 
-    client._data_stream = FakeStream()
+    # Per-path stream map; Spot uses the single legacy '/stream' path.
+    client._data_streams = {'/stream': FakeStream()}
     await client._receive({'data': {'e': 'serverShutdown'}})
     assert recycled == [True]
 

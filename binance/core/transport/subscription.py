@@ -65,10 +65,28 @@ def _extract_event_type(msg):
     return msg.get('e')
 
 
+def _data_connection_id(path: str) -> str:
+    """Return the rate-limit connection id for a data stream path.
+
+    Each data stream (one per path key returned by the market's
+    ``data_stream_router``) gets its own connection id so ws-message and
+    ws-stream accounting are independent.  The legacy single-stream case
+    (``path == '/stream'``) collapses to ``'data'`` to preserve the existing
+    bucket label for Spot/CM clients.
+    """
+    if path == '/stream':
+        return 'data'
+    return f'data:{path}'
+
+
 class SubscriptionManager:
     """Internal mixin merged into ``Client`` that manages data and user WebSocket stream lifecycles."""
 
-    _data_stream: Optional[Stream]
+    # Per-path data stream connections.  Keyed by the path string returned by
+    # the market's ``data_stream_router`` (e.g. ``'/stream'`` for Spot/CM,
+    # ``'/public/stream'`` or ``'/market/stream'`` for UM).  Lazily opened on
+    # the first subscription whose stream name routes to that path.
+    _data_streams: Dict[str, Stream]
     # The shared WS-API request/response connection (wss://ws-api...). It
     # carries BOTH the user-data stream subscription and every `_ws_api_request`
     # (former REST) call -- one connection, lazily opened.
@@ -85,6 +103,12 @@ class SubscriptionManager:
     _user_unsubscribe_inflight: bool
     _user_recovering: bool
     _ws_api_authenticated: bool
+    # The market's data-stream router (set from ``MarketSpec``).  Maps a wire
+    # stream name to the path that should carry it.
+    _data_stream_router: Callable[[str], str]
+    # The default (first) data-stream path.  Used for plain ``list_subscriptions``
+    # which does not target a specific stream name.
+    _default_data_stream_path: str
     # Credentials / signing live on ClientBase; declared here for the WS-API
     # request path that runs on the merged Client via these mixin attributes.
     _credentials: Credentials
@@ -136,10 +160,13 @@ class SubscriptionManager:
         self._user_recovering = False
         self._ws_api_authenticated = False
 
-        if self._data_stream:
-            await self._data_stream.close(code)
-            self._data_stream = None
-            self._rate_limiter.unregister_connection('data')
+        # Close every per-path data stream and release its rate-limit bucket.
+        # The connection_id mirrors the path key under ``data:<path>`` to keep
+        # ws-message accounting independent from the WS-API ``user`` bucket.
+        for path, stream in list(self._data_streams.items()):
+            await stream.close(code)
+            self._rate_limiter.unregister_connection(_data_connection_id(path))
+        self._data_streams = {}
 
         if self._user_stream:
             await self._user_stream.close(code)
@@ -156,9 +183,9 @@ class SubscriptionManager:
 
         if event_type == EVENT_SERVER_SHUTDOWN:
             self._logger.warning(
-                'serverShutdown received; recycling data stream proactively')
-            if self._data_stream is not None:
-                await self._data_stream.recycle()
+                'serverShutdown received; recycling data streams proactively')
+            for stream in list(self._data_streams.values()):
+                await stream.recycle()
             return
 
         if event_type == EVENT_STREAM_TERMINATED:
@@ -182,20 +209,47 @@ class SubscriptionManager:
 
         return self._handler_ctx
 
-    def _get_data_stream(self) -> Stream:
-        if self._data_stream is None:
-            self._data_stream = Stream(
-                self._stream_host + '/stream',
+    def _get_data_stream(self, path: Optional[str] = None) -> Stream:
+        """Return the data stream for ``path``, opening it lazily.
+
+        Args:
+            path: A path key returned by the market's ``data_stream_router``
+                (e.g. ``'/stream'``, ``'/public/stream'``, ``'/market/stream'``).
+                ``None`` (default) falls back to the market's first / default
+                data-stream path.
+
+        Returns:
+            The cached :class:`Stream` for ``path``.  Subsequent calls with
+            the same path return the same instance.
+        """
+        if path is None:
+            path = self._default_data_stream_path
+        stream = self._data_streams.get(path)
+        if stream is None:
+            stream = Stream(
+                self._stream_host + path,
                 on_message=self._receive,
-                on_connected=self._resubscribe,
+                on_connected=self._build_data_resubscribe(path),
                 retry_policy=self._stream_retry_policy,
                 timeout=self._stream_timeout,
                 logger=self._logger,
                 rate_limiter=self._rate_limiter,
-                connection_id='data'
+                connection_id=_data_connection_id(path),
             ).connect()
+            self._data_streams[path] = stream
+        return stream
 
-        return self._data_stream
+    def _build_data_resubscribe(self, path: str) -> Callable[[], Awaitable[None]]:
+        """Return an ``on_connected`` callback that resubscribes streams routed to ``path``.
+
+        Each data stream gets its own callback so reconnects only replay the
+        subscriptions that belong on that path -- not every subscription the
+        client tracks.
+        """
+        async def _resubscribe_for_path() -> None:
+            await self._resubscribe_path(path)
+
+        return _resubscribe_for_path
 
     def _get_ws_api_stream(self) -> Stream:
         """Return the shared WS-API connection, opening it lazily.
@@ -475,30 +529,61 @@ class SubscriptionManager:
         # Market subscriptions always produce string stream names; cast is safe here
         params: Tuple[str, ...] = cast(Tuple[str, ...], raw_params)
 
+        # Partition the requested stream names by the path they belong on,
+        # then issue ONE SUBSCRIBE / UNSUBSCRIBE per path on the corresponding
+        # connection.  Each path's connection holds its own ws-streams pool.
+        per_path: Dict[str, List[str]] = {}
+        for name in params:
+            per_path.setdefault(self._data_stream_router(name), []).append(name)
+
+        # Reserve stream slots per-path against each path's own ws-streams pool.
+        # Compute the projected per-path total from the currently committed
+        # names so reserve_streams is idempotent across resubscribes.
         if subscribe:
-            projected = self._stream_names | set(params)
-            self._rate_limiter.reserve_streams('data', len(projected))
+            for path, names in per_path.items():
+                current = {
+                    n for n in self._stream_names
+                    if self._data_stream_router(n) == path
+                }
+                projected = current | set(names)
+                self._rate_limiter.reserve_streams(
+                    _data_connection_id(path), len(projected)
+                )
 
-        stream = self._get_data_stream()
-
+        sent_ok: List[Tuple[str, List[str]]] = []
         try:
-            await stream.send({
-                'method': 'SUBSCRIBE' if subscribe else 'UNSUBSCRIBE',
-                'params': params
-            })
+            for path, names in per_path.items():
+                stream = self._get_data_stream(path)
+                await stream.send({
+                    'method': 'SUBSCRIBE' if subscribe else 'UNSUBSCRIBE',
+                    'params': tuple(names)
+                })
+                sent_ok.append((path, names))
         except Exception:
             if subscribe:
-                # roll back the optimistic stream reservation; len(self._stream_names)
-                # is the committed count and is always <= cap, so this never raises
-                self._rate_limiter.reserve_streams('data', len(self._stream_names))
+                # Roll back the optimistic stream reservation on EVERY path
+                # whose reserve was raised by this call; ``len(committed)`` is
+                # always <= cap so this never raises.
+                for path, _names in per_path.items():
+                    committed = sum(
+                        1 for n in self._stream_names
+                        if self._data_stream_router(n) == path
+                    )
+                    self._rate_limiter.reserve_streams(
+                        _data_connection_id(path), committed
+                    )
             raise
 
         if subscribe:
-            self._stream_names.update(params)
+            for _path, names in sent_ok:
+                self._stream_names.update(names)
         else:
-            removed = self._stream_names & set(params)
-            self._stream_names.difference_update(params)
-            self._rate_limiter.release_streams('data', len(removed))
+            for path, names in sent_ok:
+                removed = self._stream_names & set(names)
+                self._stream_names.difference_update(names)
+                self._rate_limiter.release_streams(
+                    _data_connection_id(path), len(removed)
+                )
 
     async def _subscribe_user_only(
         self,
@@ -565,6 +650,14 @@ class SubscriptionManager:
                 self._subscribed.discard(param)
 
     async def _resubscribe(self) -> None:
+        """Replay every market subscription on the right data stream(s).
+
+        Used by callers that need to resubscribe the whole client
+        (e.g. tests).  Per-stream reconnect uses the
+        :meth:`_resubscribe_path` callback wired by :meth:`_get_data_stream`,
+        so production resubscribes only replay the subscriptions whose
+        router result matches the reconnecting stream's path.
+        """
         market_subscriptions, _ = self._split_subscriptions(self._subscribed)
         if len(market_subscriptions) == 0:
             return
@@ -582,9 +675,54 @@ class SubscriptionManager:
             )
             if self._handler_ctx is not None:
                 await self._handler_ctx.dispatch_stream_error(error)
-            if self._data_stream is not None:
+            # Recycle every data stream so aioretry restarts each of them.
+            for stream in list(self._data_streams.values()):
+                asyncio.get_running_loop().create_task(stream.recycle())
+
+    async def _resubscribe_path(self, path: str) -> None:
+        """Resubscribe only the streams whose router result equals ``path``.
+
+        Wired as the ``on_connected`` callback for each per-path data stream
+        so reconnecting one path does not re-send subscriptions belonging to
+        the other path.
+        """
+        market_subscriptions, _ = self._split_subscriptions(self._subscribed)
+        if len(market_subscriptions) == 0:
+            return
+
+        # Filter the recorded subscriptions to those whose generated stream
+        # name would route to ``path``.  Recompute the names here (rather than
+        # caching) so the routing remains a pure function of the live router.
+        raw_params = await self._get_handler_ctx().subscribe_params(
+            True, market_subscriptions
+        )
+        names: Tuple[str, ...] = cast(Tuple[str, ...], raw_params)
+        path_names = [n for n in names if self._data_stream_router(n) == path]
+        if not path_names:
+            return
+
+        try:
+            stream = self._get_data_stream(path)
+            await stream.send({
+                'method': 'SUBSCRIBE',
+                'params': tuple(path_names),
+            })
+        except Exception as e:
+            self._logger.error(format_msg(
+                'data stream resubscribe failed after reconnect: %s',
+                repr_exception(e)))
+            error = StreamError(
+                stream=StreamName.DATA,
+                phase=StreamErrorPhase.RESUBSCRIBE,
+                exception=e,
+                recovering=True
+            )
+            if self._handler_ctx is not None:
+                await self._handler_ctx.dispatch_stream_error(error)
+            stream_to_recycle = self._data_streams.get(path)
+            if stream_to_recycle is not None:
                 asyncio.get_running_loop().create_task(
-                    self._data_stream.recycle()
+                    stream_to_recycle.recycle()
                 )
 
     async def _resubscribe_user(self) -> None:
@@ -694,7 +832,7 @@ class SubscriptionManager:
             List[str]: stream names currently active on the data WebSocket
             connection, as reported by the Binance server.
         """
-        return await self._get_data_stream().send({
+        return await self._get_data_stream(self._default_data_stream_path).send({
             'method': 'LIST_SUBSCRIPTIONS'
         })
 

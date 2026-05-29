@@ -487,7 +487,8 @@ async def test_subscribe_tracks_stream_count_in_core(monkeypatch):
 
     monkeypatch.setattr(
         client._get_handler_ctx(), 'subscribe_params', fake_params_two)
-    monkeypatch.setattr(client, '_get_data_stream', lambda: fake_stream)
+    monkeypatch.setattr(
+        client, '_get_data_stream', lambda path=None: fake_stream)
 
     await client._subscribe_only(True, [('trade', 'A'), ('trade', 'B')])
 
@@ -520,7 +521,8 @@ async def test_subscribe_rolls_back_reservation_on_send_failure(monkeypatch):
 
     monkeypatch.setattr(
         client._get_handler_ctx(), 'subscribe_params', fake_params)
-    monkeypatch.setattr(client, '_get_data_stream', lambda: fake_stream)
+    monkeypatch.setattr(
+        client, '_get_data_stream', lambda path=None: fake_stream)
 
     with pytest.raises(RuntimeError):
         await client._subscribe_only(True, [('trade', 'X')])
@@ -544,7 +546,7 @@ async def test_subscribe_rejects_more_than_1024_streams(monkeypatch):
 
     monkeypatch.setattr(
         client._get_handler_ctx(), 'subscribe_params', fake_params)
-    monkeypatch.setattr(client, '_get_data_stream', lambda: type(
+    monkeypatch.setattr(client, '_get_data_stream', lambda path=None: type(
         'S', (), {'send': staticmethod(fake_send)})())
 
     with pytest.raises(TooManyStreamsException):

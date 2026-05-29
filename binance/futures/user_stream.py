@@ -8,9 +8,11 @@ Verified mechanism (USDⓈ-M Futures WS-API docs, 2026-05-25):
   - ``userDataStream.start``  (security: USER_STREAM = apiKey only, weight 1)
     → returns ``{"listenKey": "..."}`` over the ws-fapi connection.
   - User-data events arrive on a SEPARATE dedicated stream connection:
-      ``MARKET.stream_host + '/ws/' + listenKey``
-      (e.g. ``wss://fstream.binance.com/ws/<listenKey>``),
-    NOT on the ws-fapi connection.
+      ``MARKET.stream_host + MARKET.user_stream_path_template`` with the
+      ``{listen_key}`` placeholder substituted.
+    USDⓈ-M (after the 2026-04-23 decommission of the legacy ``/ws/<listenKey>``
+    URL): ``wss://fstream.binance.com/private/ws/<listenKey>``.
+    COIN-M (unaffected): ``wss://dstream.binance.com/ws/<listenKey>``.
   - ``userDataStream.ping``   (security: USER_STREAM, weight 1) — keep the
     listen key alive; send every ~50 minutes (key expires after 60 minutes).
   - ``userDataStream.stop``   (security: USER_STREAM, weight 1) — invalidate
@@ -20,17 +22,23 @@ On ``listenKeyExpired`` (dispatched by ``FuturesUserProcessor`` to
 ``FuturesListenKeyExpiredHandlerBase``), the mixin recreates the listen key and
 reconnects the dedicated user stream.
 
-The mixin is intentionally market-agnostic: it reads ``self._stream_host`` (and
-all other BaseClient attributes) at runtime, so both UM and CM clients get the
-correct ``stream_host`` via the MRO without any hard-coded host.
+The mixin is intentionally market-agnostic: it reads ``self._stream_host`` and
+the market's :class:`~binance.core.market.MarketSpec` path template at runtime,
+so both UM and CM clients get the correct URL form without any hard-coded host
+or path.
 
-Ref:
-https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams
+Refs:
+- Important WebSocket Change Notice (UM, 2026-04-23):
+  https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Important-WebSocket-Change-Notice
+- USDⓈ-M user-data streams:
+  https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams
+- COIN-M user-data streams:
+  https://developers.binance.com/docs/derivatives/coin-margined-futures/user-data-streams
 """
 
 import asyncio
 from logging import Logger
-from typing import Any, Awaitable, Callable, Iterable, Optional
+from typing import Any, Awaitable, Callable, ClassVar, Iterable, Optional
 
 from aioretry import RetryPolicy
 
@@ -41,6 +49,7 @@ from binance.core.common.constants import (
 from binance.core.common.utils import format_msg, repr_exception
 from binance.core.common.types import StreamError, StreamName, StreamErrorPhase, Timeout
 from binance.core.handlers.context import HandlerContext
+from binance.core.market import MarketSpec
 from binance.core.rate_limit import RateLimiter
 from binance.core.transport.stream import Stream
 
@@ -105,6 +114,9 @@ class FuturesUserStreamMixin:
     _logger: Logger
     _get_handler_ctx: Callable[[], HandlerContext]
     _ws_api_request: Callable[..., Awaitable[Any]]
+    # ``MARKET`` is bound on the concrete client subclass (UM / CM) and read
+    # here at runtime to pick up the per-market user-stream URL template.
+    MARKET: ClassVar[MarketSpec]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -244,7 +256,11 @@ class FuturesUserStreamMixin:
         listen_key: str = result['listenKey']
         self._futures_listen_key = listen_key
 
-        uri = self._stream_host + '/ws/' + listen_key
+        # The per-market path template carries the listenKey verbatim.
+        # UM (post 2026-04-23): '/private/ws/{listen_key}'.
+        # CM (legacy, unaffected): '/ws/{listen_key}'.
+        template = self.MARKET.user_stream_path_template
+        uri = self._stream_host + template.format(listen_key=listen_key)
 
         self._futures_user_stream = Stream(
             uri,
