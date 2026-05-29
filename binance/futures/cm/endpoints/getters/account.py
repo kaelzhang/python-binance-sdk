@@ -79,6 +79,29 @@ class CMAccountGetters:
         """
         ...  # pragma: no cover
 
+    def get_adl_quantile(self, **kwargs) -> Awaitable:
+        """Gets position ADL (Auto-Deleveraging) quantile estimation for
+        COIN-M contracts.
+
+        Weight: 5.
+        Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Position-ADL-Quantile-Estimation
+
+        Each entry's ``adlQuantile`` object maps a position side
+        (``LONG`` / ``SHORT`` / ``BOTH`` / ``HEDGE``) to an integer in
+        ``0..4`` — the ADL queue position from low to high likelihood.
+        Server cache refreshes every 30 seconds. Used for risk
+        monitoring in live trading.
+
+        Args:
+            symbol (:obj:`str`, optional): The COIN-M futures symbol. If
+                omitted, returns ADL quantiles for all symbols.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            list: ``[{'symbol': ..., 'adlQuantile': {'LONG': int, ...}}, ...]``
+        """
+        ...  # pragma: no cover
+
     def get_user_trades(self, **kwargs) -> Awaitable:
         """Gets trades for a specific COIN-M account and symbol/pair.
 

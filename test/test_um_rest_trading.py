@@ -176,6 +176,33 @@ async def test_cancel_batch_orders_delete_weight_1():
 
 
 # ---------------------------------------------------------------------------
+# get_adl_quantile  GET /fapi/v1/adlQuantile  weight 5  (USER_DATA)
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Position-ADL-Quantile-Estimation
+# Used for risk monitoring — exposes ADL queue position (0-4) per side.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_adl_quantile_weight_5():
+    client = _signed_client()
+    payload = [{'symbol': 'BTCUSDT', 'adlQuantile': {'LONG': 1, 'SHORT': 2}}]
+    with aioresponses() as m:
+        m.get(_re('/fapi/v1/adlQuantile'), payload=payload, status=200)
+        result = await client.get_adl_quantile(symbol='BTCUSDT')
+    assert result == payload
+    assert _weight_used(client) == 5
+
+
+def test_get_adl_quantile_registry_shape():
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['get_adl_quantile']
+    # GET is the default; explicit `method` may be absent.
+    assert str(entry.get('method', 'get')).lower() == 'get'
+    assert entry['rest_url'].endswith('/fapi/v1/adlQuantile')
+    assert entry['weight'] == 5
+    assert entry['security_type'] == SecurityType.USER_DATA
+
+
+# ---------------------------------------------------------------------------
 # get_position_risk  GET /fapi/v3/positionRisk  weight 5
 # ---------------------------------------------------------------------------
 
@@ -377,6 +404,7 @@ def test_rest_endpoints_registry_contains_trading_entries():
         'create_test_order': ('post', '/fapi/v1/order/test'),
         'cancel_all_orders': ('delete', '/fapi/v1/allOpenOrders'),
         'countdown_cancel_all_orders': ('post', '/fapi/v1/countdownCancelAll'),
+        'get_adl_quantile': ('get', '/fapi/v1/adlQuantile'),
         'get_open_orders': ('get', '/fapi/v1/openOrders'),
         'get_all_orders': ('get', '/fapi/v1/allOrders'),
         'create_batch_orders': ('post', '/fapi/v1/batchOrders'),

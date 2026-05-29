@@ -222,6 +222,32 @@ async def test_cm_cancel_batch_orders_delete_weight_1():
 
 
 # ---------------------------------------------------------------------------
+# get_adl_quantile  GET /dapi/v1/adlQuantile  weight 5  (USER_DATA)
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Position-ADL-Quantile-Estimation
+# Used for risk monitoring — exposes ADL queue position (0-4) per side.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_cm_get_adl_quantile_weight_5():
+    client = _signed_client()
+    payload = [{'symbol': 'BTCUSD_PERP', 'adlQuantile': {'LONG': 1, 'SHORT': 2}}]
+    with aioresponses() as m:
+        m.get(_re('/dapi/v1/adlQuantile'), payload=payload, status=200)
+        result = await client.get_adl_quantile(symbol='BTCUSD_PERP')
+    assert result == payload
+    assert _weight_used(client) == 5
+
+
+def test_cm_get_adl_quantile_registry_shape():
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['get_adl_quantile']
+    assert str(entry.get('method', 'get')).lower() == 'get'
+    assert entry['rest_url'].endswith('/dapi/v1/adlQuantile')
+    assert entry['weight'] == 5
+    assert entry['security_type'] == SecurityType.USER_DATA
+
+
+# ---------------------------------------------------------------------------
 # get_position_risk  GET /dapi/v1/positionRisk  weight 1
 # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Position-Information
 # NOTE: COIN-M uses /dapi/v1/positionRisk (not /fapi/v3/positionRisk).

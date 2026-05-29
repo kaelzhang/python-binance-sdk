@@ -261,6 +261,16 @@ REST_ENDPOINTS = [
         weight=1,
     ),
     dict(
+        # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Position-ADL-Quantile-Estimation
+        # Request Weight: 5. Same semantics as UM — server returns the ADL
+        # queue position (0-4) per symbol/side; refreshed every 30s.
+        name='get_adl_quantile',
+        transport='rest',
+        rest_url=CM_REST_HOST + '/dapi/v1/adlQuantile',
+        security_type=SecurityType.USER_DATA,
+        weight=5,
+    ),
+    dict(
         name='get_user_trades',
         transport='rest',
         rest_url=CM_REST_HOST + '/dapi/v1/userTrades',
