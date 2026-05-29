@@ -60,20 +60,20 @@ dev = [
   "build"
 ]
 
-[tool.setuptools]
-packages = [
-  'binance',
-  'binance.core',
-  'binance.core.common',
-  'binance.core.handlers',
-  'binance.core.processors',
-  'binance.core.rate_limit',
-  'binance.core.transport',
-  'binance.spot',
-  'binance.futures',
-  'binance.futures.um',
-  'binance.futures.cm'
-]
+[tool.setuptools.packages.find]
+# Automatically discover every subpackage under `binance/` that has an
+# `__init__.py`. This replaces the previous hand-maintained explicit list,
+# which silently went stale every time a module was split into a subpackage
+# (e.g. the R8 series adding `binance.spot.endpoints`, `binance.futures.streams`,
+# `binance.futures.{um,cm}.endpoints` and their `getters/` subpackages — none
+# of which made it into the 5.0.0 / 5.0.1 wheels, breaking `import binance`
+# downstream). Auto-discovery removes that footgun entirely.
+include = ["binance*"]
+# `binance/no_track/` is a gitignored scratch directory for local drafts
+# (also excluded from mypy via `[tool.mypy].exclude`). Excluding it here
+# defends against the same path accidentally being added to a published
+# package if a developer commits part of that directory.
+exclude = ["binance.no_track*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "binance.__version__"}
