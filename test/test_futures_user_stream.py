@@ -830,6 +830,47 @@ def test_futures_event_stream_terminated_docstring_marks_event_as_server_pushed(
     assert 'listenKeyExpired' in doc
 
 
+def test_futures_event_stream_terminated_docstring_marks_defensive_only():
+    """FuturesEventStreamTerminatedHandlerBase docstring must explicitly
+    state that this event is DEFENSIVE ONLY on futures: the futures
+    user-data-streams docs do NOT document ``eventStreamTerminated``;
+    only Spot does. The SDK keeps the handler in case Binance pushes
+    one on the ws-fapi connection, but callers must not assume it is
+    a documented futures event.
+
+    Docs (absence on futures):
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams
+    """
+    doc = FuturesEventStreamTerminatedHandlerBase.__doc__ or ''
+    # Defensive-only wording must be explicit.
+    assert 'defensive' in doc.lower()
+    # Mention that futures docs do NOT document this event.
+    lowered = doc.lower()
+    assert (
+        'not documented' in lowered
+        or 'do not document' in lowered
+        or 'does not document' in lowered
+    ), 'docstring must state futures docs do not document this event'
+
+
+def test_futures_user_processor_payload_types_comment_marks_defensive_only():
+    """The line near ``FuturesUserProcessor.PAYLOAD_TYPES`` that registers
+    ``EVENT_STREAM_TERMINATED`` must include a comment marking it as
+    defensive-only coverage (futures docs do not document it).
+    """
+    import inspect
+
+    from binance.futures.user_processor import FuturesUserProcessor
+
+    src = inspect.getsource(FuturesUserProcessor)
+    lowered = src.lower()
+    # Source must explicitly flag this entry as defensive.
+    assert 'defensive' in lowered, (
+        'FuturesUserProcessor source must mark the eventStreamTerminated '
+        'PAYLOAD_TYPES entry as defensive-only'
+    )
+
+
 def test_handler_bases_are_handler_subclasses():
     """All futures user handler bases are subclasses of core Handler."""
     from binance.core.handlers.base import Handler

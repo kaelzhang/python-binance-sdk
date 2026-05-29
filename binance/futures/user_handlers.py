@@ -299,9 +299,18 @@ class FuturesListenKeyExpiredHandlerBase(FuturesSimpleHandler):
 class FuturesEventStreamTerminatedHandlerBase(FuturesSimpleHandler):
     """Base handler for the ``eventStreamTerminated`` event on the ws-fapi connection.
 
-    Server-pushed by Binance on the futures WS-API connection (same wire
-    semantics as the spot ``eventStreamTerminated``).  This event is
-    emitted by Binance itself — the SDK does NOT synthesize it.
+    **Defensive-only on futures.**  The futures user-data-streams docs at
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams
+    do NOT document ``eventStreamTerminated`` — only Spot's user-data-stream
+    docs (https://developers.binance.com/docs/binance-spot-api-docs/user-data-stream)
+    list it.  The SDK still registers this handler + PAYLOAD_TYPES entry so
+    that IF Binance pushes one on the ws-fapi connection (same wire
+    semantics as the spot event), the SDK is prepared to deliver it cleanly
+    rather than drop it on the floor.  Subscribers should treat firings as
+    rare / undocumented operational signals, not contract events.
+
+    The SDK does NOT synthesize this event anywhere — it is always
+    server-pushed by Binance when it does occur.
 
     For the **dedicated futures user-data fstream** (the connection that
     actually carries ``ACCOUNT_UPDATE`` / ``ORDER_TRADE_UPDATE`` / etc.)
@@ -310,11 +319,13 @@ class FuturesEventStreamTerminatedHandlerBase(FuturesSimpleHandler):
     and reconnect the dedicated fstream (see
     ``binance.futures.user_stream.FuturesUserStreamMixin._on_futures_listen_key_expired``).
     Subscribe to ``FuturesListenKeyExpiredHandlerBase`` to observe that
-    recovery path; subscribe to this handler to observe ws-fapi-connection
-    termination.
+    documented recovery path; subscribe to this handler to observe a
+    (defensive) ws-fapi-connection termination.
 
-    Source: https://developers.binance.com/docs/binance-spot-api-docs/user-data-stream
-    Futures listenKey flow: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams
+    Source (Spot — only market where this event is documented):
+        https://developers.binance.com/docs/binance-spot-api-docs/user-data-stream
+    Futures listenKey flow (where ``listenKeyExpired`` IS documented):
+        https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams
 
     The raw payload dict is passed unchanged.
     """

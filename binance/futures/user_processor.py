@@ -54,9 +54,15 @@ class FuturesUserProcessor(Processor):
     - ``ACCOUNT_CONFIG_UPDATE``:             leverage or multi-assets-mode change
     - ``listenKeyExpired``:                  listen-key expiry notification (server-pushed
                                              on the dedicated user-data fstream)
-    - ``eventStreamTerminated``:             server-pushed by Binance on the ws-fapi
-                                             connection when the WS-API user-data
-                                             subscription / session is terminated
+    - ``eventStreamTerminated``:             **defensive-only** on futures — the
+                                             USDⓈ-M / CM user-data-streams docs
+                                             do NOT document this event (only
+                                             Spot does). If Binance does push
+                                             one on the ws-fapi connection the
+                                             SDK delivers it cleanly; routine
+                                             ws-fapi-session termination is
+                                             expected to surface as
+                                             ``listenKeyExpired`` instead.
     - ``TRADE_LITE``:                        low-latency fill (UM only)
     - ``STRATEGY_UPDATE``:                   algo/strategy lifecycle (UM + CM)
     - ``GRID_UPDATE``:                       grid trading update (UM + CM)
@@ -77,6 +83,12 @@ class FuturesUserProcessor(Processor):
         'MARGIN_CALL',
         'ACCOUNT_CONFIG_UPDATE',
         'listenKeyExpired',
+        # ``eventStreamTerminated`` is defensive-only on futures: the futures
+        # user-data-streams docs do NOT document this event (only the Spot
+        # docs do). The SDK keeps the entry so that if Binance ever pushes
+        # one on the ws-fapi connection it is delivered to subscribers
+        # cleanly instead of dropped — see
+        # ``FuturesEventStreamTerminatedHandlerBase`` for the full rationale.
         EVENT_STREAM_TERMINATED,
         'TRADE_LITE',
         'STRATEGY_UPDATE',
