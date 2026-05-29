@@ -15,10 +15,6 @@ from binance.core.rate_limit import RateLimiter
 from binance.core.rate_limit.types import RateLimitType
 from binance.spot.rate_limit import DEFAULT_RULES as SPOT_DEFAULT_RULES
 
-# TODO:
-# global request_params
-# keyword argument request_params
-
 URL = 'https://api.binance.com/api/v3/foo'
 URL2 = URL + '/bar'
 
