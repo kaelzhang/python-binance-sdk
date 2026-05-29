@@ -443,6 +443,57 @@ async def test_user_stream_subscribe_unsubscribe_close_mocked(monkeypatch):
     assert 'userDataStream.unsubscribe' in methods
 
 
+@pytest.mark.asyncio
+async def test_user_stream_subscribe_consumes_weight_2_per_docs(monkeypatch):
+    """Spot ``userDataStream.subscribe.signature`` and
+    ``userDataStream.unsubscribe`` each have **weight 2** per
+    https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/user-data-stream-requests
+
+    Each subscribe+unsubscribe cycle MUST consume 4 REQUEST_WEIGHT units
+    (2 per method), NOT 0 — historically these flowed via ``stream.send``
+    which bypasses the rate-limiter entirely.
+    """
+    from binance.core.rate_limit.types import RateLimitType
+
+    client = SpotClient(Credentials('key', 'secret'))
+
+    class FakeUserStream:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def connect(self):
+            return self
+
+        async def send(self, req):
+            return None
+
+        async def close(self, code=4999):
+            pass
+
+    monkeypatch.setattr('binance.core.transport.subscription.Stream', FakeUserStream)
+
+    def _weight() -> int:
+        snap = client.rate_limit_snapshot()
+        for w in snap.windows:
+            if w.type == RateLimitType.REQUEST_WEIGHT:
+                return w.used
+        return 0
+
+    before = _weight()
+    await client.subscribe(SubType.USER)
+    after_subscribe = _weight()
+    await client.unsubscribe(SubType.USER)
+    after_unsubscribe = _weight()
+    await client.close()
+
+    assert after_subscribe - before == 2, (
+        'userDataStream.subscribe.signature must consume weight=2 per docs'
+    )
+    assert after_unsubscribe - after_subscribe == 2, (
+        'userDataStream.unsubscribe must consume weight=2 per docs'
+    )
+
+
 # --- subscribe/stream.py: _reject_pending (F-72) ---------------------------
 
 def test_reject_pending_sets_exception_and_clears_futures():

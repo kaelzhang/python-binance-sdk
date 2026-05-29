@@ -65,6 +65,13 @@ def _extract_event_type(msg):
     return msg.get('e')
 
 
+# Spot WS-API user-data stream subscribe/unsubscribe weight.  Both
+# ``userDataStream.subscribe.signature`` and ``userDataStream.unsubscribe``
+# are documented as **weight 2** per
+# https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/user-data-stream-requests
+_USER_DATA_STREAM_SUB_WEIGHT = 2
+
+
 def _data_connection_id(path: str) -> str:
     """Return the rate-limit connection id for a data stream path.
 
@@ -637,6 +644,16 @@ class SubscriptionManager:
 
             if param:
                 req['params'] = param
+
+            # Both userDataStream.subscribe.signature and
+            # userDataStream.unsubscribe carry **weight 2** per docs:
+            # https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/user-data-stream-requests
+            # ``stream.send`` only enforces the per-connection message rate;
+            # the shared IP REQUEST_WEIGHT pool needs an explicit charge.
+            await self._rate_limiter.acquire_request(
+                weight=_USER_DATA_STREAM_SUB_WEIGHT,
+                is_order=False,
+            )
 
             await stream.send(req)
 
