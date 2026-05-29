@@ -1054,6 +1054,40 @@ async def test_all_market_liquidation_handler_columns(um_client):
     assert row['type'] == 'forceOrder'
 
 
+def test_force_order_handler_docs_largest_per_1000ms():
+    """Per developers.binance.com (2026-04-10 derivatives changelog effective
+    2026-04-14), the UM/CM Liquidation Order stream emits only the *largest*
+    liquidation in each 1000ms window per symbol — NOT the latest one.  The
+    handler's class docstring MUST surface this semantic so consumers don't
+    expect tick-level coverage.
+
+    Docs:
+    - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Liquidation-Order-Streams
+    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Liquidation-Order-Streams
+    """
+    import inspect
+    from binance.futures.streams import ForceOrderHandlerBase
+    doc = inspect.getdoc(ForceOrderHandlerBase) or ''
+    assert 'largest' in doc
+    assert '1000ms' in doc
+    # Guard against drift: explicitly assert the wrong word is NOT present
+    # in the docs-aggregation sentence.
+    assert 'latest one' not in doc
+
+
+def test_all_market_liquidation_handler_docs_largest_per_1000ms():
+    """The all-market liquidation stream (``!forceOrder@arr``) emits the
+    largest liquidation order per 1000ms per symbol (same aggregation as the
+    per-symbol stream).  Pin the docstring semantic.
+    """
+    import inspect
+    from binance.futures.streams import AllMarketLiquidationHandlerBase
+    doc = inspect.getdoc(AllMarketLiquidationHandlerBase) or ''
+    assert 'largest' in doc
+    assert '1000ms' in doc
+    assert 'latest one' not in doc
+
+
 # ===========================================================================
 # SHARED: AllMarketMiniTickers
 # ===========================================================================

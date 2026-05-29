@@ -70,6 +70,12 @@ class ForceOrderHandlerBase(Handler):
     ``COLUMNS_MAP`` override in ``binance.futures.cm.streams``.  USDⓈ-M uses the common
     column map directly (USDⓈ-M does not publish ``ps``).
 
+    Aggregation semantics: per developers.binance.com (2026-04-10 derivatives
+    changelog, effective 2026-04-14), the stream emits ONLY the **largest**
+    liquidation order within each 1000ms window per symbol (NOT every event,
+    NOT the most recent).  Strategies that need tick-level liquidation
+    coverage cannot rely on this stream as a complete feed.
+
     Subclass and override ``receive(payload)`` to handle events.  The base ``receive``
     converts the raw dict into a ``StockDataFrame`` with human-readable column names.
 
@@ -85,6 +91,10 @@ class ForceOrderHandlerBase(Handler):
         client = CMFuturesClient()
         client.handler(MyHandler())
         await client.subscribe(SubType.FORCE_ORDER, 'btcusd_perp')
+
+    Docs:
+    - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Liquidation-Order-Streams
+    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Liquidation-Order-Streams
     """
 
     COLUMNS_MAP = FORCE_ORDER_COLUMNS_MAP_BASE
@@ -139,11 +149,17 @@ class AllMarketLiquidationHandlerBase(Handler):
     only the outer envelope column map (event type and event time per element).
     Subclasses may override to flatten the nested ``o`` objects.
 
+    Aggregation semantics: per developers.binance.com (2026-04-10 derivatives
+    changelog, effective 2026-04-14), for each symbol the stream emits ONLY the
+    **largest** liquidation order within each 1000ms window (NOT every event,
+    NOT the most recent) — same aggregation as the per-symbol ``forceOrder``
+    stream.
+
     Subclass this and override ``receive(payload)`` to handle events.
 
     Docs:
     - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/All-Market-Liquidation-Order-Streams
-    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams
+    - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/All-Market-Liquidation-Order-Streams
     """
 
     COLUMNS_MAP = STREAM_TYPE_MAP
