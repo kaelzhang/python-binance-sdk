@@ -69,7 +69,9 @@ from binance.core.common.exceptions import InvalidSubTypeParamException
 # ---------------------------------------------------------------------------
 
 FUTURES_DEPTH_LEVELS = (5, 10, 20)
-FUTURES_DEPTH_SPEEDS = (100, 500)
+# Per developers.binance.com (UM + CM partial-book and diff-book depth
+# streams), the allowed update speeds are 100ms, 250ms (default) and 500ms.
+FUTURES_DEPTH_SPEEDS = (100, 250, 500)
 
 
 def _get_futures_depth_level(t, args, default=20):
@@ -93,7 +95,7 @@ def _get_futures_depth_level(t, args, default=20):
 
 
 def _get_futures_depth_speed(t, args):
-    """Return the speed int (100 or 500) or None if not provided."""
+    """Return the speed int (one of 100 / 250 / 500) or None if not provided."""
     if len(args) == 0:
         return None
 

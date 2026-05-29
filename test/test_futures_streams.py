@@ -464,7 +464,50 @@ def test_futures_partial_order_book_subscribe_param_invalid_speed():
     from binance.futures.streams import PartialOrderBookProcessor
     proc = PartialOrderBookProcessor(None)
     with pytest.raises(InvalidSubTypeParamException, match='speed'):
-        proc.subscribe_param(True, SubType.PARTIAL_ORDER_BOOK, 'BTCUSDT', 5, 250)
+        proc.subscribe_param(True, SubType.PARTIAL_ORDER_BOOK, 'BTCUSDT', 5, 1000)
+
+
+def test_futures_partial_order_book_subscribe_param_speed_250ms():
+    """Per developers.binance.com, futures partial-depth update speed accepts
+    ``100ms``, ``250ms`` (default) and ``500ms``.  ``250ms`` was missing from
+    the validator and is now allowed.
+    """
+    from binance.futures.streams import PartialOrderBookProcessor
+    proc = PartialOrderBookProcessor(None)
+    assert proc.subscribe_param(
+        True, SubType.PARTIAL_ORDER_BOOK, 'BTCUSDT', 10, 250
+    ) == 'btcusdt@depth10@250ms'
+
+
+def test_futures_order_book_subscribe_param_with_250ms_speed():
+    """Diff-depth (``<symbol>@depth``) also accepts 250ms per docs."""
+    from binance.futures.streams import OrderBookProcessor
+    proc = OrderBookProcessor(None)
+    assert proc.subscribe_param(
+        True, SubType.ORDER_BOOK, 'BTCUSDT', 250
+    ) == 'btcusdt@depth@250ms'
+
+
+def test_futures_depth_speeds_includes_100_250_500():
+    """Verify the canonical futures depth speed set per docs."""
+    from binance.futures.streams import FUTURES_DEPTH_SPEEDS
+    assert set(FUTURES_DEPTH_SPEEDS) == {100, 250, 500}
+
+
+def test_cm_partial_order_book_subscribe_param_with_250ms_speed():
+    from binance.futures.cm.streams import PartialOrderBookProcessor
+    proc = PartialOrderBookProcessor(None)
+    assert proc.subscribe_param(
+        True, SubType.PARTIAL_ORDER_BOOK, 'BTCUSD_PERP', 5, 250
+    ) == 'btcusd_perp@depth5@250ms'
+
+
+def test_cm_order_book_subscribe_param_with_250ms_speed():
+    from binance.futures.cm.streams import OrderBookProcessor
+    proc = OrderBookProcessor(None)
+    assert proc.subscribe_param(
+        True, SubType.ORDER_BOOK, 'BTCUSD_PERP', 250
+    ) == 'btcusd_perp@depth@250ms'
 
 
 def test_futures_partial_order_book_subscribe_param_speed_not_int():
@@ -556,7 +599,8 @@ def test_futures_order_book_subscribe_param_invalid_speed():
     from binance.futures.streams import OrderBookProcessor
     proc = OrderBookProcessor(None)
     with pytest.raises(InvalidSubTypeParamException, match='speed'):
-        proc.subscribe_param(True, SubType.ORDER_BOOK, 'BTCUSDT', 250)
+        # 1000ms is Spot-only; futures depth supports 100 / 250 / 500.
+        proc.subscribe_param(True, SubType.ORDER_BOOK, 'BTCUSDT', 1000)
 
 
 # Note: the raw futures ``OrderBookHandlerBase`` has been replaced by the
