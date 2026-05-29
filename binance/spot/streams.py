@@ -24,7 +24,6 @@ from binance.spot.processors import (
     TickerProcessor,
     AllMarketMiniTickersProcessor,
     AllMarketWindowTickersProcessor,
-    AllMarketTickersProcessor,
 )
 
 from binance.spot.user_processor import UserProcessor
@@ -46,6 +45,9 @@ PROCESSORS = [
     TickerProcessor,
     AllMarketMiniTickersProcessor,
     AllMarketWindowTickersProcessor,
-    AllMarketTickersProcessor,
+    # NOTE: ``AllMarketTickersProcessor`` was REMOVED -- the standalone Spot
+    # ``!ticker@arr`` stream is not documented on the Spot WebSocket Streams
+    # page.  Futures still ships an ``AllMarketTickersProcessor`` (UM + CM
+    # docs explicitly cover ``!ticker@arr``).
     UserProcessor,
 ]

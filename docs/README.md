@@ -631,8 +631,15 @@ And `interval` should be one of the `TimeFrame` enumerables.
 ### `SubType`s with no param
 
 - `SubType.ALL_MARKET_MINI_TICKERS`
-- `SubType.ALL_MARKET_TICKERS` — full 24hr ticker for every symbol (`!ticker@arr`); handler base: `AllMarketTickersHandlerBase`
 - `SubType.USER`
+
+> **`!ticker@arr` (`SubType.ALL_MARKET_TICKERS`) is not supported on Spot.**
+> The Binance Spot WebSocket Streams docs do NOT document a standalone
+> `!ticker@arr` (only `!miniTicker@arr` and `!ticker_<window-size>@arr`).
+> Use `SubType.ALL_MARKET_WINDOW_TICKERS` for the documented all-market
+> full-ticker variant on Spot. The same SubType is supported on Futures
+> (see the Futures all-market streams section), where Binance documents
+> `!ticker@arr` for both USDⓈ-M and COIN-M.
 
 > **`!bookTicker@arr` is not supported.** Binance has deprecated this stream; use per-symbol `SubType.BOOK_TICKER` instead.
 
@@ -677,7 +684,6 @@ Spot stream handler bases:
 - `MiniTickerHandlerBase`
 - `TickerHandlerBase`
 - `AllMarketMiniTickersHandlerBase`
-- `AllMarketTickersHandlerBase`
 - `AllMarketWindowTickersHandlerBase`
 - `AccountPositionHandlerBase`
 - `BalanceUpdateHandlerBase`

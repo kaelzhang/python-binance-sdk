@@ -1,158 +1,145 @@
-"""Tests for Spot stream gap fills: AllMarketTickersProcessor / AllMarketTickersHandlerBase.
+"""Tests asserting the *removal* of the undocumented Spot
+``!ticker@arr`` (``SubType.ALL_MARKET_TICKERS``) surface.
 
-Gap filled:
-- S-1: !ticker@arr  — all-market 24hr full ticker array (SubType.ALL_MARKET_TICKERS)
+Source of truth: https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams
 
-S-2 (!bookTicker@arr) is deliberately NOT implemented: Binance deprecated and removed
-this stream in 2021.  The deprecation comment lives in binance/spot/streams.py.
+The Spot WebSocket Streams docs document only two all-market ticker
+variants:
 
-S-3 (!serverShutdown) is handled at the transport layer in
-binance/core/transport/subscription.py (EVENT_SERVER_SHUTDOWN → recycle);
-it requires no SubType or stream processor.
+* ``!miniTicker@arr`` -- the all-market mini-ticker array
+  (``SubType.ALL_MARKET_MINI_TICKERS``);
+* ``!ticker_<window-size>@arr`` -- the all-market rolling-window
+  ticker array (``SubType.ALL_MARKET_WINDOW_TICKERS``).
+
+The standalone ``!ticker@arr`` (full 24hr ticker for every symbol with
+no rolling-window suffix) is NOT documented on the Spot streams page.
+Per the project's "only trust developers.binance.com" rule the SDK
+must not ship a Spot binding for an undocumented stream, so the spot
+``AllMarketTickersHandlerBase`` / ``AllMarketTickersProcessor`` were
+removed.
+
+Futures, however, DOES document ``!ticker@arr`` (for both USDⓈ-M and
+COIN-M); the futures handler/processor and the
+``SubType.ALL_MARKET_TICKERS`` enum value remain.
 """
 
 import pytest
 
-from binance import SpotClient, Credentials, SubType, AllMarketTickersHandlerBase
-from binance.core.common.utils import create_future
-from binance.core.common.exceptions import InvalidSubTypeParamException
-from binance.spot.processors import AllMarketTickersProcessor
+from binance import SubType
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# The SubType enum value remains -- it is shared with Futures, which DOES
+# document !ticker@arr.  Only the Spot binding was removed.
 # ---------------------------------------------------------------------------
 
-@pytest.fixture
-def client():
-    return SpotClient(Credentials('api_key')).start()
 
+def test_subtype_all_market_tickers_value_kept_for_futures():
+    """``SubType.ALL_MARKET_TICKERS`` stays because Futures (UM + CM) bind to it.
 
-# ---------------------------------------------------------------------------
-# subscribe_param
-# ---------------------------------------------------------------------------
-
-def test_all_market_tickers_processor_subscribe_param():
-    processor = AllMarketTickersProcessor(None)
-    result = processor.subscribe_param(None, SubType.ALL_MARKET_TICKERS)
-    assert result == '!ticker@arr'
-
-
-def test_all_market_tickers_processor_subscribe_param_rejects_extra_args():
-    processor = AllMarketTickersProcessor(None)
-    with pytest.raises(InvalidSubTypeParamException, match='expects no parameters'):
-        processor.subscribe_param(None, SubType.ALL_MARKET_TICKERS, 'BTCUSDT')
-
-
-# ---------------------------------------------------------------------------
-# is_message_type routing
-# ---------------------------------------------------------------------------
-
-def test_all_market_tickers_is_message_type_matches():
-    processor = AllMarketTickersProcessor(None)
-    payload = [{'e': '24hrTicker', 's': 'BTCUSDT'}]
-    is_match, got_payload = processor.is_message_type({
-        'stream': '!ticker@arr',
-        'data': payload
-    })
-    assert is_match
-    assert got_payload == payload
-
-
-def test_all_market_tickers_is_message_type_no_match_miniTicker():
-    processor = AllMarketTickersProcessor(None)
-    is_match, _ = processor.is_message_type({
-        'stream': '!miniTicker@arr',
-        'data': []
-    })
-    assert not is_match
-
-
-def test_all_market_tickers_is_message_type_no_match_window_ticker():
-    processor = AllMarketTickersProcessor(None)
-    is_match, _ = processor.is_message_type({
-        'stream': '!ticker_1h@arr',
-        'data': []
-    })
-    assert not is_match
-
-
-def test_all_market_tickers_is_message_type_no_stream():
-    processor = AllMarketTickersProcessor(None)
-    is_match, _ = processor.is_message_type({'data': []})
-    assert not is_match
-
-
-# ---------------------------------------------------------------------------
-# Handler: column mapping via client._receive
-# ---------------------------------------------------------------------------
-
-FULL_TICKER = {
-    'e': '24hrTicker',
-    'E': 123456789,
-    's': 'BNBBTC',
-    'p': '0.0015',
-    'P': '25.00',
-    'w': '0.0060',
-    'x': '0.0045',
-    'c': '0.0060',
-    'Q': '1',
-    'b': '0.0059',
-    'B': '100',
-    'a': '0.0061',
-    'A': '50',
-    'o': '0.0045',
-    'h': '0.0080',
-    'l': '0.0039',
-    'v': '500000',
-    'q': '3000',
-    'O': 0,
-    'C': 86400000,
-    'F': 0,
-    'L': 18150,
-    'n': 18151
-}
-
-
-@pytest.mark.asyncio
-async def test_all_market_tickers_handler_column_mapping(client):
-    future = create_future()
-
-    class MyHandler(AllMarketTickersHandlerBase):
-        def receive(self, p):
-            p = super().receive(p)
-            if not future.done():
-                future.set_result(p)
-
-    client.handler(MyHandler())
-
-    await client._receive({
-        'stream': '!ticker@arr',
-        'data': [FULL_TICKER]
-    })
-
-    df = await future
-    row = df.iloc[0]
-
-    assert row['type'] == '24hrTicker'
-    assert row['event_time'] == 123456789
-    assert row['symbol'] == 'BNBBTC'
-    assert row['price_change'] == '0.0015'
-    assert row['percent'] == '25.00'
-    assert row['weighted_average_price'] == '0.0060'
-    assert row['last_price'] == '0.0060'
-    assert row['best_bid_price'] == '0.0059'
-    assert row['best_ask_price'] == '0.0061'
-    assert row['volume'] == '500000'
-    assert row['quote_volume'] == '3000'
-    assert row['stat_open_time'] == 0
-    assert row['stat_close_time'] == 86400000
-    assert row['total_trades'] == 18151
-
-
-# ---------------------------------------------------------------------------
-# SubType value
-# ---------------------------------------------------------------------------
-
-def test_subtype_all_market_tickers_value():
+    Futures docs:
+    - https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/All-Market-Tickers-Streams
+    - https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/All-Market-Tickers-Streams
+    """
     assert str(SubType.ALL_MARKET_TICKERS) == 'allMarketTickers'
+
+
+def test_subtype_documented_spot_variants_remain():
+    """``ALL_MARKET_MINI_TICKERS`` and ``ALL_MARKET_WINDOW_TICKERS`` are
+    explicitly documented for Spot and MUST remain."""
+    assert str(SubType.ALL_MARKET_MINI_TICKERS) == 'allMarketMiniTickers'
+    assert str(SubType.ALL_MARKET_WINDOW_TICKERS) == 'allMarketWindowTickers'
+
+
+# ---------------------------------------------------------------------------
+# The Spot binding surfaces MUST be gone.  Each import is expected to raise
+# ImportError to assert callers cannot accidentally reach the
+# undocumented stream.
+# ---------------------------------------------------------------------------
+
+
+def test_spot_handlers_all_market_tickers_handler_base_removed():
+    """``binance.spot.handlers.AllMarketTickersHandlerBase`` MUST be gone.
+
+    The standalone ``!ticker@arr`` stream is not documented on the Spot
+    WebSocket Streams page.
+    """
+    with pytest.raises(ImportError):
+        from binance.spot.handlers import (  # noqa: F401
+            AllMarketTickersHandlerBase,
+        )
+
+
+def test_spot_processors_all_market_tickers_processor_removed():
+    """``binance.spot.processors.AllMarketTickersProcessor`` MUST be gone."""
+    with pytest.raises(ImportError):
+        from binance.spot.processors import (  # noqa: F401
+            AllMarketTickersProcessor,
+        )
+
+
+def test_top_level_all_market_tickers_handler_base_removed():
+    """The top-level re-export ``binance.AllMarketTickersHandlerBase``
+    (the Spot one) MUST be gone."""
+    with pytest.raises(ImportError):
+        from binance import AllMarketTickersHandlerBase  # noqa: F401
+
+
+# ---------------------------------------------------------------------------
+# The documented Spot all-market variants still wire up.
+# ---------------------------------------------------------------------------
+
+
+def test_documented_spot_all_market_handlers_still_present():
+    """``AllMarketMiniTickersHandlerBase`` and
+    ``AllMarketWindowTickersHandlerBase`` are documented and stay."""
+    from binance.spot.handlers import (
+        AllMarketMiniTickersHandlerBase,
+        AllMarketWindowTickersHandlerBase,
+    )
+    # Sanity: both are class objects.
+    assert isinstance(AllMarketMiniTickersHandlerBase, type)
+    assert isinstance(AllMarketWindowTickersHandlerBase, type)
+
+
+def test_documented_spot_all_market_processors_still_present():
+    """The processors for the documented variants still register."""
+    from binance.spot.processors import (
+        AllMarketMiniTickersProcessor,
+        AllMarketWindowTickersProcessor,
+    )
+    assert isinstance(AllMarketMiniTickersProcessor, type)
+    assert isinstance(AllMarketWindowTickersProcessor, type)
+
+
+def test_spot_streams_registry_does_not_register_all_market_tickers():
+    """The PROCESSORS list MUST no longer include AllMarketTickersProcessor."""
+    from binance.spot.streams import PROCESSORS
+
+    for proc_cls in PROCESSORS:
+        # Class name guard: ensure no lingering Spot AllMarketTickersProcessor.
+        assert proc_cls.__name__ != 'AllMarketTickersProcessor'
+
+    # No PROCESSOR.SUB_TYPE may equal ALL_MARKET_TICKERS on the Spot side --
+    # that SubType is reserved for futures-side processors.
+    for proc_cls in PROCESSORS:
+        sub_type = getattr(proc_cls, 'SUB_TYPE', None)
+        assert sub_type != SubType.ALL_MARKET_TICKERS, (
+            f'Spot PROCESSORS still wires {proc_cls.__name__} to '
+            f'SubType.ALL_MARKET_TICKERS -- the !ticker@arr stream is not '
+            f'documented on the Spot WebSocket Streams page.'
+        )
+
+
+# ---------------------------------------------------------------------------
+# Futures !ticker@arr handlers remain (documented).
+# ---------------------------------------------------------------------------
+
+
+def test_futures_all_market_tickers_handler_base_still_present():
+    """Futures (UM + CM) AllMarketTickersHandlerBase IS documented and MUST stay.
+
+    Imported under the ``Futures...`` prefix at the package top level.
+    """
+    from binance import FuturesAllMarketTickersHandlerBase
+    assert isinstance(FuturesAllMarketTickersHandlerBase, type)

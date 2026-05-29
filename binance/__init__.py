@@ -69,7 +69,13 @@ from binance.spot.handlers import (
     TickerHandlerBase,
     AllMarketMiniTickersHandlerBase,
     AllMarketWindowTickersHandlerBase,
-    AllMarketTickersHandlerBase,
+    # NOTE: Spot ``AllMarketTickersHandlerBase`` was REMOVED -- the standalone
+    # Spot ``!ticker@arr`` stream is not documented on
+    # https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams.
+    # For all-market full 24hr tickers on Spot, use
+    # ``AllMarketWindowTickersHandlerBase`` (rolling window) instead.
+    # Futures `!ticker@arr` IS documented and is still re-exported below as
+    # ``FuturesAllMarketTickersHandlerBase``.
 )
 
 from binance.core.handlers.orderbook import OrderBookHandlerBase

@@ -65,6 +65,10 @@ class SubType(StringEnum):
         ALL_MARKET_WINDOW_TICKERS: Window-ticker events for every symbol
             (optional `window` argument as above).
         ALL_MARKET_TICKERS: Full 24hr ticker for every symbol (``!ticker@arr``).
+            **Futures only** -- documented for USDⓈ-M and COIN-M.
+            The Spot WebSocket Streams docs do NOT document a standalone
+            ``!ticker@arr``; on Spot, use ``ALL_MARKET_WINDOW_TICKERS`` for
+            the documented all-market full-ticker variant.
         ALL_MARKET_BOOK_TICKER: Best bid/ask for every symbol (``!bookTicker@arr``
             on Spot, ``!bookTicker`` on futures).
 
@@ -111,11 +115,18 @@ class SubType(StringEnum):
     ALL_MARKET_MINI_TICKERS = 'allMarketMiniTickers'
     ALL_MARKET_WINDOW_TICKERS = 'allMarketWindowTickers'
 
-    # All-market arrays shared across Spot / UM / CM (wire names are internal SDK keys)
+    # All-market arrays (wire names are internal SDK keys)
     ALL_MARKET_TICKERS = 'allMarketTickers'
     """All-market 24hr full ticker array (``!ticker@arr``).
     Delivers a full ``24hrTicker`` payload for every symbol on the exchange.
-    Spot: ``!ticker@arr`` · UM: ``!ticker@arr`` · CM: ``!ticker@arr``.
+
+    **Futures only** -- documented for both USDⓈ-M and COIN-M
+    (``developers.binance.com/docs/derivatives/{usds,coin}-margined-futures/websocket-market-streams/All-Market-Tickers-Streams``).
+    The Spot WebSocket Streams docs do NOT document a standalone
+    ``!ticker@arr`` (only ``!miniTicker@arr`` and
+    ``!ticker_<window-size>@arr``); the SDK therefore ships no Spot binding
+    for this SubType.  Subscribing on a Spot client will surface as an
+    unsupported subtype.
     """
     ALL_MARKET_BOOK_TICKER = 'allMarketBookTicker'
     """All-market book ticker stream.
