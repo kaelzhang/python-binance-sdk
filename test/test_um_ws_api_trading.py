@@ -326,8 +326,13 @@ def test_ws_api_endpoints_registry_matches_spec():
 
     expected = {
         # name: (ws_method, security, is_order, weight)
-        'create_order': ('order.place', SecurityType.TRADE, True, 1),
-        'modify_order': ('order.modify', SecurityType.TRADE, True, 1),
+        # order.place + order.modify: docs say IP weight 0 (ORDERS pool still
+        # consumed via is_order=True); SDK bucket clamps to max(1, weight) so
+        # local request_weight window still records >=1.
+        # https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/websocket-api/New-Order
+        # https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/websocket-api/Modify-Order
+        'create_order': ('order.place', SecurityType.TRADE, True, 0),
+        'modify_order': ('order.modify', SecurityType.TRADE, True, 0),
         'cancel_order': ('order.cancel', SecurityType.TRADE, False, 1),
         'get_order': ('order.status', SecurityType.USER_DATA, False, 1),
         'get_account': ('v2/account.status', SecurityType.USER_DATA, False, 5),
@@ -345,3 +350,25 @@ def test_ws_api_endpoints_registry_matches_spec():
         assert entry['security_type'] == security, f'{name}: security mismatch'
         assert entry.get('is_order', False) is is_order, f'{name}: is_order mismatch'
         assert entry['weight'] == weight, f'{name}: weight mismatch'
+
+
+def test_create_order_registry_weight_is_zero():
+    """``order.place`` IP weight is 0 per docs; SDK bucket clamps to 1.
+
+    Docs:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/websocket-api/New-Order
+    """
+    entry = next(e for e in WS_API_ENDPOINTS if e['name'] == 'create_order')
+    assert entry['weight'] == 0
+    assert entry['is_order'] is True
+
+
+def test_modify_order_registry_weight_is_zero():
+    """``order.modify`` IP weight is 0 per docs; SDK bucket clamps to 1.
+
+    Docs:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/websocket-api/Modify-Order
+    """
+    entry = next(e for e in WS_API_ENDPOINTS if e['name'] == 'modify_order')
+    assert entry['weight'] == 0
+    assert entry['is_order'] is True

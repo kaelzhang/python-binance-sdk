@@ -47,19 +47,30 @@ from binance.futures.um.endpoints.weights import (
 # WS-API endpoint specs for USDⓈ-M Futures trading / account (signed).
 WS_API_ENDPOINTS = [
     dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/websocket-api/New-Order
+        # Request Weight: 0 (IP rate limit / x-mbx-used-weight-1m); 1 on the
+        # 10s and 1min ORDERS rate limits. ``is_order=True`` consumes the
+        # ORDERS pool; the SDK bucket clamps cost to max(1, weight) so a
+        # single request still records 1 unit in the local REQUEST_WEIGHT
+        # window even though the server-side IP weight is 0.
         name='create_order',
         transport='ws_api',
         ws_method='order.place',
         security_type=SecurityType.TRADE,
-        weight=1,
+        weight=0,
         is_order=True,
     ),
     dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/websocket-api/Modify-Order
+        # Request Weight: 0 (IP rate limit / x-mbx-used-weight-1m); 1 on the
+        # 10s and 1min ORDERS rate limits. Same pattern as ``order.place``:
+        # ORDERS pool is consumed via ``is_order=True`` and the SDK bucket
+        # clamps cost to max(1, weight) for the local REQUEST_WEIGHT window.
         name='modify_order',
         transport='ws_api',
         ws_method='order.modify',
         security_type=SecurityType.TRADE,
-        weight=1,
+        weight=0,
         is_order=True,
     ),
     dict(
