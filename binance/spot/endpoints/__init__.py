@@ -11,6 +11,7 @@ with real coroutines via ``define_ws_getter``.
 from binance.spot.endpoints.weights import (
     _depth_weight,
     _execution_rules_weight,
+    _my_prevented_matches_weight,
     _my_trades_weight,
     _open_orders_status_weight,
     _order_test_weight,
@@ -37,6 +38,7 @@ __all__ = [
     'define_ws_getter',
     '_depth_weight',
     '_execution_rules_weight',
+    '_my_prevented_matches_weight',
     '_my_trades_weight',
     '_open_orders_status_weight',
     '_order_test_weight',

@@ -26,6 +26,7 @@ from binance.spot.endpoints import (
     _ticker_price_weight,
     _ticker_book_weight,
     _my_trades_weight,
+    _my_prevented_matches_weight,
     _per_symbol_ticker_weight,
     _execution_rules_weight,
 )
@@ -415,7 +416,27 @@ async def test_get_prevented_matches_via_my_prevented_matches():
         client = _make_client(server, signed=True)
         await client.get_prevented_matches(symbol='BTCUSDT', orderId=1)
         assert server.received[0]['method'] == 'myPreventedMatches'
+        # Scoped by orderId -> weight 20.
         assert _weight_used(client) == 20
+    finally:
+        await client.close()
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_get_prevented_matches_by_prevented_match_id_weight_2():
+    """Scoping by ``preventedMatchId`` -> weight 2 per docs.
+
+    Docs: https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/account-requests
+    """
+    server = WSAPIServer(port=_PORT)
+    server.on('myPreventedMatches', result=[])
+    await server.run()
+    try:
+        client = _make_client(server, signed=True)
+        await client.get_prevented_matches(symbol='BTCUSDT', preventedMatchId=1)
+        assert server.received[0]['method'] == 'myPreventedMatches'
+        assert _weight_used(client) == 2
     finally:
         await client.close()
         await server.shutdown()
@@ -473,6 +494,21 @@ def test_my_trades_weight_helper():
     assert _my_trades_weight({'symbol': 'BTCUSDT', 'orderId': 1}) == 5
 
 
+def test_my_prevented_matches_weight_helper():
+    """`myPreventedMatches` weight: 2 when scoped by `preventedMatchId`, 20 by `orderId`.
+
+    Docs: https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/account-requests
+    """
+    # Scoped by preventedMatchId -> weight 2.
+    assert _my_prevented_matches_weight(
+        {'symbol': 'BTCUSDT', 'preventedMatchId': 1}) == 2
+    # Scoped by orderId -> weight 20.
+    assert _my_prevented_matches_weight(
+        {'symbol': 'BTCUSDT', 'orderId': 5}) == 20
+    # No scoping kwargs -> falls back to the higher (20).
+    assert _my_prevented_matches_weight({'symbol': 'BTCUSDT'}) == 20
+
+
 # ---------------------------------------------------------------------------
 # The declarative registry matches the documented (method, security, weight).
 # ---------------------------------------------------------------------------
@@ -527,17 +563,31 @@ def test_market_account_static_weights_match_spec():
         'get_account': 20,
         'get_commission': 20,
         'get_order_rate_limit': 40,
-        'get_prevented_matches': 20,
         'get_allocations': 20,
     }
     for name, weight in static_weights.items():
         assert by_name[name]['weight'] == weight
     # The params-dependent endpoints carry callables, not ints.
+    # ``get_prevented_matches`` is dynamic (2 by preventedMatchId, 20 by orderId)
+    # per developers.binance.com account-requests docs.
     for name in (
         'get_orderbook', 'get_ticker', 'get_ticker_price',
-        'get_orderbook_ticker', 'get_trades',
+        'get_orderbook_ticker', 'get_trades', 'get_prevented_matches',
     ):
         assert callable(by_name[name]['weight'])
+
+
+def test_my_prevented_matches_registry_weight_is_callable():
+    """The `myPreventedMatches` registry entry must carry a callable that
+    returns 2 for `preventedMatchId` scoping and 20 for `orderId` scoping.
+
+    Docs: https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/account-requests
+    """
+    by_name = {entry['name']: entry for entry in WS_APIS}
+    weight_fn = by_name['get_prevented_matches']['weight']
+    assert callable(weight_fn)
+    assert weight_fn({'symbol': 'BTCUSDT', 'preventedMatchId': 1}) == 2
+    assert weight_fn({'symbol': 'BTCUSDT', 'orderId': 5}) == 20
 
 
 def test_params_false_general_endpoints():

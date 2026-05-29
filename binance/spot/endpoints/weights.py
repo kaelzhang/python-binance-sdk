@@ -58,6 +58,15 @@ def _my_trades_weight(kwargs) -> int:
     return 5 if 'orderId' in kwargs else 20
 
 
+def _my_prevented_matches_weight(kwargs) -> int:
+    """``myPreventedMatches`` weight: 2 when scoped by ``preventedMatchId``,
+    20 when scoped by ``orderId``.
+
+    Docs: https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/account-requests
+    """
+    return 2 if 'preventedMatchId' in kwargs else 20
+
+
 def _per_symbol_ticker_weight(kwargs) -> int:
     """`ticker` / `ticker.tradingDay` weight: 4 per symbol; capped at 200 once
     more than 50 symbols are requested. A single ``symbol`` costs 4."""

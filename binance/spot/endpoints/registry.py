@@ -19,6 +19,7 @@ from binance.spot.endpoints.getters import WsApiGetters
 from binance.spot.endpoints.weights import (
     _depth_weight,
     _execution_rules_weight,
+    _my_prevented_matches_weight,
     _my_trades_weight,
     _open_orders_status_weight,
     _order_test_weight,
@@ -164,7 +165,10 @@ WS_APIS = [
         name='get_prevented_matches',
         ws_method='myPreventedMatches',
         security_type=SecurityType.USER_DATA,
-        weight=20
+
+        # 2 when scoped by `preventedMatchId`, 20 when scoped by `orderId`.
+        # Docs: https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/account-requests
+        weight=_my_prevented_matches_weight
     ),
     dict(
         name='get_allocations',
