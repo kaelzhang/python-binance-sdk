@@ -199,15 +199,18 @@ async def test_cm_get_income_weight_30():
 
 
 # ---------------------------------------------------------------------------
-# get_leverage_bracket  GET /dapi/v1/leverageBracket  weight 1
+# get_leverage_bracket  GET /dapi/v2/leverageBracket  weight 1
+# v1 is deprecated per developers.binance.com; v2 takes optional `symbol`
+# (not `pair`).
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/account/rest-api/Notional-Bracket-for-Symbol
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_cm_get_leverage_bracket_weight_1():
     client = _signed_client()
     with aioresponses() as m:
-        m.get(_re('/dapi/v1/leverageBracket'), payload=[], status=200)
-        await client.get_leverage_bracket(pair='BTCUSD')
+        m.get(_re('/dapi/v2/leverageBracket'), payload=[], status=200)
+        await client.get_leverage_bracket(symbol='BTCUSD_PERP')
     assert _weight_used(client) == 1
 
 
@@ -341,7 +344,7 @@ def test_cm_rest_endpoints_registry_contains_trading_entries():
         'get_user_trades': ('get', '/dapi/v1/userTrades'),
         'get_commission': ('get', '/dapi/v1/commissionRate'),
         'get_income': ('get', '/dapi/v1/income'),
-        'get_leverage_bracket': ('get', '/dapi/v1/leverageBracket'),
+        'get_leverage_bracket': ('get', '/dapi/v2/leverageBracket'),
         'set_leverage': ('post', '/dapi/v1/leverage'),
         'set_margin_type': ('post', '/dapi/v1/marginType'),
         'set_position_margin': ('post', '/dapi/v1/positionMargin'),

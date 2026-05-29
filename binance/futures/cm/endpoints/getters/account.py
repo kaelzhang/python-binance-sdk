@@ -130,13 +130,17 @@ class CMAccountGetters:
         ...  # pragma: no cover
 
     def get_leverage_bracket(self, **kwargs) -> Awaitable:
-        """Gets leverage bracket information for COIN-M.
+        """Gets leverage bracket information for COIN-M (``GET /dapi/v2/leverageBracket``).
 
-        Weight: 1
+        Weight: 1.
+
+        v2 supersedes the deprecated v1 endpoint; the parameter is ``symbol``
+        (not v1's ``pair``).
 
         Args:
-            pair (:obj:`str`, optional): The underlying pair (e.g. ``'BTCUSD'``).
-                If omitted, returns brackets for all pairs.
+            symbol (:obj:`str`, optional): The COIN-M futures symbol
+                (e.g. ``'BTCUSD_PERP'``). If omitted, returns brackets for all
+                symbols.
             recvWindow (:obj:`long`, optional): Max 60000.
 
         Returns:

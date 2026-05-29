@@ -251,7 +251,10 @@ REST_ENDPOINTS = [
     dict(
         name='get_leverage_bracket',
         transport='rest',
-        rest_url=CM_REST_HOST + '/dapi/v1/leverageBracket',
+        # v2 supersedes v1; v1 is explicitly "not recommended" per docs.
+        # v2 takes optional `symbol` (not v1's `pair`).
+        # https://developers.binance.com/docs/derivatives/coin-margined-futures/account/rest-api/Notional-Bracket-for-Symbol
+        rest_url=CM_REST_HOST + '/dapi/v2/leverageBracket',
         security_type=SecurityType.USER_DATA,
         weight=1,
     ),

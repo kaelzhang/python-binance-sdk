@@ -379,7 +379,6 @@ Note: COIN-M symbols contain underscores (e.g. `'btcusd_perp'`); pass them lower
 - `get_open_interest_hist` uses `pair` + `contractType` instead of `symbol`.
 - `get_premium_index` accepts `symbol` or `pair`; always returns a list.
 - `get_position_risk` filters by `marginAsset` or `pair` (not `symbol`).
-- `get_leverage_bracket` filters by `pair` (not `symbol`).
 - **No `get_multi_assets_mode` / `set_multi_assets_mode`** — USDⓈ-M only.
 - No 10-second ORDERS pool (only 1-minute ORDERS pool).
 
