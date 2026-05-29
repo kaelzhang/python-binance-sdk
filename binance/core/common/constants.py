@@ -86,6 +86,7 @@ class SubType(StringEnum):
         ALL_MARKET_LIQUIDATION: All-market liquidation order array (``!forceOrder@arr``).
 
     UM-only streams:
+        RPI_DIFF_DEPTH: Diff Book Depth with RPI orders (``<symbol>@rpiDepth@500ms``).
         COMPOSITE_INDEX: Composite index composition (``<symbol>@compositeIndex``).
         CONTRACT_INFO: Contract specification change events (``!contractInfo``).
         ASSET_INDEX: Multi-assets mode asset index (``<asset>@assetIndex`` / ``!assetIndex@arr``).
@@ -158,6 +159,13 @@ class SubType(StringEnum):
     """
 
     # UM-only futures streams
+    RPI_DIFF_DEPTH = 'rpiDiffDepth'
+    """Diff Book Depth with RPI stream (``<symbol>@rpiDepth@500ms``).
+    USDⓈ-M only: like the regular diff-depth stream but the bids/asks arrays
+    aggregate RPI (Retail Price Improvement) orders.  Only the 500ms speed
+    is supported per docs (no other update intervals).
+    Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Diff-Book-Depth-Streams-RPI
+    """
     COMPOSITE_INDEX = 'compositeIndex'
     """Composite index symbol information stream (``<symbol>@compositeIndex``).
     USDⓈ-M only: delivers index composition and weighting for composite-index symbols.

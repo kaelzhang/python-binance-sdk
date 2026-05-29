@@ -101,6 +101,7 @@ from binance.futures.um.streams import (
     AssetIndexHandlerBase,
     AllAssetIndexHandlerBase,
     TradingSessionHandlerBase,
+    UMRpiDepthHandlerBase,
 )
 
 from binance.futures.streams import (

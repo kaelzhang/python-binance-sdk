@@ -5,7 +5,8 @@ USDⓈ-M reuses the shared futures handler bases and processors from
 1. Adds the USDⓈ-M-specific ``ap`` (mark price moving average) field to the
    mark-price column map.
 2. Provides UM-only handler bases and processors for streams that do NOT exist
-   on COIN-M: ``compositeIndex``, ``contractInfo``, ``assetIndex``, ``tradingSession``.
+   on COIN-M: ``compositeIndex``, ``contractInfo``, ``assetIndex``,
+   ``tradingSession``, ``rpiDepth`` (Diff Book Depth with RPI orders).
 3. Registers the complete UM PROCESSORS list.
 
 Confirmed UM vs CM payload differences (2026-05-26):
@@ -20,8 +21,10 @@ UM-only streams:
 - contractInfo: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Contract-Info-Stream
 - assetIndex: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Multi-Assets-Mode-Asset-Index
 - tradingSession: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Trading-Session-Stream
+- rpiDepth (Diff Book Depth with RPI): https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Diff-Book-Depth-Streams-RPI
 """
 
+import re
 from typing import ClassVar, List, Optional
 
 from binance.core.common.constants import SubType, KEY_STREAM_TYPE, KEY_PAYLOAD
@@ -210,6 +213,137 @@ class AggTradeProcessor(_AggTradeProcessor):
     """
 
     HANDLER = AggTradeHandlerBase
+
+
+# ---------------------------------------------------------------------------
+# UM-only: rpiDepth (Diff Book Depth Streams with RPI)
+# Wire stream: <symbol>@rpiDepth@500ms
+# USDⓈ-M only (not documented on COIN-M).  Payload schema mirrors the regular
+# Diff Book Depth Stream — but the bids/asks arrays aggregate RPI (Retail
+# Price Improvement) orders alongside the normal limit orders.  Per docs the
+# stream supports only the 500ms speed (no other intervals).
+#
+# Confirmed fields per developers.binance.com (UM, 2026-05):
+#   e   event type ('depthUpdate')
+#   E   event time
+#   T   transaction time
+#   s   symbol
+#   U   first update id in event
+#   u   final update id in event
+#   pu  final update id in last stream
+#   b   bids to be updated [ [price, quantity], ... ]   (includes RPI)
+#   a   asks to be updated [ [price, quantity], ... ]   (includes RPI)
+# A price level whose quantity equals zero indicates either a filled / cancelled
+# quotation or a hidden crossed RPI order at that level (RPI-specific
+# semantics per docs).
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Diff-Book-Depth-Streams-RPI
+# ---------------------------------------------------------------------------
+
+UM_RPI_DEPTH_COLUMNS_MAP = {
+    'e': 'type',
+    'E': 'event_time',
+    'T': 'transaction_time',
+    's': 'symbol',
+    'U': 'first_update_id',
+    'u': 'final_update_id',
+    'pu': 'prev_final_update_id',
+    'b': 'bids',
+    'a': 'asks',
+}
+
+UM_RPI_DEPTH_COLUMNS = UM_RPI_DEPTH_COLUMNS_MAP.keys()
+
+# Per docs the rpiDepth stream supports ONLY 500ms.
+UM_RPI_DEPTH_SPEED = 500
+
+# Match `<symbol>@rpiDepth[@<speed>ms]`.  The trailing `@500ms` is the only
+# documented form, but the regex tolerates the absence of the suffix so that
+# any future docs revision adding more speeds can be wired with a one-line
+# change to the speed validator (not the dispatch).
+UM_RPI_DEPTH_STREAM_PATTERN = re.compile(r'@rpiDepth(?:@\d+ms)?$')
+
+
+class UMRpiDepthHandlerBase(Handler):
+    """Base handler for the USDⓈ-M ``SubType.RPI_DIFF_DEPTH`` stream (``<symbol>@rpiDepth@500ms``).
+
+    USDⓈ-M only: not present on COIN-M.  Per developers.binance.com the payload
+    is the same shape as the regular Diff Book Depth stream (``e='depthUpdate'``,
+    ``E``, ``T``, ``s``, ``U``, ``u``, ``pu``, ``b``, ``a``) but the bids/asks
+    arrays aggregate RPI (Retail Price Improvement) orders alongside the
+    normal limit orders.
+
+    The bids and asks arrays are passed through as single-cell lists so
+    downstream consumers can iterate the price/quantity pairs without losing
+    structure.  A price level whose quantity equals zero indicates either a
+    filled/cancelled quotation or a hidden crossed RPI order at that level
+    (RPI-specific semantics per docs).
+
+    Subclass this and override ``receive(payload)`` to handle the event.
+
+    Docs:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Diff-Book-Depth-Streams-RPI
+    """
+
+    COLUMNS_MAP = UM_RPI_DEPTH_COLUMNS_MAP
+    COLUMNS = UM_RPI_DEPTH_COLUMNS
+
+    def _receive(  # type: ignore[override]
+        self, payload: DictPayload, index: Optional[List[int]] = None
+    ):
+        # Wrap the bids/asks arrays as single-cell values so pandas treats
+        # each as one cell rather than expanding the price/qty rows.
+        wrapped = dict(payload)
+        if 'b' in wrapped:
+            wrapped['b'] = [wrapped['b']]
+        if 'a' in wrapped:
+            wrapped['a'] = [wrapped['a']]
+        return super()._receive(wrapped, index)
+
+
+class UMRpiDepthProcessor(Processor):
+    """Processor for the USDⓈ-M rpi diff-depth stream (``<symbol>@rpiDepth@500ms``).
+
+    USDⓈ-M only.  Per docs only the 500ms speed is supported; the
+    ``subscribe_param`` validator rejects any other value.
+
+    Routing matches the stream-name suffix ``@rpiDepth[@<speed>ms]`` and
+    excludes the regular ``@depth`` / ``@depth<N>`` streams (which carry the
+    same ``e='depthUpdate'``).
+    """
+
+    HANDLER = UMRpiDepthHandlerBase
+    SUB_TYPE = SubType.RPI_DIFF_DEPTH
+
+    def is_message_type(self, msg):
+        stream_type = msg.get(KEY_STREAM_TYPE)
+
+        if stream_type is None or not UM_RPI_DEPTH_STREAM_PATTERN.search(stream_type):
+            return False, None
+
+        return True, msg.get(KEY_PAYLOAD)
+
+    def subscribe_param(self, _, t, *args) -> str:
+        """Return ``<symbol>@rpiDepth@500ms``.
+
+        Accepts an optional second positional argument ``update_speed``; per
+        docs only ``500`` is documented and the validator rejects any other
+        value.  Calling without a speed parameter defaults to ``500``.
+        """
+        symbol = self._get_param_symbol(t, args)
+
+        if len(args) >= 2:
+            speed = args[1]
+            if type(speed) is not int:
+                raise InvalidSubTypeParamException(
+                    t, 'speed', '`int` expected but got `%s`' % speed)
+            if speed != UM_RPI_DEPTH_SPEED:
+                raise InvalidSubTypeParamException(
+                    t, 'speed',
+                    '`speed` must be %d (the only documented rpiDepth speed) '
+                    'but got `%s`' % (UM_RPI_DEPTH_SPEED, speed)
+                )
+
+        return f'{normalize_symbol(symbol)}@rpiDepth@{UM_RPI_DEPTH_SPEED}ms'
 
 
 # ---------------------------------------------------------------------------
@@ -522,5 +656,6 @@ PROCESSORS = [
     AssetIndexProcessor,
     AllAssetIndexProcessor,
     TradingSessionProcessor,
+    UMRpiDepthProcessor,
     FuturesUserProcessor,
 ]

@@ -1939,6 +1939,140 @@ async def test_futures_contract_info_handler_surfaces_bks(um_client):
 
 
 # ===========================================================================
+# UM-only: rpiDepth (Diff Book Depth Streams with RPI)
+# Wire stream: <symbol>@rpiDepth@500ms
+# Per developers.binance.com (UM, 2026-05) the payload schema mirrors the
+# regular Diff Book Depth stream — `e` ('depthUpdate'), `E`, `T`, `s`, `U`,
+# `u`, `pu`, `b`, `a` — but the bids/asks arrays aggregate RPI (Retail Price
+# Improvement) orders.  Only the 500ms speed is supported.
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Diff-Book-Depth-Streams-RPI
+# ===========================================================================
+
+RPI_DEPTH_PAYLOAD = {
+    'e': 'depthUpdate',
+    'E': 1591270260907,
+    'T': 1591270260893,
+    's': 'BTCUSDT',
+    'U': 35092002,
+    'u': 35092050,
+    'pu': 35091926,
+    'b': [['9650.0', '0.0']],
+    'a': [['9651.0', '1.234']],
+}
+
+
+def test_um_rpi_diff_depth_subtype_value():
+    # The new SubType wire name should be the SDK-internal key 'rpiDiffDepth'.
+    assert str(SubType.RPI_DIFF_DEPTH) == 'rpiDiffDepth'
+
+
+def test_um_rpi_diff_depth_subscribe_param_default():
+    from binance.futures.um.streams import UMRpiDepthProcessor
+    proc = UMRpiDepthProcessor(None)
+    assert proc.subscribe_param(
+        True, SubType.RPI_DIFF_DEPTH, 'BTCUSDT'
+    ) == 'btcusdt@rpiDepth@500ms'
+
+
+def test_um_rpi_diff_depth_subscribe_param_with_explicit_500ms():
+    from binance.futures.um.streams import UMRpiDepthProcessor
+    proc = UMRpiDepthProcessor(None)
+    assert proc.subscribe_param(
+        True, SubType.RPI_DIFF_DEPTH, 'BTCUSDT', 500
+    ) == 'btcusdt@rpiDepth@500ms'
+
+
+def test_um_rpi_diff_depth_subscribe_param_rejects_other_speed():
+    """Per docs, rpiDepth supports ONLY the 500ms speed."""
+    from binance.futures.um.streams import UMRpiDepthProcessor
+    proc = UMRpiDepthProcessor(None)
+    with pytest.raises(InvalidSubTypeParamException, match='speed'):
+        proc.subscribe_param(True, SubType.RPI_DIFF_DEPTH, 'BTCUSDT', 100)
+    with pytest.raises(InvalidSubTypeParamException, match='speed'):
+        proc.subscribe_param(True, SubType.RPI_DIFF_DEPTH, 'BTCUSDT', 250)
+
+
+def test_um_rpi_diff_depth_subscribe_param_rejects_string_speed():
+    from binance.futures.um.streams import UMRpiDepthProcessor
+    proc = UMRpiDepthProcessor(None)
+    with pytest.raises(InvalidSubTypeParamException, match='speed'):
+        proc.subscribe_param(True, SubType.RPI_DIFF_DEPTH, 'BTCUSDT', '500')
+
+
+def test_um_rpi_diff_depth_is_message_type_matches():
+    from binance.futures.um.streams import UMRpiDepthProcessor
+    proc = UMRpiDepthProcessor(None)
+    is_match, payload = proc.is_message_type({
+        'stream': 'btcusdt@rpiDepth@500ms',
+        'data': RPI_DEPTH_PAYLOAD,
+    })
+    assert is_match
+    assert payload == RPI_DEPTH_PAYLOAD
+
+
+def test_um_rpi_diff_depth_is_message_type_rejects_plain_depth():
+    """`btcusdt@depth` (regular diff depth) must NOT match the rpi processor."""
+    from binance.futures.um.streams import UMRpiDepthProcessor
+    proc = UMRpiDepthProcessor(None)
+    is_match, _ = proc.is_message_type({
+        'stream': 'btcusdt@depth',
+        'data': RPI_DEPTH_PAYLOAD,
+    })
+    assert not is_match
+
+
+def test_um_rpi_diff_depth_is_message_type_rejects_partial_depth():
+    """`btcusdt@depth5` (partial depth snapshot) must NOT match."""
+    from binance.futures.um.streams import UMRpiDepthProcessor
+    proc = UMRpiDepthProcessor(None)
+    is_match, _ = proc.is_message_type({
+        'stream': 'btcusdt@depth5@100ms',
+        'data': RPI_DEPTH_PAYLOAD,
+    })
+    assert not is_match
+
+
+def test_um_rpi_diff_depth_columns_map():
+    from binance.futures.um.streams import UM_RPI_DEPTH_COLUMNS_MAP
+    # Mirror the regular diff-depth field set.
+    assert UM_RPI_DEPTH_COLUMNS_MAP.get('e') == 'type'
+    assert UM_RPI_DEPTH_COLUMNS_MAP.get('E') == 'event_time'
+    assert UM_RPI_DEPTH_COLUMNS_MAP.get('T') == 'transaction_time'
+    assert UM_RPI_DEPTH_COLUMNS_MAP.get('s') == 'symbol'
+    assert UM_RPI_DEPTH_COLUMNS_MAP.get('U') == 'first_update_id'
+    assert UM_RPI_DEPTH_COLUMNS_MAP.get('u') == 'final_update_id'
+    assert UM_RPI_DEPTH_COLUMNS_MAP.get('pu') == 'prev_final_update_id'
+    assert UM_RPI_DEPTH_COLUMNS_MAP.get('b') == 'bids'
+    assert UM_RPI_DEPTH_COLUMNS_MAP.get('a') == 'asks'
+
+
+@pytest.mark.asyncio
+async def test_um_rpi_diff_depth_handler_columns(um_client):
+    from binance import UMRpiDepthHandlerBase
+    df = await run_handler(
+        um_client, UMRpiDepthHandlerBase,
+        RPI_DEPTH_PAYLOAD, 'btcusdt@rpiDepth@500ms'
+    )
+    row = df.iloc[0]
+    assert row['type'] == 'depthUpdate'
+    assert row['symbol'] == 'BTCUSDT'
+    assert row['first_update_id'] == 35092002
+    assert row['final_update_id'] == 35092050
+    assert row['prev_final_update_id'] == 35091926
+    # bids/asks pass through as lists (single-cell semantics)
+    assert isinstance(row['bids'], list)
+    assert isinstance(row['asks'], list)
+    assert row['bids'][0] == ['9650.0', '0.0']
+    assert row['asks'][0] == ['9651.0', '1.234']
+
+
+def test_um_rpi_diff_depth_in_um_processors():
+    """The new processor MUST be wired into the UM PROCESSORS list."""
+    from binance.futures.um.streams import PROCESSORS, UMRpiDepthProcessor
+    assert UMRpiDepthProcessor in PROCESSORS
+
+
+# ===========================================================================
 # Layering sanity
 # ===========================================================================
 
@@ -1994,3 +2128,4 @@ def test_subtype_values():
     assert str(SubType.INDEX_PRICE) == 'indexPrice'
     assert str(SubType.INDEX_PRICE_KLINE) == 'indexPriceKline'
     assert str(SubType.MARK_PRICE_KLINE) == 'markPriceKline'
+    assert str(SubType.RPI_DIFF_DEPTH) == 'rpiDiffDepth'
