@@ -125,6 +125,29 @@ class CMTradingGetters:
         """
         ...  # pragma: no cover
 
+    def countdown_cancel_all_orders(self, **kwargs) -> Awaitable:
+        """Arms a dead-man's switch that cancels all open orders for
+        ``symbol`` once ``countdownTime`` ms elapse without another call.
+
+        Weight: 10.
+        Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Auto-Cancel-All-Open-Orders
+
+        Call again periodically to refresh the timer (heartbeat). Send
+        ``countdownTime=0`` to disarm. Same semantics as the UM
+        equivalent — the server cancels open orders for the given
+        ``symbol`` only.
+
+        Args:
+            symbol (str): The COIN-M futures symbol, e.g. ``'BTCUSD_PERP'``.
+            countdownTime (long): Countdown in milliseconds; ``1000`` =
+                1 second. ``0`` cancels (disarms) the timer.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            dict: ``{'symbol': <symbol>, 'countdownTime': <countdownTime>}``.
+        """
+        ...  # pragma: no cover
+
     def get_open_orders(self, **kwargs) -> Awaitable:
         """Gets all open orders, or open orders for a specific COIN-M symbol.
 

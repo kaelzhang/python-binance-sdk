@@ -199,6 +199,19 @@ REST_ENDPOINTS = [
         weight=1,
     ),
     dict(
+        # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Auto-Cancel-All-Open-Orders
+        # Request Weight: 10. Dead-man's switch: the server auto-cancels
+        # all open orders for ``symbol`` once ``countdownTime`` ms elapse
+        # without another call. Call again to refresh the timer; send
+        # ``countdownTime=0`` to disarm. Same semantics as UM.
+        name='countdown_cancel_all_orders',
+        transport='rest',
+        method=RequestMethod.POST,
+        rest_url=CM_REST_HOST + '/dapi/v1/countdownCancelAll',
+        security_type=SecurityType.TRADE,
+        weight=10,
+    ),
+    dict(
         name='get_open_orders',
         transport='rest',
         rest_url=CM_REST_HOST + '/dapi/v1/openOrders',

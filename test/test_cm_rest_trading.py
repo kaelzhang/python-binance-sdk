@@ -17,6 +17,7 @@ import pytest
 from aioresponses import aioresponses
 
 from binance import CMFuturesClient, Credentials
+from binance.core.common.constants import SecurityType
 from binance.core.rate_limit.types import RateLimitType
 from binance.futures.cm.endpoints import (
     REST_ENDPOINTS,
@@ -88,6 +89,35 @@ async def test_cm_cancel_all_orders_delete_correct_url_and_weight():
         result = await client.cancel_all_orders(symbol='BTCUSD_PERP')
     assert result == {'code': 200}
     assert _weight_used(client) == 1
+
+
+# ---------------------------------------------------------------------------
+# countdown_cancel_all_orders  POST /dapi/v1/countdownCancelAll  weight 10
+# Dead-man's switch — cancels all open orders for a symbol if not
+# refreshed within the countdown window. Same semantics as UM.
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Auto-Cancel-All-Open-Orders
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_cm_countdown_cancel_all_orders_post_correct_url_and_weight():
+    client = _signed_client()
+    payload = {'symbol': 'BTCUSD_PERP', 'countdownTime': '100000'}
+    with aioresponses() as m:
+        m.post(_re('/dapi/v1/countdownCancelAll'), payload=payload, status=200)
+        result = await client.countdown_cancel_all_orders(
+            symbol='BTCUSD_PERP', countdownTime=100000)
+    assert result == payload
+    assert _weight_used(client) == 10
+
+
+def test_cm_countdown_cancel_all_orders_registry_shape():
+    """Registry entry MUST be POST + correct URL + weight 10 + TRADE."""
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['countdown_cancel_all_orders']
+    assert str(entry['method']).lower() == 'post'
+    assert entry['rest_url'].endswith('/dapi/v1/countdownCancelAll')
+    assert entry['weight'] == 10
+    assert entry['security_type'] == SecurityType.TRADE
 
 
 # ---------------------------------------------------------------------------
