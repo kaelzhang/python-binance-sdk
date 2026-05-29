@@ -178,6 +178,35 @@ async def test_cm_get_open_orders_without_symbol_weight_40():
 
 
 # ---------------------------------------------------------------------------
+# get_order_modify_history  GET /dapi/v1/orderAmendment  weight 1
+# Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Get-Order-Modify-History
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_cm_get_order_modify_history_weight_1():
+    client = _signed_client()
+    payload = [{
+        'amendmentId': 5363, 'symbol': 'BTCUSD_PERP', 'pair': 'BTCUSD',
+        'orderId': 1917641, 'time': 1629184560000, 'amendment': {'count': 1},
+    }]
+    with aioresponses() as m:
+        m.get(_re('/dapi/v1/orderAmendment'), payload=payload, status=200)
+        result = await client.get_order_modify_history(
+            symbol='BTCUSD_PERP', orderId=1917641)
+    assert result == payload
+    assert _weight_used(client) == 1
+
+
+def test_cm_get_order_modify_history_registry_shape():
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['get_order_modify_history']
+    assert str(entry.get('method', 'get')).lower() == 'get'
+    assert entry['rest_url'].endswith('/dapi/v1/orderAmendment')
+    assert entry['weight'] == 1
+    assert entry['security_type'] == SecurityType.USER_DATA
+
+
+# ---------------------------------------------------------------------------
 # get_all_orders  GET /dapi/v1/allOrders  weight 20 (symbol) / 40 (pair)
 # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/All-Orders
 # ---------------------------------------------------------------------------

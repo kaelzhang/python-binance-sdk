@@ -242,6 +242,19 @@ REST_ENDPOINTS = [
         weight=_um_open_orders_weight,
     ),
     dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Get-Order-Modify-History
+        # Request Weight: 1. Returns the chain of price/quantity
+        # amendments for one order. Either ``orderId`` or
+        # ``origClientOrderId`` MUST be supplied; ``orderId`` wins if
+        # both are sent. Modifications older than 3 months are not
+        # retained.
+        name='get_order_modify_history',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/orderAmendment',
+        security_type=SecurityType.USER_DATA,
+        weight=1,
+    ),
+    dict(
         name='get_all_orders',
         transport='rest',
         rest_url=UM_REST_HOST + '/fapi/v1/allOrders',

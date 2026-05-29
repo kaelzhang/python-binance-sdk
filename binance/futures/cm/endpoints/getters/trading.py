@@ -208,6 +208,34 @@ class CMTradingGetters:
         """
         ...  # pragma: no cover
 
+    def get_order_modify_history(self, **kwargs) -> Awaitable:
+        """Gets the price/quantity amendment chain for one COIN-M order
+        (``GET /dapi/v1/orderAmendment``).
+
+        Weight: 1.
+        Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/rest-api/Get-Order-Modify-History
+
+        Either ``orderId`` or ``origClientOrderId`` MUST be supplied;
+        ``orderId`` wins if both are sent. Server retains amendments
+        for 3 months only.
+
+        Args:
+            symbol (str): The COIN-M futures symbol.
+            orderId (:obj:`long`, optional): Either this or
+                ``origClientOrderId`` must be sent.
+            origClientOrderId (:obj:`str`, optional):
+            startTime (:obj:`long`, optional): Inclusive lower bound.
+            endTime (:obj:`long`, optional): Inclusive upper bound.
+            limit (:obj:`int`, optional): Default 50; max 100.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            list: Amendment records — each with ``amendmentId``,
+            ``symbol``, ``pair``, ``orderId``, ``clientOrderId``,
+            ``time``, and an ``amendment`` object.
+        """
+        ...  # pragma: no cover
+
     def create_batch_orders(self, **kwargs) -> Awaitable:
         """Places multiple COIN-M orders in a single request.
 

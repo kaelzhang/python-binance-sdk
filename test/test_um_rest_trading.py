@@ -172,6 +172,36 @@ async def test_get_open_orders_without_symbol_weight_40():
 
 
 # ---------------------------------------------------------------------------
+# get_order_modify_history  GET /fapi/v1/orderAmendment  weight 1
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Get-Order-Modify-History
+# Returns the price/quantity amendment chain for one order. USER_DATA.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_order_modify_history_weight_1():
+    client = _signed_client()
+    payload = [{
+        'amendmentId': 5363, 'symbol': 'BTCUSDT', 'orderId': 1917641,
+        'time': 1629184560000, 'amendment': {'count': 1},
+    }]
+    with aioresponses() as m:
+        m.get(_re('/fapi/v1/orderAmendment'), payload=payload, status=200)
+        result = await client.get_order_modify_history(
+            symbol='BTCUSDT', orderId=1917641)
+    assert result == payload
+    assert _weight_used(client) == 1
+
+
+def test_get_order_modify_history_registry_shape():
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['get_order_modify_history']
+    assert str(entry.get('method', 'get')).lower() == 'get'
+    assert entry['rest_url'].endswith('/fapi/v1/orderAmendment')
+    assert entry['weight'] == 1
+    assert entry['security_type'] == SecurityType.USER_DATA
+
+
+# ---------------------------------------------------------------------------
 # get_all_orders  GET /fapi/v1/allOrders  weight 5
 # ---------------------------------------------------------------------------
 
@@ -474,6 +504,7 @@ def test_rest_endpoints_registry_contains_trading_entries():
         'get_position_margin_history': ('get', '/fapi/v1/positionMargin/history'),
         'get_open_order': ('get', '/fapi/v1/openOrder'),
         'get_open_orders': ('get', '/fapi/v1/openOrders'),
+        'get_order_modify_history': ('get', '/fapi/v1/orderAmendment'),
         'get_all_orders': ('get', '/fapi/v1/allOrders'),
         'create_batch_orders': ('post', '/fapi/v1/batchOrders'),
         'cancel_batch_orders': ('delete', '/fapi/v1/batchOrders'),
