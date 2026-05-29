@@ -173,6 +173,29 @@ class UMTradingGetters:
         """
         ...  # pragma: no cover
 
+    def countdown_cancel_all_orders(self, **kwargs) -> Awaitable:
+        """Arms a dead-man's switch that cancels all open orders for
+        ``symbol`` once ``countdownTime`` ms elapse without another call.
+
+        Weight: 10.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Auto-Cancel-All-Open-Orders
+
+        Call again periodically to refresh the timer (heartbeat). Send
+        ``countdownTime=0`` to disarm. The server cancels open orders for
+        the given ``symbol`` only — not across all symbols. Use this as a
+        client-disconnect safety mechanism for live trading.
+
+        Args:
+            symbol (str): The futures symbol, e.g. ``'BTCUSDT'``.
+            countdownTime (long): Countdown in milliseconds; ``1000`` =
+                1 second. ``0`` cancels (disarms) the timer.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            dict: ``{'symbol': <symbol>, 'countdownTime': <countdownTime>}``.
+        """
+        ...  # pragma: no cover
+
     def get_open_orders(self, **kwargs) -> Awaitable:
         """Gets all open orders, or open orders for a specific symbol.
 

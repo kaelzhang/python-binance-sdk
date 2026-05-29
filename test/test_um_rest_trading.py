@@ -16,6 +16,7 @@ import pytest
 from aioresponses import aioresponses
 
 from binance import UMFuturesClient, Credentials
+from binance.core.common.constants import SecurityType
 from binance.core.rate_limit.types import RateLimitType
 from binance.futures.um.endpoints import (
     REST_ENDPOINTS,
@@ -79,6 +80,36 @@ async def test_cancel_all_orders_delete_correct_url_and_weight():
         result = await client.cancel_all_orders(symbol='BTCUSDT')
     assert result == {'code': 200}
     assert _weight_used(client) == 1
+
+
+# ---------------------------------------------------------------------------
+# countdown_cancel_all_orders  POST /fapi/v1/countdownCancelAll  weight 10
+# Dead-man's switch — cancels all open orders for a symbol if not
+# refreshed within the countdown window. Critical safety mechanism for
+# live trading; the SDK MUST expose it.
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Auto-Cancel-All-Open-Orders
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_countdown_cancel_all_orders_post_correct_url_and_weight():
+    client = _signed_client()
+    payload = {'symbol': 'BTCUSDT', 'countdownTime': '100000'}
+    with aioresponses() as m:
+        m.post(_re('/fapi/v1/countdownCancelAll'), payload=payload, status=200)
+        result = await client.countdown_cancel_all_orders(
+            symbol='BTCUSDT', countdownTime=100000)
+    assert result == payload
+    assert _weight_used(client) == 10
+
+
+def test_countdown_cancel_all_orders_registry_shape():
+    """Registry entry MUST be POST + correct URL + weight 10 + TRADE."""
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['countdown_cancel_all_orders']
+    assert str(entry['method']).lower() == 'post'
+    assert entry['rest_url'].endswith('/fapi/v1/countdownCancelAll')
+    assert entry['weight'] == 10
+    assert entry['security_type'] == SecurityType.TRADE
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +376,7 @@ def test_rest_endpoints_registry_contains_trading_entries():
     expected_method_path = {
         'create_test_order': ('post', '/fapi/v1/order/test'),
         'cancel_all_orders': ('delete', '/fapi/v1/allOpenOrders'),
+        'countdown_cancel_all_orders': ('post', '/fapi/v1/countdownCancelAll'),
         'get_open_orders': ('get', '/fapi/v1/openOrders'),
         'get_all_orders': ('get', '/fapi/v1/allOrders'),
         'create_batch_orders': ('post', '/fapi/v1/batchOrders'),
