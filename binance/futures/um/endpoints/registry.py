@@ -40,6 +40,7 @@ from binance.futures.um.endpoints.getters import UMFuturesGetters
 from binance.futures.um.endpoints.weights import (
     _depth_weight,
     _premium_index_weight,
+    _um_open_algo_orders_weight,
     _um_open_orders_weight,
 )
 
@@ -291,6 +292,41 @@ REST_ENDPOINTS = [
         transport='rest',
         method=RequestMethod.DELETE,
         rest_url=UM_REST_HOST + '/fapi/v1/batchOrders',
+        security_type=SecurityType.TRADE,
+        weight=1,
+    ),
+    # ----- Algo orders: history / open / cancel-all --------------------------
+    # All three consume the dedicated algo-orders quota, NOT the regular
+    # ORDERS pool — matches the create_algo_order / cancel_algo_order
+    # WS-API pattern (is_order omitted / False).
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Query-All-Algo-Orders
+        # Request Weight: 5. USER_DATA. <7d window, excludes algos canceled/
+        # expired w/o fills, older than 3d, or older than 90d.
+        name='get_algo_orders',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/allAlgoOrders',
+        security_type=SecurityType.USER_DATA,
+        weight=5,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Current-All-Algo-Open-Orders
+        # Request Weight: 1 with `symbol`, 40 without. USER_DATA. Mirrors the
+        # openOrders 1/40 dynamic-weight pattern.
+        name='get_open_algo_orders',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/openAlgoOrders',
+        security_type=SecurityType.USER_DATA,
+        weight=_um_open_algo_orders_weight,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Cancel-All-Algo-Open-Orders
+        # Request Weight: 1. TRADE. Note the URL flips word order vs
+        # GET /openAlgoOrders: this endpoint is /algoOpenOrders (per docs).
+        name='cancel_all_open_algo_orders',
+        transport='rest',
+        method=RequestMethod.DELETE,
+        rest_url=UM_REST_HOST + '/fapi/v1/algoOpenOrders',
         security_type=SecurityType.TRADE,
         weight=1,
     ),

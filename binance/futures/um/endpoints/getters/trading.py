@@ -337,3 +337,71 @@ class UMTradingGetters:
             list: Cancellation results.
         """
         ...  # pragma: no cover
+
+    # ----- REST: algo-order queries / cancel-all ----------------------------
+
+    def get_algo_orders(self, **kwargs) -> Awaitable:
+        """Queries algo (TP/SL / trailing / conditional) orders history
+        (``GET /fapi/v1/allAlgoOrders``).
+
+        Weight: 5.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Query-All-Algo-Orders
+
+        Algo orders consume the separate algo-orders quota, NOT the regular
+        ORDERS pool. Query window <7d (defaults to the last 7d). Excludes
+        algos that were CANCELED/EXPIRED with no fills, older than 3d, or
+        older than 90d.
+
+        Args:
+            symbol (str): The futures symbol.
+            algoId (:obj:`long`, optional): If set, returns algos >= this id.
+            startTime (:obj:`long`, optional): Inclusive lower bound.
+            endTime (:obj:`long`, optional): Inclusive upper bound.
+            limit (:obj:`int`, optional): Default 500; max 1000.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            list: Algo order records (active, cancelled, triggered, finished).
+        """
+        ...  # pragma: no cover
+
+    def get_open_algo_orders(self, **kwargs) -> Awaitable:
+        """Queries currently-open algo orders (``GET /fapi/v1/openAlgoOrders``).
+
+        Weight: 1 when ``symbol`` is given; 40 otherwise.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Current-All-Algo-Open-Orders
+
+        Algo orders consume the separate algo-orders quota, NOT the regular
+        ORDERS pool. Returns currently-open TP/SL and trailing-stop orders.
+
+        Args:
+            symbol (:obj:`str`, optional): The futures symbol. If omitted,
+                returns open algos across all symbols (weight 40 — use with
+                care).
+            algoType (:obj:`str`, optional): Filter by algo type.
+            algoId (:obj:`long`, optional): Filter by algo id.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            list: Open algo order records.
+        """
+        ...  # pragma: no cover
+
+    def cancel_all_open_algo_orders(self, **kwargs) -> Awaitable:
+        """Cancels all open algo orders for ``symbol``
+        (``DELETE /fapi/v1/algoOpenOrders``).
+
+        Weight: 1. TRADE.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Cancel-All-Algo-Open-Orders
+
+        Algo cancels consume the separate algo-orders quota, NOT the regular
+        ORDERS pool — companion to :py:meth:`cancel_algo_order` (singular).
+
+        Args:
+            symbol (str): The futures symbol.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            dict: ``{'code': 200, 'msg': '...'}`` confirmation.
+        """
+        ...  # pragma: no cover

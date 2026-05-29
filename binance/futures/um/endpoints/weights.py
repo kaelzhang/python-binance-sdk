@@ -16,6 +16,15 @@ def _um_open_orders_weight(kwargs) -> int:
     return 1 if 'symbol' in kwargs else 40
 
 
+def _um_open_algo_orders_weight(kwargs) -> int:
+    """`openAlgoOrders` weight: 1 with ``symbol``, 40 without.
+
+    Docs:
+      https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Current-All-Algo-Open-Orders
+    """
+    return 1 if 'symbol' in kwargs else 40
+
+
 def _depth_weight(kwargs) -> int:
     """`GET /fapi/v1/depth` weight depends on the ``limit`` parameter.
 

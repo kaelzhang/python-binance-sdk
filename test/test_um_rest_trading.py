@@ -272,6 +272,104 @@ def test_modify_batch_orders_registry_shape():
 
 
 # ---------------------------------------------------------------------------
+# get_algo_orders  GET /fapi/v1/allAlgoOrders  weight 5 (USER_DATA)
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Query-All-Algo-Orders
+# Algo orders draw from a separate algo-orders quota — `is_order=False`
+# (matching the existing create_algo_order / cancel_algo_order pattern).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_algo_orders_weight_5():
+    client = _signed_client()
+    payload = [{'algoId': 14511, 'symbol': 'BTCUSDT', 'status': 'WORKING'}]
+    with aioresponses() as m:
+        m.get(_re('/fapi/v1/allAlgoOrders'), payload=payload, status=200)
+        result = await client.get_algo_orders(symbol='BTCUSDT')
+    assert result == payload
+    assert _weight_used(client) == 5
+
+
+def test_get_algo_orders_registry_shape():
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['get_algo_orders']
+    assert str(entry.get('method', 'get')).lower() == 'get'
+    assert entry['rest_url'].endswith('/fapi/v1/allAlgoOrders')
+    assert entry['weight'] == 5
+    assert entry['security_type'] == SecurityType.USER_DATA
+    # Algo orders use the separate algo pool, NOT the regular ORDERS pool.
+    assert entry.get('is_order') is not True
+
+
+# ---------------------------------------------------------------------------
+# get_open_algo_orders  GET /fapi/v1/openAlgoOrders  weight 1/40 (USER_DATA)
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Current-All-Algo-Open-Orders
+# Dynamic weight: 1 when `symbol` is scoped, 40 across all symbols.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_open_algo_orders_with_symbol_weight_1():
+    client = _signed_client()
+    with aioresponses() as m:
+        m.get(_re('/fapi/v1/openAlgoOrders'), payload=[], status=200)
+        await client.get_open_algo_orders(symbol='BTCUSDT')
+    assert _weight_used(client) == 1
+
+
+@pytest.mark.asyncio
+async def test_get_open_algo_orders_without_symbol_weight_40():
+    client = _signed_client()
+    with aioresponses() as m:
+        m.get(_re('/fapi/v1/openAlgoOrders'), payload=[], status=200)
+        await client.get_open_algo_orders()
+    assert _weight_used(client) == 40
+
+
+def test_get_open_algo_orders_registry_shape():
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['get_open_algo_orders']
+    assert str(entry.get('method', 'get')).lower() == 'get'
+    assert entry['rest_url'].endswith('/fapi/v1/openAlgoOrders')
+    assert callable(entry['weight'])
+    assert entry['security_type'] == SecurityType.USER_DATA
+    assert entry.get('is_order') is not True
+
+
+def test_um_open_algo_orders_weight_helper():
+    """Helper returns 1 with `symbol`, 40 otherwise (matches openOrders)."""
+    from binance.futures.um.endpoints import _um_open_algo_orders_weight
+    assert _um_open_algo_orders_weight({'symbol': 'BTCUSDT'}) == 1
+    assert _um_open_algo_orders_weight({}) == 40
+
+
+# ---------------------------------------------------------------------------
+# cancel_all_open_algo_orders  DELETE /fapi/v1/algoOpenOrders  weight 1 (TRADE)
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Cancel-All-Algo-Open-Orders
+# Algo cancels draw from the algo pool, not the regular ORDERS pool.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_cancel_all_open_algo_orders_delete_weight_1():
+    client = _signed_client()
+    payload = {'code': 200, 'msg': 'The operation of cancel all open order is done.'}
+    with aioresponses() as m:
+        m.delete(_re('/fapi/v1/algoOpenOrders'), payload=payload, status=200)
+        result = await client.cancel_all_open_algo_orders(symbol='BTCUSDT')
+    assert result == payload
+    assert _weight_used(client) == 1
+
+
+def test_cancel_all_open_algo_orders_registry_shape():
+    by_name = {entry['name']: entry for entry in REST_ENDPOINTS}
+    entry = by_name['cancel_all_open_algo_orders']
+    assert str(entry['method']).lower() == 'delete'
+    assert entry['rest_url'].endswith('/fapi/v1/algoOpenOrders')
+    assert entry['weight'] == 1
+    assert entry['security_type'] == SecurityType.TRADE
+    # Algo cancels use the separate algo pool, NOT the regular ORDERS pool.
+    assert entry.get('is_order') is not True
+
+
+# ---------------------------------------------------------------------------
 # get_adl_quantile  GET /fapi/v1/adlQuantile  weight 5  (USER_DATA)
 # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Position-ADL-Quantile-Estimation
 # Used for risk monitoring — exposes ADL queue position (0-4) per side.
@@ -605,6 +703,9 @@ def test_rest_endpoints_registry_contains_trading_entries():
         'create_batch_orders': ('post', '/fapi/v1/batchOrders'),
         'modify_batch_orders': ('put', '/fapi/v1/batchOrders'),
         'cancel_batch_orders': ('delete', '/fapi/v1/batchOrders'),
+        'get_algo_orders': ('get', '/fapi/v1/allAlgoOrders'),
+        'get_open_algo_orders': ('get', '/fapi/v1/openAlgoOrders'),
+        'cancel_all_open_algo_orders': ('delete', '/fapi/v1/algoOpenOrders'),
         'get_position_risk': ('get', '/fapi/v3/positionRisk'),
         'get_user_trades': ('get', '/fapi/v1/userTrades'),
         'get_commission': ('get', '/fapi/v1/commissionRate'),
