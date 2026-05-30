@@ -242,7 +242,7 @@ class UMMarketDataGetters:
         """Gets the insurance-fund balance snapshots grouped by pool.
 
         Weight: 1. Security: NONE.
-        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Insurance-Fund
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Insurance-Fund-Balance
 
         Args:
             symbol (:obj:`str`, optional): Filter to one symbol.

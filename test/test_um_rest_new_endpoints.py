@@ -166,7 +166,7 @@ async def test_get_symbol_adl_risk_get_correct_url_and_weight():
 
 # ---------------------------------------------------------------------------
 # insuranceBalance — NONE, weight 1
-# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Insurance-Fund
+# Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Insurance-Fund-Balance
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio

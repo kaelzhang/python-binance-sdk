@@ -606,7 +606,7 @@ REST_ENDPOINTS = [
         weight=1,
     ),
     dict(
-        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Insurance-Fund
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Insurance-Fund-Balance
         # Request Weight: 1. NONE. Insurance-fund balance snapshots
         # grouped by pool; relevant for liquidation-risk modeling.
         name='get_insurance_balance',
