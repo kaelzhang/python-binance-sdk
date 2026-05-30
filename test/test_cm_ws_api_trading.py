@@ -249,6 +249,9 @@ def test_cm_ws_api_endpoints_registry_matches_spec():
 
     expected = {
         # name: (ws_method, security, is_order, weight)
+        # session.status: weight 2, security NONE per general-info docs.
+        # https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-api-general-info
+        'get_session_status': ('session.status', SecurityType.NONE, False, 2),
         # create_order weight is 0 (IP) per docs; ORDERS pool consumed
         # separately. Docs:
         # https://developers.binance.com/docs/derivatives/coin-margined-futures/trade/websocket-api

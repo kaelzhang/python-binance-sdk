@@ -1,11 +1,13 @@
 """USDⓈ-M Futures getter mixins.
 
 Pre-declared stub methods for every USDⓈ-M Futures endpoint, organized into
-three mixins by responsibility (UM has no `general` endpoints — no ping /
-time / exchangeInfo). The combined :class:`UMFuturesGetters` is the surface
-that ``define_getter`` patches at import time (see ``registry.py``) to
-replace each stub with a real coroutine that issues the request via WS-API
-or REST and returns the response.
+four mixins by responsibility. UM has no public connectivity WS-API methods
+(``ping`` / ``time`` / ``exchangeInfo`` live on REST), but shares the
+session-management WS-API surface with Spot — those live in
+:class:`UMGeneralGetters`. The combined :class:`UMFuturesGetters` is the
+surface that ``define_getter`` patches at import time (see ``registry.py``)
+to replace each stub with a real coroutine that issues the request via
+WS-API or REST and returns the response.
 """
 
 from typing import (
@@ -14,11 +16,13 @@ from typing import (
 )
 
 from binance.futures.um.endpoints.getters.account import UMAccountGetters
+from binance.futures.um.endpoints.getters.general import UMGeneralGetters
 from binance.futures.um.endpoints.getters.market_data import UMMarketDataGetters
 from binance.futures.um.endpoints.getters.trading import UMTradingGetters
 
 
 class UMFuturesGetters(
+    UMGeneralGetters,
     UMMarketDataGetters,
     UMAccountGetters,
     UMTradingGetters,
@@ -27,9 +31,10 @@ class UMFuturesGetters(
 
     Covers two transports:
 
-    - **WS-API** (trading / account): coroutines that issue a single
-      id-correlated request over the shared WS-API connection via
-      :meth:`_ws_api_request` — ``create_order``, ``modify_order``,
+    - **WS-API** (general / trading / account): coroutines that issue a
+      single id-correlated request over the shared WS-API connection via
+      :meth:`_ws_api_request` — ``get_session_status``,
+      ``session_logout``, ``create_order``, ``modify_order``,
       ``cancel_order``, ``get_order``, ``get_account`` (v2),
       ``get_balance`` (v2), ``get_position``, ``get_position_mode``,
       ``create_algo_order``, ``cancel_algo_order``.

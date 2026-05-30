@@ -46,8 +46,23 @@ from binance.futures.um.endpoints.weights import (
 )
 
 
-# WS-API endpoint specs for USDⓈ-M Futures trading / account (signed).
+# WS-API endpoint specs for USDⓈ-M Futures session / trading / account.
 WS_API_ENDPOINTS = [
+    # ----- session management (NONE) ---------------------------------------
+    # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-api-general-info
+    # ``session.status`` and ``session.logout`` are weight 2, security NONE,
+    # and take no params. ``session.logout`` is implemented inline (mutates
+    # client-local ``_ws_api_authenticated``); only ``session.status`` is
+    # wired through the registry. ``session.logon`` is connection-level
+    # (auth bootstrap) and lives in transport, not the getter registry.
+    dict(
+        name='get_session_status',
+        transport='ws_api',
+        ws_method='session.status',
+        params=False,
+        security_type=SecurityType.NONE,
+        weight=2,
+    ),
     dict(
         # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/websocket-api/New-Order
         # Request Weight: 0 (IP rate limit / x-mbx-used-weight-1m); 1 on the

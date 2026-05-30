@@ -72,9 +72,24 @@ from binance.futures.cm.endpoints.weights import (
 )
 
 
-# WS-API endpoint specs for COIN-M Futures trading / account (signed).
+# WS-API endpoint specs for COIN-M Futures session / trading / account.
 # Confirmed 2026-05-25 — same WS-API method names as USDⓈ-M on ws-dapi.
 WS_API_ENDPOINTS = [
+    # ----- session management (NONE) ---------------------------------------
+    # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-api-general-info
+    # ``session.status`` and ``session.logout`` are weight 2, security NONE,
+    # and take no params. ``session.logout`` is implemented inline (mutates
+    # client-local ``_ws_api_authenticated``); only ``session.status`` is
+    # wired through the registry. ``session.logon`` is connection-level
+    # (auth bootstrap) and lives in transport, not the getter registry.
+    dict(
+        name='get_session_status',
+        transport='ws_api',
+        ws_method='session.status',
+        params=False,
+        security_type=SecurityType.NONE,
+        weight=2,
+    ),
     dict(
         name='create_order',
         transport='ws_api',

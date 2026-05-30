@@ -326,6 +326,9 @@ def test_ws_api_endpoints_registry_matches_spec():
 
     expected = {
         # name: (ws_method, security, is_order, weight)
+        # session.status: weight 2, security NONE per general-info docs.
+        # https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-api-general-info
+        'get_session_status': ('session.status', SecurityType.NONE, False, 2),
         # order.place + order.modify: docs say IP weight 0 (ORDERS pool still
         # consumed via is_order=True); SDK bucket clamps to max(1, weight) so
         # local request_weight window still records >=1.
