@@ -1,3 +1,11 @@
+# `binance/no_track/` holds gitignored local scratch drafts (invalid syntax,
+# undefined names, legacy URL refs from prior experiments) that intentionally
+# never reach the wheel. Explicit exclude here so `ruff` and `make lint`
+# pass regardless of whether the user's ruff version honors `.gitignore`.
+# Mirrors `[tool.mypy].exclude` in `pyproject.toml` (which has its own
+# `(^|/)no_track/` regex).
+exclude = ["binance/no_track"]
+
 [lint]
 ignore = ["E501"]
 
