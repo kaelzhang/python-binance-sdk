@@ -35,7 +35,7 @@ def _um_force_orders_weight(kwargs) -> int:
 
 
 def _depth_weight(kwargs) -> int:
-    """`GET /fapi/v1/depth` weight depends on the ``limit`` parameter.
+    """`GET /fapi/v1/depth` (and WS-API ``depth``) weight depends on ``limit``.
 
     Per Binance UM docs:
       limit 5/10/20/50 -> weight 2
@@ -44,6 +44,11 @@ def _depth_weight(kwargs) -> int:
       limit 1000       -> weight 20
 
     Defaults to limit=500 (Binance docs default).
+
+    Shared by REST ``GET /fapi/v1/depth`` (``get_orderbook``) and WS-API
+    ``depth`` (``get_orderbook_ws``); the tier table is identical.
+    Docs (WS-API):
+      https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/websocket-api/Order-Book
     """
     limit = kwargs.get('limit', 500)
     if limit <= 50:
@@ -53,3 +58,21 @@ def _depth_weight(kwargs) -> int:
     if limit <= 500:
         return 10
     return 20
+
+
+def _ticker_price_ws_weight(kwargs) -> int:
+    """`ticker.price` WS-API weight: 1 with ``symbol``, 2 without.
+
+    Docs:
+      https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/websocket-api/Symbol-Price-Ticker
+    """
+    return 1 if 'symbol' in kwargs else 2
+
+
+def _ticker_book_ws_weight(kwargs) -> int:
+    """`ticker.book` WS-API weight: 2 with ``symbol``, 5 without.
+
+    Docs:
+      https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/websocket-api/Symbol-Order-Book-Ticker
+    """
+    return 2 if 'symbol' in kwargs else 5

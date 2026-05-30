@@ -40,6 +40,8 @@ from binance.futures.um.endpoints.getters import UMFuturesGetters
 from binance.futures.um.endpoints.weights import (
     _depth_weight,
     _premium_index_weight,
+    _ticker_book_ws_weight,
+    _ticker_price_ws_weight,
     _um_force_orders_weight,
     _um_open_algo_orders_weight,
     _um_open_orders_weight,
@@ -62,6 +64,40 @@ WS_API_ENDPOINTS = [
         params=False,
         security_type=SecurityType.NONE,
         weight=2,
+    ),
+    # ----- market data (NONE, WS-API) --------------------------------------
+    # Naming: REST keeps the bare ``get_orderbook`` / ``get_ticker_price`` /
+    # ``get_ticker_book`` names; WS-API variants carry ``_ws`` suffix.
+    # Rationale: REST has shipped for many releases under the bare names and
+    # is the long-stable surface; the WS-API variants are an additive,
+    # opt-in alternative for callers who already have a ws-fapi connection
+    # and want to avoid the REST round-trip. No semantic change to REST.
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/websocket-api/Order-Book
+        # Dynamic weight by `limit` — same tier table as REST `_depth_weight`.
+        name='get_orderbook_ws',
+        transport='ws_api',
+        ws_method='depth',
+        security_type=SecurityType.NONE,
+        weight=_depth_weight,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/websocket-api/Symbol-Price-Ticker
+        # Weight 1 with `symbol`, 2 without.
+        name='get_ticker_price_ws',
+        transport='ws_api',
+        ws_method='ticker.price',
+        security_type=SecurityType.NONE,
+        weight=_ticker_price_ws_weight,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/websocket-api/Symbol-Order-Book-Ticker
+        # Weight 2 with `symbol`, 5 without.
+        name='get_ticker_book_ws',
+        transport='ws_api',
+        ws_method='ticker.book',
+        security_type=SecurityType.NONE,
+        weight=_ticker_book_ws_weight,
     ),
     dict(
         # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/websocket-api/New-Order

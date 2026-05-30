@@ -1,8 +1,14 @@
-"""USDⓈ-M Futures market-data REST endpoint stubs.
+"""USDⓈ-M Futures market-data endpoint stubs (REST + WS-API).
 
 Public market data: open interest (current and historical), funding rate /
-info, premium index. These are pre-declared stubs whose bodies are replaced
-by ``define_getter`` at import time (see ``registry.py``).
+info, premium index, and the three documented WS-API methods (``depth``,
+``ticker.price``, ``ticker.book``). All stubs are replaced by
+``define_getter`` at import time (see ``registry.py``).
+
+WS-API getters carry the ``_ws`` suffix to avoid colliding with the REST
+counterparts of the same name (e.g. REST ``get_orderbook`` for
+``GET /fapi/v1/depth`` vs WS-API ``get_orderbook_ws`` for ``depth`` on
+``ws-fapi``).
 """
 
 from typing import Awaitable
@@ -10,6 +16,73 @@ from typing import Awaitable
 
 class UMMarketDataGetters:
     """Public market-data mixin for :class:`UMFuturesGetters`."""
+
+    # ----- WS-API: market data ----------------------------------------------
+
+    def get_orderbook_ws(self, **kwargs) -> Awaitable:
+        """Get the USDⓈ-M futures order-book snapshot over the WebSocket API.
+
+        WS-API counterpart of the REST ``get_orderbook``
+        (``GET /fapi/v1/depth``). Use this when you already have an open
+        WS-API connection and want to avoid a REST round-trip.
+
+        Weight (dynamic by ``limit``): 5/10/20/50 -> 2, 100 -> 5,
+        500 -> 10, 1000 -> 20. Default ``limit`` is 500.
+        Security: NONE.
+        Docs:
+        https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/websocket-api/Order-Book
+
+        Args:
+            symbol (str): The trading pair (e.g. ``'BTCUSDT'``).
+            limit (:obj:`int`, optional): Number of price levels per
+                side. Valid: 5, 10, 20, 50, 100, 500, 1000. Default 500.
+
+        Returns:
+            dict: ``{'lastUpdateId': int, 'E': int, 'T': int, 'bids': [...], 'asks': [...]}``.
+        """
+        ...  # pragma: no cover
+
+    def get_ticker_price_ws(self, **kwargs) -> Awaitable:
+        """Get the USDⓈ-M futures latest price ticker over the WebSocket API.
+
+        WS-API equivalent of REST ``GET /fapi/v1/ticker/price``.
+        Weight: 1 with ``symbol``, 2 when omitted (returns all symbols).
+        Security: NONE.
+        Docs:
+        https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/websocket-api/Symbol-Price-Ticker
+
+        Args:
+            symbol (:obj:`str`, optional): The futures symbol. If omitted,
+                returns the latest price for every symbol.
+
+        Returns:
+            dict | list: ``{'symbol': ..., 'price': ..., 'time': ...}``
+            (single symbol) or a list of such dicts.
+        """
+        ...  # pragma: no cover
+
+    def get_ticker_book_ws(self, **kwargs) -> Awaitable:
+        """Get the USDⓈ-M futures best bid/ask snapshot over the WebSocket API.
+
+        WS-API equivalent of REST ``GET /fapi/v1/ticker/bookTicker``.
+        Weight: 2 with ``symbol``, 5 when omitted.
+        Security: NONE.
+        Docs:
+        https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/websocket-api/Symbol-Order-Book-Ticker
+
+        Args:
+            symbol (:obj:`str`, optional): The futures symbol. If omitted,
+                returns the bid/ask snapshot for every symbol.
+
+        Returns:
+            dict | list: ``{'symbol': ..., 'bidPrice': ..., 'bidQty': ..., 'askPrice': ..., 'askQty': ..., 'time': ..., 'lastUpdateId': ...}``
+            (single symbol) or a list of such dicts.
+
+        Note:
+            Retail Price Improvement (RPI) orders are not visible on this
+            endpoint per docs.
+        """
+        ...  # pragma: no cover
 
     # ----- REST: market data ------------------------------------------------
 

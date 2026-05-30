@@ -324,6 +324,16 @@ async def test_um_cancel_algo_order_via_algo_order_cancel():
 def test_ws_api_endpoints_registry_matches_spec():
     by_name = {entry['name']: entry for entry in WS_API_ENDPOINTS}
 
+    # Entries with dynamic weight (callable) are validated by their own
+    # tests in `test_um_ws_api_market_data.py`; exclude them here so the
+    # static-weight assertion stays simple.
+    dynamic_weight_entries = {
+        'get_orderbook_ws',
+        'get_ticker_price_ws',
+        'get_ticker_book_ws',
+    }
+    static_by_name = {n: e for n, e in by_name.items() if n not in dynamic_weight_entries}
+
     expected = {
         # name: (ws_method, security, is_order, weight)
         # session.status: weight 2, security NONE per general-info docs.
@@ -346,13 +356,19 @@ def test_ws_api_endpoints_registry_matches_spec():
         'cancel_algo_order': ('algoOrder.cancel', SecurityType.TRADE, False, 1),
     }
 
-    assert set(expected) == set(by_name)
+    assert set(expected) == set(static_by_name)
     for name, (ws_method, security, is_order, weight) in expected.items():
-        entry = by_name[name]
+        entry = static_by_name[name]
         assert entry['ws_method'] == ws_method, f'{name}: ws_method mismatch'
         assert entry['security_type'] == security, f'{name}: security mismatch'
         assert entry.get('is_order', False) is is_order, f'{name}: is_order mismatch'
         assert entry['weight'] == weight, f'{name}: weight mismatch'
+
+    # Dynamic-weight entries exist with callable weights — full
+    # validation lives in `test_um_ws_api_market_data.py`.
+    for name in dynamic_weight_entries:
+        assert name in by_name, f'{name}: expected in registry'
+        assert callable(by_name[name]['weight']), f'{name}: weight should be callable'
 
 
 def test_create_order_registry_weight_is_zero():
