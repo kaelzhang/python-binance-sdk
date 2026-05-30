@@ -1,9 +1,15 @@
 """Tests for the USDⓈ-M Futures user-data-stream handlers, processor, and mixin.
 
 Covers:
-- Each event type (ACCOUNT_UPDATE, ORDER_TRADE_UPDATE, MARGIN_CALL,
-  ACCOUNT_CONFIG_UPDATE, listenKeyExpired, eventStreamTerminated) is routed to
-  the correct handler base via client._receive().
+- Each documented event type (ACCOUNT_UPDATE, ORDER_TRADE_UPDATE, MARGIN_CALL,
+  ACCOUNT_CONFIG_UPDATE, listenKeyExpired) is routed to the correct handler
+  base via client._receive().
+- ``eventStreamTerminated`` is **NOT** a documented futures event — the
+  Binance UM and CM user-data-streams index pages do not list it.  Per the
+  zero-backward-compatibility policy the SDK no longer ships
+  ``FuturesEventStreamTerminatedHandlerBase`` nor routes the payload type
+  through ``FuturesUserProcessor``; the Spot ``EventStreamTerminatedHandlerBase``
+  remains the supported surface for the Spot market where the docs DO list it.
 - FuturesUserProcessor routes by 'e' key (event type) within both WS-API
   'event' envelope and data-stream 'data' envelope.
 - subscribe_param tracks subscribed state (returns {} — listenKey flow handled by mixin).
@@ -36,7 +42,6 @@ from binance import (
     FuturesMarginCallHandlerBase,
     FuturesAccountConfigUpdateHandlerBase,
     FuturesListenKeyExpiredHandlerBase,
-    FuturesEventStreamTerminatedHandlerBase,
 )
 from binance.core.common.utils import create_future
 
@@ -171,12 +176,6 @@ LISTEN_KEY_EXPIRED_PAYLOAD = {
     'listenKey': 'WsCMN0a4KHUPTQuX6IUnqEZfB1inxmv1qR4kbf1Luabcd',
 }
 
-EVENT_STREAM_TERMINATED_PAYLOAD = {
-    'e': 'eventStreamTerminated',
-    'E': 1700000000000,
-}
-
-
 # ---------------------------------------------------------------------------
 # Helper: drive a payload through client._receive and capture what the handler
 # receives.  Mirrors test_handlers.py `run_handler` but for futures clients.
@@ -295,13 +294,97 @@ async def test_listen_key_expired_routed(client):
     assert 'listenKey' in received
 
 
-@pytest.mark.asyncio
-async def test_event_stream_terminated_routed(client):
-    """eventStreamTerminated routes to FuturesEventStreamTerminatedHandlerBase."""
-    received = await run_futures_handler(
-        client, FuturesEventStreamTerminatedHandlerBase, EVENT_STREAM_TERMINATED_PAYLOAD
+# ---------------------------------------------------------------------------
+# eventStreamTerminated — REMOVED on futures (Round-8 L-2)
+#
+# The Binance futures user-data-streams docs do NOT list eventStreamTerminated:
+# - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams
+# - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/user-data-streams
+# Per the zero-backward-compatibility policy the handler base + processor
+# entry are gone from the futures surface.  The Spot ``EventStreamTerminatedHandlerBase``
+# remains because the Spot user-data-stream docs DO list the event.
+# ---------------------------------------------------------------------------
+
+
+def test_futures_event_stream_terminated_handler_not_importable_from_binance_root():
+    """FuturesEventStreamTerminatedHandlerBase MUST NOT be importable from binance root."""
+    import binance
+
+    assert not hasattr(binance, 'FuturesEventStreamTerminatedHandlerBase')
+
+
+def test_futures_event_stream_terminated_handler_not_in_user_handlers_module():
+    """FuturesEventStreamTerminatedHandlerBase MUST NOT exist on the user_handlers module."""
+    from binance.futures import user_handlers
+
+    assert not hasattr(user_handlers, 'FuturesEventStreamTerminatedHandlerBase')
+
+
+def test_futures_event_stream_terminated_handler_explicit_import_raises_importerror():
+    """An explicit ``from binance.futures.user_handlers import ...`` MUST raise ImportError."""
+    with pytest.raises(ImportError):
+        from binance.futures.user_handlers import (  # noqa: F401
+            FuturesEventStreamTerminatedHandlerBase,
+        )
+
+
+def test_futures_event_stream_terminated_not_in_processor_payload_types():
+    """FuturesUserProcessor.PAYLOAD_TYPES MUST NOT carry 'eventStreamTerminated'."""
+    from binance.futures.user_processor import FuturesUserProcessor
+
+    assert 'eventStreamTerminated' not in FuturesUserProcessor.PAYLOAD_TYPES
+
+
+def test_futures_event_stream_terminated_is_message_type_does_not_match():
+    """is_message_type MUST NOT match eventStreamTerminated on either envelope (event removed Round-8 L-2)."""
+    from binance.futures.user_processor import FuturesUserProcessor
+
+    proc = FuturesUserProcessor(
+        UMFuturesClient(Credentials('key', 'secret'))
     )
-    assert received['e'] == 'eventStreamTerminated'
+
+    matched, payload = proc.is_message_type(
+        {'data': {'e': 'eventStreamTerminated', 'E': 1}, 'stream': 'fake'}
+    )
+    assert matched is False
+    assert payload is None
+
+    matched, payload = proc.is_message_type(
+        {'subscriptionId': 0, 'event': {'e': 'eventStreamTerminated', 'E': 1}}
+    )
+    assert matched is False
+    assert payload is None
+
+
+def test_spot_event_stream_terminated_handler_still_importable():
+    """The Spot ``EventStreamTerminatedHandlerBase`` MUST remain importable
+    (Spot docs document the event; only the futures handler was removed).
+    """
+    import binance
+    from binance.spot.user_handlers import EventStreamTerminatedHandlerBase
+
+    assert hasattr(binance, 'EventStreamTerminatedHandlerBase')
+    assert binance.EventStreamTerminatedHandlerBase is EventStreamTerminatedHandlerBase
+
+
+@pytest.mark.asyncio
+async def test_futures_recover_user_stream_if_needed_is_noop(client):
+    """The futures ``_recover_user_stream_if_needed`` override MUST be a no-op
+    that returns ``False``.
+
+    The Spot ``SubscriptionManager._recover_user_stream_if_needed`` would
+    re-subscribe the user stream when ``EVENT_STREAM_TERMINATED`` arrives on
+    the WS-API connection. On futures that is the wrong recovery path: the
+    dedicated user-data fstream is a separate connection that aioretry
+    auto-reconnects, and the listenKey lifecycle is driven by
+    ``listenKeyExpired`` instead.  This override therefore short-circuits
+    the Spot recovery path so a stray ``eventStreamTerminated`` on the
+    ws-fapi connection does not trigger a spurious listenKey re-issue.
+    """
+    # Calling the override directly must return False without performing any
+    # subscription work.
+    result = await client._recover_user_stream_if_needed()
+    assert result is False
 
 
 # ---------------------------------------------------------------------------
@@ -772,7 +855,7 @@ async def test_no_spot_subscribe_method_sent(patch_fstream):
 # ---------------------------------------------------------------------------
 
 def test_handler_bases_importable_from_binance():
-    """All futures user handler bases are importable from the binance root package."""
+    """All documented futures user handler bases are importable from the binance root package."""
     import binance
 
     assert hasattr(binance, 'FuturesAccountUpdateHandlerBase')
@@ -780,7 +863,6 @@ def test_handler_bases_importable_from_binance():
     assert hasattr(binance, 'FuturesMarginCallHandlerBase')
     assert hasattr(binance, 'FuturesAccountConfigUpdateHandlerBase')
     assert hasattr(binance, 'FuturesListenKeyExpiredHandlerBase')
-    assert hasattr(binance, 'FuturesEventStreamTerminatedHandlerBase')
 
 
 # ---------------------------------------------------------------------------
@@ -804,75 +886,8 @@ def test_account_config_update_docstring_marks_ai_as_um_only():
     assert 'CM' in doc
 
 
-# ---------------------------------------------------------------------------
-# ``eventStreamTerminated`` is SERVER-PUSHED by Binance on the ws-fapi
-# connection (mirrors the spot WS-API behaviour). The dedicated futures
-# user-data fstream uses ``listenKeyExpired`` instead for listenKey
-# invalidation — that is the SDK's recovery trigger, NOT a synthesized
-# eventStreamTerminated. The handler docstring must reflect this.
-#
-# Source: https://developers.binance.com/docs/binance-spot-api-docs/user-data-stream
-# Futures listenKey flow: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams
-# ---------------------------------------------------------------------------
-
-
-def test_futures_event_stream_terminated_docstring_marks_event_as_server_pushed():
-    """FuturesEventStreamTerminatedHandlerBase docstring must mark the event as server-pushed on the ws-fapi connection, NOT SDK-synthesized."""
-    doc = FuturesEventStreamTerminatedHandlerBase.__doc__ or ''
-    # Stale wording must be gone (the SDK does not synthesize this event
-    # anywhere in source — it is always pushed by the Binance WS-API).
-    assert 'synthesized by the SDK' not in doc
-    assert 'SDK-synthesized' not in doc
-    # The docstring must say it is server-pushed by Binance.
-    assert 'server-pushed' in doc or 'pushed by Binance' in doc
-    # It must also point at the listenKeyExpired recovery channel for the
-    # dedicated futures user-data fstream so users do not confuse the two.
-    assert 'listenKeyExpired' in doc
-
-
-def test_futures_event_stream_terminated_docstring_marks_defensive_only():
-    """FuturesEventStreamTerminatedHandlerBase docstring must explicitly
-    state that this event is DEFENSIVE ONLY on futures: the futures
-    user-data-streams docs do NOT document ``eventStreamTerminated``;
-    only Spot does. The SDK keeps the handler in case Binance pushes
-    one on the ws-fapi connection, but callers must not assume it is
-    a documented futures event.
-
-    Docs (absence on futures):
-    https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams
-    """
-    doc = FuturesEventStreamTerminatedHandlerBase.__doc__ or ''
-    # Defensive-only wording must be explicit.
-    assert 'defensive' in doc.lower()
-    # Mention that futures docs do NOT document this event.
-    lowered = doc.lower()
-    assert (
-        'not documented' in lowered
-        or 'do not document' in lowered
-        or 'does not document' in lowered
-    ), 'docstring must state futures docs do not document this event'
-
-
-def test_futures_user_processor_payload_types_comment_marks_defensive_only():
-    """The line near ``FuturesUserProcessor.PAYLOAD_TYPES`` that registers
-    ``EVENT_STREAM_TERMINATED`` must include a comment marking it as
-    defensive-only coverage (futures docs do not document it).
-    """
-    import inspect
-
-    from binance.futures.user_processor import FuturesUserProcessor
-
-    src = inspect.getsource(FuturesUserProcessor)
-    lowered = src.lower()
-    # Source must explicitly flag this entry as defensive.
-    assert 'defensive' in lowered, (
-        'FuturesUserProcessor source must mark the eventStreamTerminated '
-        'PAYLOAD_TYPES entry as defensive-only'
-    )
-
-
 def test_handler_bases_are_handler_subclasses():
-    """All futures user handler bases are subclasses of core Handler."""
+    """All documented futures user handler bases are subclasses of core Handler."""
     from binance.core.handlers.base import Handler
 
     assert issubclass(FuturesAccountUpdateHandlerBase, Handler)
@@ -880,7 +895,6 @@ def test_handler_bases_are_handler_subclasses():
     assert issubclass(FuturesMarginCallHandlerBase, Handler)
     assert issubclass(FuturesAccountConfigUpdateHandlerBase, Handler)
     assert issubclass(FuturesListenKeyExpiredHandlerBase, Handler)
-    assert issubclass(FuturesEventStreamTerminatedHandlerBase, Handler)
 
 
 # ---------------------------------------------------------------------------

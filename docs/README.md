@@ -270,7 +270,6 @@ from binance import (
     FuturesMarginCallHandlerBase,
     FuturesAccountConfigUpdateHandlerBase,
     FuturesListenKeyExpiredHandlerBase,
-    FuturesEventStreamTerminatedHandlerBase,
 )
 
 um = UMFuturesClient(Credentials(api_key='KEY', api_secret='SECRET'))
@@ -293,7 +292,6 @@ Handler bases to subclass (from `binance`):
 - `FuturesMarginCallHandlerBase` — `MARGIN_CALL` (position risk ratio exceeds maintenance margin)
 - `FuturesAccountConfigUpdateHandlerBase` — `ACCOUNT_CONFIG_UPDATE` (leverage or multi-assets mode change)
 - `FuturesListenKeyExpiredHandlerBase` — `listenKeyExpired` (key expired; SDK auto-recovers)
-- `FuturesEventStreamTerminatedHandlerBase` — SDK-synthesized event when the dedicated fstream drops
 - `FuturesTradeLiteHandlerBase` — `TRADE_LITE` (low-latency fill; fewer fields than `ORDER_TRADE_UPDATE`; **UM only**)
 - `FuturesStrategyUpdateHandlerBase` — `STRATEGY_UPDATE` (algo/TWAP strategy lifecycle; UM + CM)
 - `FuturesAlgoUpdateHandlerBase` — `ALGO_UPDATE` (algo order status change; **UM only**; carries conditional-order rejection reasons in `o.rm` since 2025-12-10)
@@ -315,6 +313,18 @@ Handler bases to subclass (from `binance`):
 > Callers that still need grid-strategy lifecycle visibility should
 > subscribe to `STRATEGY_UPDATE` (`FuturesStrategyUpdateHandlerBase`)
 > instead — that event remains documented and live on both UM and CM.
+
+> **Removed (Round-8 L-2, 2026-05-30):** `FuturesEventStreamTerminatedHandlerBase`
+> / `eventStreamTerminated`.  The futures user-data-streams docs do NOT list
+> this event — only the Spot user-data-stream docs do
+> ([UM user-data-streams index](https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams),
+> [CM user-data-streams index](https://developers.binance.com/docs/derivatives/coin-margined-futures/user-data-streams)).
+> Per the strict docs-only policy the class is gone from
+> `binance.futures.user_handlers` and the top-level `binance` package.  The
+> Spot `EventStreamTerminatedHandlerBase` is unaffected (Spot docs DO list
+> the event).  For the dedicated futures user-data fstream, `listenKeyExpired`
+> remains the documented recovery channel — subscribe to
+> `FuturesListenKeyExpiredHandlerBase` to observe it.
 
 ### Futures market-data streams
 
@@ -450,7 +460,6 @@ from binance import (
     FuturesMarginCallHandlerBase,
     FuturesAccountConfigUpdateHandlerBase,
     FuturesListenKeyExpiredHandlerBase,
-    FuturesEventStreamTerminatedHandlerBase,
 )
 
 cm = CMFuturesClient(Credentials(api_key='KEY', api_secret='SECRET'))

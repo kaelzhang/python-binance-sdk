@@ -137,7 +137,6 @@ from binance.futures.user_handlers import (
     FuturesMarginCallHandlerBase,
     FuturesAccountConfigUpdateHandlerBase,
     FuturesListenKeyExpiredHandlerBase,
-    FuturesEventStreamTerminatedHandlerBase,
     FuturesTradeLiteHandlerBase,
     FuturesStrategyUpdateHandlerBase,
     FuturesAlgoUpdateHandlerBase,

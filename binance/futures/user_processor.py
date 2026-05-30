@@ -17,7 +17,6 @@ from binance.core.common.constants import (
     SubType,
     KEY_PAYLOAD,
     KEY_PAYLOAD_TYPE,
-    EVENT_STREAM_TERMINATED,
 )
 
 from binance.core.common.exceptions import UserStreamNotSubscribedException
@@ -28,7 +27,6 @@ from binance.futures.user_handlers import (
     FuturesMarginCallHandlerBase,
     FuturesAccountConfigUpdateHandlerBase,
     FuturesListenKeyExpiredHandlerBase,
-    FuturesEventStreamTerminatedHandlerBase,
     FuturesTradeLiteHandlerBase,
     FuturesStrategyUpdateHandlerBase,
     FuturesAlgoUpdateHandlerBase,
@@ -53,15 +51,6 @@ class FuturesUserProcessor(Processor):
     - ``ACCOUNT_CONFIG_UPDATE``:             leverage or multi-assets-mode change
     - ``listenKeyExpired``:                  listen-key expiry notification (server-pushed
                                              on the dedicated user-data fstream)
-    - ``eventStreamTerminated``:             **defensive-only** on futures — the
-                                             USDⓈ-M / CM user-data-streams docs
-                                             do NOT document this event (only
-                                             Spot does). If Binance does push
-                                             one on the ws-fapi connection the
-                                             SDK delivers it cleanly; routine
-                                             ws-fapi-session termination is
-                                             expected to surface as
-                                             ``listenKeyExpired`` instead.
     - ``TRADE_LITE``:                        low-latency fill (UM only)
     - ``STRATEGY_UPDATE``:                   algo/strategy lifecycle (UM + CM)
     - ``ALGO_UPDATE``:                       algo order status (UM only)
@@ -78,6 +67,18 @@ class FuturesUserProcessor(Processor):
       (https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-GRID-UPDATE
       and the CM counterpart).  Callers that still need grid-strategy
       lifecycle visibility should subscribe to ``STRATEGY_UPDATE`` instead.
+
+    REMOVED (Round-8 L-2, 2026-05-30):
+    - ``eventStreamTerminated`` was dropped because the futures user-data-streams
+      docs do NOT list this event (only Spot does); the SDK adopts a strict
+      docs-only policy and no longer ships
+      ``FuturesEventStreamTerminatedHandlerBase``.  The Spot
+      ``EventStreamTerminatedHandlerBase`` is unaffected.  For the dedicated
+      futures user-data fstream, ``listenKeyExpired`` remains the documented
+      recovery channel — subscribe to ``FuturesListenKeyExpiredHandlerBase``.
+      Sources:
+      https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams
+      https://developers.binance.com/docs/derivatives/coin-margined-futures/user-data-streams
     """
 
     SUB_TYPE = SubType.USER
@@ -88,13 +89,6 @@ class FuturesUserProcessor(Processor):
         'MARGIN_CALL',
         'ACCOUNT_CONFIG_UPDATE',
         'listenKeyExpired',
-        # ``eventStreamTerminated`` is defensive-only on futures: the futures
-        # user-data-streams docs do NOT document this event (only the Spot
-        # docs do). The SDK keeps the entry so that if Binance ever pushes
-        # one on the ws-fapi connection it is delivered to subscribers
-        # cleanly instead of dropped — see
-        # ``FuturesEventStreamTerminatedHandlerBase`` for the full rationale.
-        EVENT_STREAM_TERMINATED,
         'TRADE_LITE',
         'STRATEGY_UPDATE',
         'ALGO_UPDATE',
@@ -106,7 +100,6 @@ class FuturesUserProcessor(Processor):
         FuturesMarginCallHandlerBase,
         FuturesAccountConfigUpdateHandlerBase,
         FuturesListenKeyExpiredHandlerBase,
-        FuturesEventStreamTerminatedHandlerBase,
         FuturesTradeLiteHandlerBase,
         FuturesStrategyUpdateHandlerBase,
         FuturesAlgoUpdateHandlerBase,
