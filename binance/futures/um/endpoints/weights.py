@@ -76,3 +76,21 @@ def _ticker_book_ws_weight(kwargs) -> int:
       https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/websocket-api/Symbol-Order-Book-Ticker
     """
     return 2 if 'symbol' in kwargs else 5
+
+
+def _api_trading_status_weight(kwargs) -> int:
+    """`apiTradingStatus` weight: 1 with ``symbol``, 10 without.
+
+    Docs:
+      https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Futures-Trading-Quantitative-Rules-Indicators
+    """
+    return 1 if 'symbol' in kwargs else 10
+
+
+def _asset_index_weight(kwargs) -> int:
+    """`assetIndex` weight: 1 with ``symbol``, 10 without.
+
+    Docs:
+      https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Multi-Assets-Mode-Asset-Index
+    """
+    return 1 if 'symbol' in kwargs else 10

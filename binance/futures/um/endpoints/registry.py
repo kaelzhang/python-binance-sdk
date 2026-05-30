@@ -38,6 +38,8 @@ from binance.core.getters import define_getter
 from binance.futures.um.constants import UM_REST_HOST
 from binance.futures.um.endpoints.getters import UMFuturesGetters
 from binance.futures.um.endpoints.weights import (
+    _api_trading_status_weight,
+    _asset_index_weight,
     _depth_weight,
     _premium_index_weight,
     _ticker_book_ws_weight,
@@ -524,6 +526,126 @@ REST_ENDPOINTS = [
         rest_url=UM_REST_HOST + '/fapi/v1/multiAssetsMargin',
         security_type=SecurityType.TRADE,
         weight=1,
+    ),
+    # ----- Account configuration / status / fee (USER_DATA + TRADE) ---------
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Account-Config
+        # Request Weight: 5. USER_DATA. Account-level configuration: fee tier,
+        # multi-assets margin, position mode, trade-deposit-withdraw flags.
+        name='get_account_config',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/accountConfig',
+        security_type=SecurityType.USER_DATA,
+        weight=5,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Symbol-Config
+        # Request Weight: 5. USER_DATA. Per-symbol margin type, leverage,
+        # auto-add-margin, etc.
+        name='get_symbol_config',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/symbolConfig',
+        security_type=SecurityType.USER_DATA,
+        weight=5,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Futures-Trading-Quantitative-Rules-Indicators
+        # Request Weight: 1 with `symbol`, 10 without. USER_DATA.
+        # Reports server-side quantitative-rule violation counters and
+        # current lock status — critical for live trading risk monitoring.
+        name='get_api_trading_status',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/apiTradingStatus',
+        security_type=SecurityType.USER_DATA,
+        weight=_api_trading_status_weight,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Get-BNB-Burn-Status
+        # Request Weight: 30. USER_DATA. Returns the BNB-burn fee-discount
+        # state.
+        name='get_fee_burn_status',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/feeBurn',
+        security_type=SecurityType.USER_DATA,
+        weight=30,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Toggle-BNB-Burn-On-Futures-Trade
+        # Request Weight: 1. TRADE (per docs heading). POST toggles the
+        # BNB-burn fee-discount flag.
+        name='set_fee_burn',
+        transport='rest',
+        method=RequestMethod.POST,
+        rest_url=UM_REST_HOST + '/fapi/v1/feeBurn',
+        security_type=SecurityType.TRADE,
+        weight=1,
+    ),
+    # ----- Market-data extras (NONE) ----------------------------------------
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Trading-Schedule
+        # Request Weight: 5. NONE (public). Trading-session schedule for
+        # TradFi-perp underlying assets (PRE_MARKET / REGULAR /
+        # AFTER_MARKET / OVERNIGHT / NO_TRADING).
+        name='get_trading_schedule',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/tradingSchedule',
+        security_type=SecurityType.NONE,
+        weight=5,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/ADL-Risk
+        # Request Weight: 1. NONE (docs do not list a security tag for
+        # this endpoint; it lives under the market-data REST tree and the
+        # response carries no account-scoped fields). Per-symbol
+        # auto-deleveraging risk rating ('high'/'medium'/'low'), refreshed
+        # every 30 minutes server-side.
+        name='get_symbol_adl_risk',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/symbolAdlRisk',
+        security_type=SecurityType.NONE,
+        weight=1,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Insurance-Fund
+        # Request Weight: 1. NONE. Insurance-fund balance snapshots
+        # grouped by pool; relevant for liquidation-risk modeling.
+        name='get_insurance_balance',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/insuranceBalance',
+        security_type=SecurityType.NONE,
+        weight=1,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Index-Constituents
+        # Request Weight: 2. NONE. Returns the exchanges / weights that
+        # compose the index price for `symbol` (required).
+        name='get_constituents',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/constituents',
+        security_type=SecurityType.NONE,
+        weight=2,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Order-Book-RPI
+        # Request Weight: 20 (fixed; the only documented `limit` value is
+        # 1000). NONE. Snapshot of the order book including RPI orders;
+        # companion REST endpoint to the streaming `<symbol>@rpiDepth`.
+        name='get_rpi_depth',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/rpiDepth',
+        security_type=SecurityType.NONE,
+        weight=20,
+    ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Multi-Assets-Mode-Asset-Index
+        # Request Weight: 1 with `symbol`, 10 without. NONE. Asset-index
+        # info used by multi-assets-margin mode for cross-quote
+        # collateral conversion.
+        name='get_asset_index',
+        transport='rest',
+        rest_url=UM_REST_HOST + '/fapi/v1/assetIndex',
+        security_type=SecurityType.NONE,
+        weight=_asset_index_weight,
     ),
 ]
 

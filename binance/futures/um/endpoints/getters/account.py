@@ -338,3 +338,89 @@ class UMAccountGetters:
             dict: Confirmation.
         """
         ...  # pragma: no cover
+
+    # ----- REST: account configuration / status / fee -----------------------
+
+    def get_account_config(self, **kwargs) -> Awaitable:
+        """Queries account-level configuration (fee tier, multi-assets margin, etc.).
+
+        Weight: 5. Security: USER_DATA.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Account-Config
+
+        Args:
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            dict: Account configuration including ``feeTier``,
+            ``canTrade``, ``canDeposit``, ``canWithdraw``,
+            ``dualSidePosition``, ``multiAssetsMargin``, etc.
+        """
+        ...  # pragma: no cover
+
+    def get_symbol_config(self, **kwargs) -> Awaitable:
+        """Queries symbol-level configuration (margin type, leverage, etc.).
+
+        Weight: 5. Security: USER_DATA.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Symbol-Config
+
+        Args:
+            symbol (:obj:`str`, optional): The futures symbol. If omitted,
+                returns config for every symbol with a non-default setting.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            list: Per-symbol configuration records.
+        """
+        ...  # pragma: no cover
+
+    def get_api_trading_status(self, **kwargs) -> Awaitable:
+        """Queries the API trading quantitative-rules indicators.
+
+        Weight: 1 with ``symbol``, 10 without. Security: USER_DATA.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Futures-Trading-Quantitative-Rules-Indicators
+
+        Used to detect server-side trading restrictions / "locked" flags
+        on the API key (e.g. excess GTX cancellations triggering a
+        cooldown). Critical for live operations — surface the result on a
+        regular cadence so the trader knows before an order is rejected.
+
+        Args:
+            symbol (:obj:`str`, optional): The futures symbol. If omitted,
+                returns the indicators for every symbol the key has used.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            dict: ``{'indicators': {...}, 'updateTime': ...}`` describing
+            current rule-violation counters and any active lock window.
+        """
+        ...  # pragma: no cover
+
+    def get_fee_burn_status(self, **kwargs) -> Awaitable:
+        """Queries whether BNB-burn fee discount is active on USDⓈ-M Futures.
+
+        Weight: 30. Security: USER_DATA.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Get-BNB-Burn-Status
+
+        Args:
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            dict: ``{'feeBurn': True/False}``.
+        """
+        ...  # pragma: no cover
+
+    def set_fee_burn(self, **kwargs) -> Awaitable:
+        """Toggles BNB-burn fee discount on USDⓈ-M Futures.
+
+        Weight: 1. Security: TRADE.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Toggle-BNB-Burn-On-Futures-Trade
+
+        Args:
+            feeBurn (str): ``'true'`` to enable BNB-burn discount;
+                ``'false'`` to disable.
+            recvWindow (:obj:`long`, optional): Max 60000.
+
+        Returns:
+            dict: ``{'code': 200, 'msg': 'success'}`` on success.
+        """
+        ...  # pragma: no cover

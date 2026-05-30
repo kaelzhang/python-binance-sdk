@@ -200,6 +200,119 @@ class UMMarketDataGetters:
         """
         ...  # pragma: no cover
 
+    def get_trading_schedule(self, **kwargs) -> Awaitable:
+        """Gets trading session schedules for TradFi-perp underlying assets.
+
+        Weight: 5. Security: NONE.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Trading-Schedule
+
+        Returns session schedules (PRE_MARKET, REGULAR, AFTER_MARKET,
+        OVERNIGHT, NO_TRADING) for the underlying U.S. equity / commodity
+        markets behind TradFi-perp contracts; data spans one week from
+        the prior day. Use to avoid placing orders during NO_TRADING
+        windows on TradFi-perp products.
+
+        Returns:
+            list: Trading-session schedule records.
+        """
+        ...  # pragma: no cover
+
+    def get_symbol_adl_risk(self, **kwargs) -> Awaitable:
+        """Gets the ADL risk rating per symbol.
+
+        Weight: 1. Security: NONE.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/ADL-Risk
+
+        The rating (``'high'`` / ``'medium'`` / ``'low'``) measures the
+        likelihood that a position will be auto-deleveraged based on
+        insurance-fund balance, order-book depth, volatility, leverage
+        and unrealized PnL. Server refreshes every 30 minutes.
+
+        Args:
+            symbol (:obj:`str`, optional): The futures symbol. If omitted,
+                returns ratings for all symbols.
+
+        Returns:
+            dict | list: ``{'symbol': ..., 'adlRisk': ..., 'updateTime': ...}``
+            for a single symbol, or a list of such dicts.
+        """
+        ...  # pragma: no cover
+
+    def get_insurance_balance(self, **kwargs) -> Awaitable:
+        """Gets the insurance-fund balance snapshots grouped by pool.
+
+        Weight: 1. Security: NONE.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Insurance-Fund
+
+        Args:
+            symbol (:obj:`str`, optional): Filter to one symbol.
+
+        Returns:
+            list: Insurance-fund snapshot records — pool name, member
+            symbols, asset balances, and timestamps.
+        """
+        ...  # pragma: no cover
+
+    def get_constituents(self, **kwargs) -> Awaitable:
+        """Gets the index-price constituents for a futures symbol.
+
+        Weight: 2. Security: NONE.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Index-Constituents
+
+        Reveals which exchanges contribute to the index price and at
+        what weight. Useful for diagnosing index-price anomalies.
+
+        Args:
+            symbol (str): The futures symbol (required).
+
+        Returns:
+            dict: ``{'symbol': ..., 'time': ..., 'constituents': [{'exchange': ..., 'symbol': ..., 'weight': ...}, ...]}``.
+        """
+        ...  # pragma: no cover
+
+    def get_rpi_depth(self, **kwargs) -> Awaitable:
+        """Gets the USDⓈ-M futures order book WITH Retail Price Improvement orders.
+
+        Weight: 20 (fixed; the only documented ``limit`` value is 1000).
+        Security: NONE.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Order-Book-RPI
+
+        Companion REST endpoint to the streaming ``<symbol>@rpiDepth``;
+        snapshots the order book with RPI orders aggregated in (crossed
+        price levels excluded). Use to seed a local book that consumes
+        the RPI diff-depth stream.
+
+        Args:
+            symbol (str): The futures symbol.
+            limit (:obj:`int`, optional): Default and only valid value 1000.
+
+        Returns:
+            dict: ``{'lastUpdateId': ..., 'bids': [...], 'asks': [...]}``
+            including RPI orders.
+        """
+        ...  # pragma: no cover
+
+    def get_asset_index(self, **kwargs) -> Awaitable:
+        """Gets multi-assets-mode asset-index info.
+
+        Weight: 1 with ``symbol``, 10 without. Security: NONE.
+        Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Multi-Assets-Mode-Asset-Index
+
+        Used by the multi-assets-margin mode to translate collateral
+        across quote-asset boundaries.
+
+        Args:
+            symbol (:obj:`str`, optional): Asset-pair designator (e.g.
+                ``'BTCUSD'``). If omitted, returns the index for every
+                supported asset.
+
+        Returns:
+            dict | list: Index info — ``symbol``, ``time``, ``index``,
+            ``bidBuffer``, ``askBuffer``, ``bidRate``, ``askRate``,
+            ``autoExchangeBidBuffer``, ``autoExchangeAskBuffer``, etc.
+        """
+        ...  # pragma: no cover
+
     def get_premium_index(self, **kwargs) -> Awaitable:
         """Gets the current mark price, index price, and funding rate for a symbol.
 
