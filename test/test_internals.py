@@ -663,3 +663,63 @@ def test_stringenum_str_is_wire_value():
     assert str(RateLimitSource.HEADER) == 'header'
     assert str(StreamName.DATA) == 'data'
     assert str(StreamErrorPhase.LOGON) == 'logon'
+
+
+# --- SecurityType de-aliasing (Round-8) -----------------------------------
+
+def test_security_type_no_aliases():
+    """All 5 documented security tiers must be distinct enum members.
+
+    Docs:
+        https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/general-api-information
+        https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-api-general-info
+    """
+    from binance.core.common.constants import SecurityType
+
+    assert SecurityType.TRADE is not SecurityType.USER_DATA, \
+        'USER_DATA must NOT alias to TRADE'
+    assert SecurityType.USER_STREAM is not SecurityType.MARKET_DATA, \
+        'MARKET_DATA must NOT alias to USER_STREAM'
+    assert len(list(SecurityType)) == 5, \
+        'docs document 5 distinct tiers (NONE/TRADE/USER_DATA/USER_STREAM/MARKET_DATA)'
+    assert SecurityType.USER_DATA.name == 'USER_DATA'
+    assert SecurityType.MARKET_DATA.name == 'MARKET_DATA'
+    assert SecurityType.TRADE.name == 'TRADE'
+    assert SecurityType.USER_STREAM.name == 'USER_STREAM'
+    assert SecurityType.NONE.name == 'NONE'
+
+
+def test_security_type_string_values_match_docs():
+    """SecurityType is a StringEnum whose wire value matches the docs' tier name."""
+    from binance.core.common.constants import SecurityType
+
+    assert str(SecurityType.NONE) == 'NONE'
+    assert str(SecurityType.TRADE) == 'TRADE'
+    assert str(SecurityType.USER_DATA) == 'USER_DATA'
+    assert str(SecurityType.USER_STREAM) == 'USER_STREAM'
+    assert str(SecurityType.MARKET_DATA) == 'MARKET_DATA'
+
+
+def test_security_type_auth_requirements():
+    """The auth properties must match the documented tier semantics.
+
+    - NONE: public endpoint, no credentials.
+    - TRADE / USER_DATA: SIGNED (apiKey + HMAC/Ed25519/RSA signature).
+    - USER_STREAM / MARKET_DATA: apiKey only, no signature.
+    """
+    from binance.core.common.constants import SecurityType
+
+    # NONE: no apiKey, no signature.
+    assert not SecurityType.NONE.requires_api_key
+    assert not SecurityType.NONE.requires_signature
+
+    # All non-NONE tiers require apiKey.
+    for st in (SecurityType.TRADE, SecurityType.USER_DATA,
+               SecurityType.USER_STREAM, SecurityType.MARKET_DATA):
+        assert st.requires_api_key, f'{st.name} should require apiKey'
+
+    # Only TRADE and USER_DATA are SIGNED.
+    assert SecurityType.TRADE.requires_signature
+    assert SecurityType.USER_DATA.requires_signature
+    assert not SecurityType.USER_STREAM.requires_signature
+    assert not SecurityType.MARKET_DATA.requires_signature

@@ -427,7 +427,8 @@ class SubscriptionManager:
         (:meth:`_ws_api_request`) before any network round-trip, so this only
         assembles the auth fields.
         """
-        need_api_key, need_signed = security.value
+        need_api_key = security.requires_api_key
+        need_signed = security.requires_signature
 
         if not need_api_key:
             # SecurityType.NONE -> public, no credentials.
@@ -494,7 +495,8 @@ class SubscriptionManager:
 
         # F-48: inject the client-level recv_window when the caller did not
         # supply one explicitly and the endpoint is signed.
-        need_api_key, need_signed = security.value
+        need_api_key = security.requires_api_key
+        need_signed = security.requires_signature
         if need_signed and self._recv_window is not None:
             if 'recvWindow' not in request_params:
                 request_params['recvWindow'] = min(

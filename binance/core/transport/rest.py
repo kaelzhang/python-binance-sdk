@@ -331,7 +331,8 @@ class RestTransport:
         :meth:`close`).  The API-key header is set per-request so the session
         is credential-neutral.
         """
-        need_api_key, need_signed = security_type.value
+        need_api_key = security_type.requires_api_key
+        need_signed = security_type.requires_signature
 
         if need_api_key:
             if self._credentials.api_key is None:

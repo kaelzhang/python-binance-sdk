@@ -285,38 +285,53 @@ ATOM: dict = {}
 # ==================================================
 
 
-class SecurityType(_Enum):
-    """REST endpoint authentication requirements.
+class SecurityType(StringEnum):
+    """Binance security tier for a request.
 
-    Each member is a `(need_api_key, need_signed)` tuple that the request
-    builder inspects to decide which credentials to attach.  Because the values
-    are tuples (not strings), this class uses the plain stdlib ``_Enum`` base
-    rather than ``StringEnum``; the string representation is the tuple's repr,
-    not typically used in wire messages directly.
+    One member per documented tier; the wire value is the tier name as printed
+    in the Binance API docs (``str(SecurityType.TRADE) == 'TRADE'``).  Compare
+    members to members (``security_type is SecurityType.TRADE``); never compare
+    to a raw string.
 
-    Members:
-        NONE: No credentials required — public market data endpoints.
-            Value: (False, False).
-        TRADE: Requires an API key and an HMAC-SHA256 signature.  Used for
-            order placement and management endpoints.
-            Value: (True, True).
-        USER_DATA: Requires an API key and a signature.  Used for account
-            information and trade history endpoints.
-            Value: (True, True).
-        USER_STREAM: Requires only an API key (no signature).  Used for
-            managing user-data stream listen keys.
-            Value: (True, False).
-        MARKET_DATA: Requires only an API key (no signature).  Used for
-            some historical market-data endpoints.
-            Value: (True, False).
+    Auth requirements are exposed as derived properties — never embedded in
+    ``.value`` — so two tiers with identical credential requirements (TRADE vs
+    USER_DATA, USER_STREAM vs MARKET_DATA) remain distinct enum members and
+    preserve their semantic metadata at every call site.
+
+    Members (see Spot WS-API "General API Information" and Futures
+    "General WSS information"):
+
+        NONE: Public endpoint — no apiKey, no signature.  Market-data
+            endpoints and a few utilities (``ping``, ``time``, ``exchangeInfo``).
+        TRADE: SIGNED — apiKey + HMAC-SHA256 / Ed25519 / RSA signature.
+            Order placement, modification, cancellation.
+        USER_DATA: SIGNED — apiKey + signature.  Account information,
+            trade history, listing endpoints scoped to the user.
+        USER_STREAM: apiKey only (no signature).  Spot user-data stream
+            listen-key management.
+        MARKET_DATA: apiKey only (no signature).  A small subset of
+            historical market-data endpoints.
+
+    Docs:
+        https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/general-api-information
+        https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-api-general-info
     """
 
-    # {TYPE} = (NEED_API_KEY, NEED_SIGNATURE)
-    NONE = (False, False)
-    TRADE = (True, True)
-    USER_DATA = (True, True)
-    USER_STREAM = (True, False)
-    MARKET_DATA = (True, False)
+    NONE = 'NONE'
+    TRADE = 'TRADE'
+    USER_DATA = 'USER_DATA'
+    USER_STREAM = 'USER_STREAM'
+    MARKET_DATA = 'MARKET_DATA'
+
+    @property
+    def requires_api_key(self) -> bool:
+        """``True`` for every tier except :attr:`NONE`."""
+        return self is not SecurityType.NONE
+
+    @property
+    def requires_signature(self) -> bool:
+        """``True`` only for the SIGNED tiers (:attr:`TRADE`, :attr:`USER_DATA`)."""
+        return self in (SecurityType.TRADE, SecurityType.USER_DATA)
 
 
 class RequestMethod(StringEnum):
