@@ -169,3 +169,22 @@ class CMMarketDataGetters:
                 ]
         """
         ...  # pragma: no cover
+
+    def get_constituents(self, **kwargs) -> Awaitable:
+        """Gets the index-price constituents for a COIN-M futures symbol.
+
+        Weight: 1. Security: NONE.
+        Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/market-data/rest-api/Index-Constituents
+
+        Reveals which exchanges contribute to the index price and at what
+        weight. Useful for diagnosing index-price anomalies. The CM
+        weight (1) is lower than the UM equivalent (2).
+
+        Args:
+            symbol (str): The COIN-M symbol (required), e.g.
+                ``'BTCUSD_PERP'``.
+
+        Returns:
+            dict: ``{'symbol': ..., 'time': ..., 'constituents': [{'exchange': ..., 'symbol': ..., 'weight': ...}, ...]}``.
+        """
+        ...  # pragma: no cover

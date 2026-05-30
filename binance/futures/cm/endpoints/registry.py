@@ -198,6 +198,17 @@ REST_ENDPOINTS = [
         # 1/10 split that UM has).
         weight=10,
     ),
+    dict(
+        # Docs: https://developers.binance.com/docs/derivatives/coin-margined-futures/market-data/rest-api/Index-Constituents
+        # Request Weight: 1. NONE. Returns the exchanges / weights that
+        # compose the index price for `symbol` (required). CM weight is 1
+        # (vs UM's 2).
+        name='get_constituents',
+        transport='rest',
+        rest_url=CM_REST_HOST + '/dapi/v1/constituents',
+        security_type=SecurityType.NONE,
+        weight=1,
+    ),
     # ----- Trading -----------------------------------------------------------
     # NOTE: ``create_test_order`` (POST /dapi/v1/order/test) is intentionally
     # absent — Binance does not document a "Test New Order" endpoint for the
