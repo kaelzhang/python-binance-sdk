@@ -31,6 +31,14 @@ from binance.futures.cm.constants import WS_MAX_MESSAGES_PER_SEC
 
 # Confirmed from GET /dapi/v1/exchangeInfo rateLimits (2026-05-25):
 #   {'rateLimitType': 'REQUEST_WEIGHT', 'interval': 'MINUTE', 'intervalNum': 1, 'limit': 2400}
+#
+# NOTE: developers.binance.com/docs/derivatives/coin-margined-futures/common-definition
+# shows `"limit": 6000` in its sample exchangeInfo response. That value is
+# ILLUSTRATIVE ONLY (not a canonical spec) — the actual per-account limit
+# is delivered at runtime via /dapi/v1/exchangeInfo and reconciled here
+# by the rate-limit core. The 2400 below is the conservative observed
+# default; the SDK still adjusts to whatever the live exchangeInfo
+# response says on the first signed request.
 CM_REQUEST_WEIGHT_LIMIT = 2400
 CM_REQUEST_WEIGHT_INTERVAL = 60.0   # 1 minute in seconds
 CM_WEIGHT_SAFETY_RATIO = 0.9        # stay at 90% client-side
