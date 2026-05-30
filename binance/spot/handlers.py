@@ -26,8 +26,10 @@ BASE_TRADE_COLUMNS_MAP = {
 TRADE_COLUMNS_MAP = {
     **BASE_TRADE_COLUMNS_MAP,
     't': 'trade_id',
-    'b': 'buyer_order_id',
-    'a': 'seller_order_id',
+    # NOTE: ``b`` (buyer order id) and ``a`` (seller order id) were REMOVED
+    # from the Spot <symbol>@trade payload by Binance effective 2024-06-18
+    # (Spot CHANGELOG). Consumers needing buyer/seller order identification
+    # must use the user-data ``executionReport`` stream instead.
     # Binance docs explicitly mark ``M`` as "Ignore" but it IS documented in
     # the <symbol>@trade payload.  Surface as ``_ignore_M`` so downstream
     # code SEES the field exists while knowing it is to be dropped.
@@ -42,9 +44,12 @@ class TradeHandlerBase(Handler):
     """Base handler for the ``SubType.TRADE`` (individual trade) stream.
 
     Receives one message per trade that executes on Binance.  Each payload
-    describes a single matched trade, including the trade ID, buyer/seller
-    order IDs, price, quantity, trade time, and whether the buyer is the
-    market maker.
+    describes a single matched trade, including the trade ID, price,
+    quantity, trade time, and whether the buyer is the market maker.
+
+    Note: buyer/seller order IDs were removed from the Spot @trade payload
+    by Binance on 2024-06-18. Code needing those IDs must subscribe to the
+    user-data ``executionReport`` stream instead.
 
     Subclass this and override ``receive(payload)`` to handle the event.
     The base ``receive`` converts the raw dict into a ``StockDataFrame`` with

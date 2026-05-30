@@ -351,6 +351,23 @@ def test_spot_agg_trade_columns_map_includes_ignore_M():
     assert AGG_TRADE_COLUMNS_MAP.get('M') == '_ignore_M'
 
 
+def test_spot_trade_columns_map_omits_buyer_seller_order_ids():
+    """Per docs, Binance removed ``b`` (buyer order id) and ``a`` (seller
+    order id) from the Spot <symbol>@trade payload effective 2024-06-18.
+
+    The current payload (https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams,
+    "Trade Streams" section) shows only ``{e,E,s,t,p,q,T,m,M}``. The SDK
+    MUST NOT advertise ``b`` / ``a`` columns that will always be NaN on
+    current wire data. Consumers needing buyer/seller order identification
+    must switch to the user-data ``executionReport`` stream.
+    """
+    from binance.spot.handlers import TRADE_COLUMNS_MAP
+    assert 'b' not in TRADE_COLUMNS_MAP, \
+        'buyer_order_id field removed from Spot @trade by Binance 2024-06-18'
+    assert 'a' not in TRADE_COLUMNS_MAP, \
+        'seller_order_id field removed from Spot @trade by Binance 2024-06-18'
+
+
 def test_spot_kline_columns_map_includes_ignore_B():
     """Per docs, the nested ``k`` object on <symbol>@kline_<interval>
     payload includes ``B`` marked "Ignore"."""
