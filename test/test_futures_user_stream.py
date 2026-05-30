@@ -396,8 +396,8 @@ def _make_um_client_for_lifecycle(server) -> UMFuturesClient:
 class _FakeStream:
     """Minimal Stream stub: records connections and supports send()/close()."""
 
-    connected_uris = []
-    _all_streams = []
+    connected_uris: list[str] = []
+    _all_streams: list['_FakeStream'] = []
 
     @classmethod
     def reset(cls):

@@ -266,7 +266,7 @@ async def test_fetch_then_first_then_chain_end_to_end() -> None:
     # Build without a client so set_client doesn't schedule a background
     # fetch; we drive the fetch synchronously to avoid asyncio races.
     book = FuturesOrderBook('BTCUSDT')
-    book._client = client
+    book._client = client  # type: ignore[assignment]
     book._fetching = True
     await book._fetch()
 
@@ -303,7 +303,7 @@ async def test_refetch_resets_post_snapshot_flag() -> None:
         'asks': [],
     })
     book = FuturesOrderBook('BTCUSDT')
-    book._client = client
+    book._client = client  # type: ignore[assignment]
     book._fetching = True
     await book._fetch()
     assert book._post_snapshot_first is True

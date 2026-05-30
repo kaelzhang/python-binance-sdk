@@ -58,11 +58,11 @@ class WSAPIServer:
 
     def __init__(self, port: int = WS_API_PORT) -> None:
         self._port = port
-        self.received = []                 # every received request frame
+        self.received: list[dict] = []     # every received request frame
         # method -> (status, result, rateLimits)
-        self._results = {}
+        self._results: dict[str, tuple] = {}
         # method -> (code, msg, status, data)
-        self._errors = {}
+        self._errors: dict[str, tuple] = {}
         # default rateLimits array attached to every success unless overridden
         self.default_rate_limits = None
 

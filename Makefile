@@ -1,4 +1,4 @@
-files = binance test *.py
+files = binance test $(wildcard *.py)
 test_files = *
 # test_target = exception_handler
 

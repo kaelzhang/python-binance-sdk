@@ -132,7 +132,7 @@ def test_cm_data_stream_router_returns_single_path():
 class _RecordingStream:
     """Stream stub: records uri + every sent payload, returns canned values."""
 
-    instances = []
+    instances: list['_RecordingStream'] = []
 
     @classmethod
     def reset(cls):
