@@ -140,7 +140,6 @@ from binance.futures.user_handlers import (
     FuturesEventStreamTerminatedHandlerBase,
     FuturesTradeLiteHandlerBase,
     FuturesStrategyUpdateHandlerBase,
-    FuturesGridUpdateHandlerBase,
     FuturesAlgoUpdateHandlerBase,
 )
 

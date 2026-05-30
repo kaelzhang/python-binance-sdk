@@ -23,8 +23,6 @@ Event types confirmed from official Binance USDⓈ-M Futures docs (2026-05-25):
   Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Trade-Lite
 - ``STRATEGY_UPDATE``:  algo/strategy lifecycle (UM + CM)
   Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-STRATEGY-UPDATE
-- ``GRID_UPDATE``:       grid trading update (UM + CM; deprecated by Binance)
-  Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-GRID-UPDATE
 - ``ALGO_UPDATE``:       algo order status update (**UM only** — not delivered on CM)
   Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Algo-Order-Update
 
@@ -35,6 +33,15 @@ migration path without git archaeology):
   conditional orders to the Algo Service; rejection reasons now arrive inside
   ``ALGO_UPDATE``'s ``o.rm`` (reject_message) field.
   Source: https://developers.binance.com/docs/derivatives/change-log
+- ``GRID_UPDATE`` — DROPPED Round-8 M-5 (2026-05-30).  Binance explicitly marks
+  the event as *Deprecated* on both UM and CM docs pages
+  (https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-GRID-UPDATE
+  and the CM counterpart).  Per the zero-backward-compatibility policy the
+  ``FuturesGridUpdateHandlerBase`` class and the ``GRID_UPDATE`` entry in
+  ``FuturesUserProcessor.PAYLOAD_TYPES`` were removed in the same commit.
+  Callers who need grid-strategy lifecycle visibility should subscribe to
+  ``STRATEGY_UPDATE`` (``FuturesStrategyUpdateHandlerBase``) instead — that
+  event remains documented and live for both UM and CM.
 """
 
 from binance.core.common.types import DictPayload
@@ -400,41 +407,6 @@ class FuturesStrategyUpdateHandlerBase(FuturesSimpleHandler):
     pass
 
 
-class FuturesGridUpdateHandlerBase(FuturesSimpleHandler):
-    """Base handler for the ``GRID_UPDATE`` futures user-data-stream event.
-
-    Delivered on both UM and CM streams.  Fires on grid trading order
-    executions.  **Deprecated** by Binance but still delivered.
-
-    Payload structure (confirmed from Binance USDⓈ-M + COIN-M docs, 2026-05-25)::
-
-        {
-            "e": "GRID_UPDATE",
-            "T": <transaction_time>,
-            "E": <event_time>,
-            "gu": {
-                "si": <strategy_id>,
-                "st": "<strategy_type>",   # e.g. "GRID"
-                "ss": "<strategy_status>", # e.g. "WORKING"
-                "s":  "<symbol>",
-                "r":  "<realized_pnl>",
-                "up": "<unmatched_avg_price>",
-                "uq": "<unmatched_qty>",
-                "uf": "<unmatched_fee>",
-                "mp": "<matched_pnl>",
-                "ut": <update_time>
-            }
-        }
-
-    Source: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-GRID-UPDATE
-
-    Subclass and override ``receive(payload)`` to handle the event.
-    The raw Binance payload dict is passed unchanged.
-    """
-
-    pass
-
-
 class FuturesAlgoUpdateHandlerBase(FuturesSimpleHandler):
     """Base handler for the ``ALGO_UPDATE`` futures user-data-stream event.
 
@@ -499,6 +471,5 @@ __all__ = [
     'FuturesEventStreamTerminatedHandlerBase',
     'FuturesTradeLiteHandlerBase',
     'FuturesStrategyUpdateHandlerBase',
-    'FuturesGridUpdateHandlerBase',
     'FuturesAlgoUpdateHandlerBase',
 ]

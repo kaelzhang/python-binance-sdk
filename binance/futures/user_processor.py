@@ -31,7 +31,6 @@ from binance.futures.user_handlers import (
     FuturesEventStreamTerminatedHandlerBase,
     FuturesTradeLiteHandlerBase,
     FuturesStrategyUpdateHandlerBase,
-    FuturesGridUpdateHandlerBase,
     FuturesAlgoUpdateHandlerBase,
 )
 
@@ -65,7 +64,6 @@ class FuturesUserProcessor(Processor):
                                              ``listenKeyExpired`` instead.
     - ``TRADE_LITE``:                        low-latency fill (UM only)
     - ``STRATEGY_UPDATE``:                   algo/strategy lifecycle (UM + CM)
-    - ``GRID_UPDATE``:                       grid trading update (UM + CM)
     - ``ALGO_UPDATE``:                       algo order status (UM only)
 
     REMOVED (2025-12-10):
@@ -73,6 +71,13 @@ class FuturesUserProcessor(Processor):
       conditional orders to the Algo Service.  Conditional rejection reasons
       now arrive inside ``ALGO_UPDATE``'s ``o.rm`` (reject_message) field.
       See https://developers.binance.com/docs/derivatives/change-log
+
+    REMOVED (Round-8 M-5, 2026-05-30):
+    - ``GRID_UPDATE`` was dropped because the Binance docs explicitly mark the
+      event as *Deprecated* on both UM and CM pages
+      (https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-GRID-UPDATE
+      and the CM counterpart).  Callers that still need grid-strategy
+      lifecycle visibility should subscribe to ``STRATEGY_UPDATE`` instead.
     """
 
     SUB_TYPE = SubType.USER
@@ -92,7 +97,6 @@ class FuturesUserProcessor(Processor):
         EVENT_STREAM_TERMINATED,
         'TRADE_LITE',
         'STRATEGY_UPDATE',
-        'GRID_UPDATE',
         'ALGO_UPDATE',
     )
 
@@ -105,7 +109,6 @@ class FuturesUserProcessor(Processor):
         FuturesEventStreamTerminatedHandlerBase,
         FuturesTradeLiteHandlerBase,
         FuturesStrategyUpdateHandlerBase,
-        FuturesGridUpdateHandlerBase,
         FuturesAlgoUpdateHandlerBase,
     )
 

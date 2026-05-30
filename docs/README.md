@@ -296,7 +296,6 @@ Handler bases to subclass (from `binance`):
 - `FuturesEventStreamTerminatedHandlerBase` — SDK-synthesized event when the dedicated fstream drops
 - `FuturesTradeLiteHandlerBase` — `TRADE_LITE` (low-latency fill; fewer fields than `ORDER_TRADE_UPDATE`; **UM only**)
 - `FuturesStrategyUpdateHandlerBase` — `STRATEGY_UPDATE` (algo/TWAP strategy lifecycle; UM + CM)
-- `FuturesGridUpdateHandlerBase` — `GRID_UPDATE` (grid trading order events; UM + CM; deprecated by Binance but still delivered)
 - `FuturesAlgoUpdateHandlerBase` — `ALGO_UPDATE` (algo order status change; **UM only**; carries conditional-order rejection reasons in `o.rm` since 2025-12-10)
 
 > **Removed (2025-12-10):** `FuturesConditionalOrderTriggerRejectHandlerBase` /
@@ -305,6 +304,17 @@ Handler bases to subclass (from `binance`):
 > `o.rm` (reject_message) field.  No backward-compatibility shim — the class
 > is gone from `binance.futures.user_handlers` and the top-level `binance`
 > package.  See [the derivatives change-log](https://developers.binance.com/docs/derivatives/change-log).
+
+> **Removed (Round-8 M-5, 2026-05-30):** `FuturesGridUpdateHandlerBase` /
+> `GRID_UPDATE`.  The Binance docs explicitly mark the event as *Deprecated*
+> on both UM and CM pages
+> ([UM Event-GRID-UPDATE](https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-GRID-UPDATE),
+> [CM Event-GRID-UPDATE](https://developers.binance.com/docs/derivatives/coin-margined-futures/user-data-streams/Event-GRID-UPDATE)).
+> Per the zero-backward-compatibility policy the class is gone from
+> `binance.futures.user_handlers` and the top-level `binance` package.
+> Callers that still need grid-strategy lifecycle visibility should
+> subscribe to `STRATEGY_UPDATE` (`FuturesStrategyUpdateHandlerBase`)
+> instead — that event remains documented and live on both UM and CM.
 
 ### Futures market-data streams
 

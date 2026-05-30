@@ -3,12 +3,16 @@
 Covers:
 - TRADE_LITE (UM only) → FuturesTradeLiteHandlerBase
 - STRATEGY_UPDATE (UM + CM) → FuturesStrategyUpdateHandlerBase
-- GRID_UPDATE (UM + CM) → FuturesGridUpdateHandlerBase
 - ALGO_UPDATE (UM only) → FuturesAlgoUpdateHandlerBase
 - CONDITIONAL_ORDER_TRIGGER_REJECT — DEPRECATED & REMOVED (2025-12-10):
   conditional orders were migrated to the Algo Service; rejection reasons
   are now delivered inside ALGO_UPDATE's ``o.rm`` reject_message field.
   See https://developers.binance.com/docs/derivatives/change-log
+- GRID_UPDATE — DEPRECATED & REMOVED (Round-8 M-5):
+  the Binance docs page explicitly marks the event as Deprecated
+  (https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-GRID-UPDATE
+  and CM counterpart).  Per the zero-backward-compatibility policy the
+  handler base + processor entry are gone from the SDK.
 
 Each event is driven through client._receive() on the appropriate mock client and
 assertions confirm correct routing and field access.
@@ -18,7 +22,6 @@ SAFETY: MOCK-only — no live API calls.
 Payload schemas confirmed from official Binance docs (2026-05-25):
 - TRADE_LITE: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Trade-Lite
 - STRATEGY_UPDATE: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-STRATEGY-UPDATE
-- GRID_UPDATE: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-GRID-UPDATE
 - ALGO_UPDATE: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-Algo-Order-Update
 """
 
@@ -30,7 +33,6 @@ from binance import (
     Credentials,
     FuturesTradeLiteHandlerBase,
     FuturesStrategyUpdateHandlerBase,
-    FuturesGridUpdateHandlerBase,
     FuturesAlgoUpdateHandlerBase,
 )
 from binance.core.common.utils import create_future
@@ -67,24 +69,6 @@ STRATEGY_UPDATE_PAYLOAD = {
         's': 'BTCUSDT',
         'ut': 1669261797627,
         'c': 8007,
-    },
-}
-
-GRID_UPDATE_PAYLOAD = {
-    'e': 'GRID_UPDATE',
-    'T': 1669262908216,
-    'E': 1669262908218,
-    'gu': {
-        'si': 176057039,
-        'st': 'GRID',
-        'ss': 'WORKING',
-        's': 'BTCUSDT',
-        'r': '-0.00300716',
-        'up': '16720',
-        'uq': '-0.001',
-        'uf': '-0.00300716',
-        'mp': '0.0',
-        'ut': 1669262908197,
     },
 }
 
@@ -234,36 +218,67 @@ async def test_strategy_update_routed_on_cm(cm_client):
 
 
 # ---------------------------------------------------------------------------
-# GRID_UPDATE — UM + CM; confirm nested 'gu' object
+# GRID_UPDATE — REMOVED (Round-8 M-5)
+#
+# Binance explicitly marks GRID_UPDATE as Deprecated on both UM and CM docs:
+# - UM: https://developers.binance.com/docs/derivatives/usds-margined-futures/user-data-streams/Event-GRID-UPDATE
+# - CM: https://developers.binance.com/docs/derivatives/coin-margined-futures/user-data-streams/Event-GRID-UPDATE
+# Per the zero-backward-compatibility policy the handler base + processor
+# entry are gone from the SDK.  There is no shim and no replacement handler
+# name; callers who rely on grid lifecycle events should monitor
+# STRATEGY_UPDATE (FuturesStrategyUpdateHandlerBase) instead.
 # ---------------------------------------------------------------------------
 
-@pytest.mark.asyncio
-async def test_grid_update_routed_on_um(um_client):
-    """GRID_UPDATE routes to FuturesGridUpdateHandlerBase on UM client."""
-    received = await _run_handler(
-        um_client, FuturesGridUpdateHandlerBase, GRID_UPDATE_PAYLOAD
-    )
-    assert received['e'] == 'GRID_UPDATE'
-    assert received['gu']['si'] == 176057039
-    assert received['gu']['st'] == 'GRID'
-    assert received['gu']['ss'] == 'WORKING'
-    assert received['gu']['s'] == 'BTCUSDT'
-    assert received['gu']['r'] == '-0.00300716'
-    assert received['gu']['up'] == '16720'
-    assert received['gu']['uq'] == '-0.001'
-    assert received['gu']['uf'] == '-0.00300716'
-    assert received['gu']['mp'] == '0.0'
+
+def test_grid_update_handler_not_importable_from_binance_root():
+    """FuturesGridUpdateHandlerBase MUST NOT be importable from binance root."""
+    import binance
+
+    assert not hasattr(binance, 'FuturesGridUpdateHandlerBase')
 
 
-@pytest.mark.asyncio
-async def test_grid_update_routed_on_cm(cm_client):
-    """GRID_UPDATE routes to FuturesGridUpdateHandlerBase on CM client."""
-    received = await _run_handler(
-        cm_client, FuturesGridUpdateHandlerBase, GRID_UPDATE_PAYLOAD
+def test_grid_update_handler_not_in_user_handlers_module():
+    """FuturesGridUpdateHandlerBase MUST NOT exist on the user_handlers module."""
+    from binance.futures import user_handlers
+
+    assert not hasattr(user_handlers, 'FuturesGridUpdateHandlerBase')
+
+
+def test_grid_update_handler_explicit_import_raises_importerror():
+    """An explicit ``from binance.futures.user_handlers import ...`` MUST raise ImportError."""
+    with pytest.raises(ImportError):
+        from binance.futures.user_handlers import (  # noqa: F401
+            FuturesGridUpdateHandlerBase,
+        )
+
+
+def test_grid_update_not_in_processor_payload_types():
+    """FuturesUserProcessor.PAYLOAD_TYPES MUST NOT carry 'GRID_UPDATE'."""
+    from binance.futures.user_processor import FuturesUserProcessor
+
+    assert 'GRID_UPDATE' not in FuturesUserProcessor.PAYLOAD_TYPES
+
+
+def test_grid_update_is_message_type_does_not_match():
+    """is_message_type MUST NOT match GRID_UPDATE on either envelope (event removed Round-8)."""
+    from binance.futures.user_processor import FuturesUserProcessor
+
+    client = UMFuturesClient(Credentials('key', 'secret'))
+    proc = FuturesUserProcessor(client)
+
+    # data-stream envelope
+    matched, payload = proc.is_message_type(
+        {'data': {'e': 'GRID_UPDATE', 'T': 1}, 'stream': 'fake'}
     )
-    assert received['e'] == 'GRID_UPDATE'
-    assert received['gu']['si'] == 176057039
-    assert received['gu']['ss'] == 'WORKING'
+    assert matched is False
+    assert payload is None
+
+    # WS-API event envelope
+    matched, payload = proc.is_message_type(
+        {'subscriptionId': 0, 'event': {'e': 'GRID_UPDATE', 'T': 1}}
+    )
+    assert matched is False
+    assert payload is None
 
 
 # ---------------------------------------------------------------------------
@@ -381,7 +396,6 @@ def test_new_handler_bases_importable_from_binance():
 
     assert hasattr(binance, 'FuturesTradeLiteHandlerBase')
     assert hasattr(binance, 'FuturesStrategyUpdateHandlerBase')
-    assert hasattr(binance, 'FuturesGridUpdateHandlerBase')
     assert hasattr(binance, 'FuturesAlgoUpdateHandlerBase')
 
 
@@ -391,7 +405,6 @@ def test_new_handler_bases_are_handler_subclasses():
 
     assert issubclass(FuturesTradeLiteHandlerBase, Handler)
     assert issubclass(FuturesStrategyUpdateHandlerBase, Handler)
-    assert issubclass(FuturesGridUpdateHandlerBase, Handler)
     assert issubclass(FuturesAlgoUpdateHandlerBase, Handler)
 
 
@@ -406,7 +419,6 @@ def test_processor_payload_types_include_new_events():
     types = FuturesUserProcessor.PAYLOAD_TYPES
     assert 'TRADE_LITE' in types
     assert 'STRATEGY_UPDATE' in types
-    assert 'GRID_UPDATE' in types
     assert 'ALGO_UPDATE' in types
 
 
@@ -428,7 +440,6 @@ def test_processor_handlers_include_new_handler_bases():
     handlers = user_processor.FuturesUserProcessor.HANDLERS
     assert user_handlers.FuturesTradeLiteHandlerBase in handlers
     assert user_handlers.FuturesStrategyUpdateHandlerBase in handlers
-    assert user_handlers.FuturesGridUpdateHandlerBase in handlers
     assert user_handlers.FuturesAlgoUpdateHandlerBase in handlers
 
 
@@ -469,20 +480,6 @@ def test_is_message_type_strategy_update_data_envelope():
 
     assert matched is True
     assert payload['e'] == 'STRATEGY_UPDATE'
-
-
-def test_is_message_type_grid_update_data_envelope():
-    """is_message_type matches GRID_UPDATE in data-stream 'data' envelope."""
-    from binance.futures.user_processor import FuturesUserProcessor
-
-    client = CMFuturesClient(Credentials('key', 'secret'))
-    proc = FuturesUserProcessor(client)
-
-    msg = {'data': {'e': 'GRID_UPDATE', 'T': 1}, 'stream': 'fake'}
-    matched, payload = proc.is_message_type(msg)
-
-    assert matched is True
-    assert payload['e'] == 'GRID_UPDATE'
 
 
 def test_is_message_type_conditional_order_trigger_reject_no_longer_matches():
