@@ -70,6 +70,28 @@ class StreamDisconnectedException(Exception):
             'stream "%s" is never connected or is abandoned after too many retries according to the `retry_policy`, run `stream.connect()`', self.uri)
 
 
+class StreamResponseTimeoutException(Exception):
+    """Raised when a WebSocket request has no id-correlated response in time."""
+
+    def __init__(
+        self,
+        uri: str,
+        message_id: int,
+        timeout: float
+    ) -> None:
+        self.uri = uri
+        self.message_id = message_id
+        self.timeout = timeout
+
+    def __str__(self) -> str:
+        return format_msg(
+            'stream "%s" request id %s timed out after %s seconds',
+            self.uri,
+            self.message_id,
+            self.timeout
+        )
+
+
 class StreamSubscribeException(Exception):
     """Base class for errors returned by the Binance WebSocket API during subscription.
 

@@ -49,6 +49,7 @@ from binance.core.transport.rest import _reject_float_params
 from binance.core.rate_limit import RateLimiter
 
 from .stream import Stream
+from .control import ControlTaskSupervisor
 from binance.core.handlers.context import HandlerContext
 
 # pylint: disable=no-member
@@ -108,11 +109,11 @@ class SubscriptionManager:
     _logger: Logger
     _want_user_stream: bool
     _user_unsubscribe_inflight: bool
-    _user_recovering: bool
     # Captured response ``subscriptionId`` from
     # ``userDataStream.subscribe.signature`` (2025-08-12 Spot CHANGELOG).
     _user_subscription_id: Optional[Any]
     _ws_api_authenticated: bool
+    _control_tasks: ControlTaskSupervisor
     # The market's data-stream router (set from ``MarketSpec``).  Maps a wire
     # stream name to the path that should carry it.
     _data_stream_router: Callable[[str], str]
@@ -167,8 +168,8 @@ class SubscriptionManager:
         self._receiving = False
         self._want_user_stream = False
         self._user_unsubscribe_inflight = False
-        self._user_recovering = False
         self._ws_api_authenticated = False
+        await self._control_tasks.close()
 
         # Close every per-path data stream and release its rate-limit bucket.
         # The connection_id mirrors the path key under ``data:<path>`` to keep
@@ -207,21 +208,27 @@ class SubscriptionManager:
             self._logger.warning(
                 'serverShutdown received; recycling originating stream')
             if origin is not None:
-                await origin.recycle()
+                self._control_tasks.run_once(
+                    ('serverShutdown', id(origin)),
+                    origin.recycle
+                )
             else:
                 # Fallback for callers that have not yet been migrated to the
                 # bound-origin callback (only legacy tests / direct calls).
                 for stream in list(self._data_streams.values()):
-                    await stream.recycle()
+                    self._control_tasks.run_once(
+                        ('serverShutdown', id(stream)),
+                        stream.recycle
+                    )
+            await asyncio.sleep(0)
             return
 
         if event_type == EVENT_STREAM_TERMINATED:
-            try:
-                await self._recover_user_stream_if_needed()
-            except Exception as e:
-                self._logger.error(format_msg(
-                    'Failed to recover user stream after eventStreamTerminated: %s',
-                    repr_exception(e)))
+            self._control_tasks.run_once(
+                'eventStreamTerminated:user-recovery',
+                self._recover_user_stream_if_needed
+            )
+            await asyncio.sleep(0)
 
         # Invariant: a dispatchable message only arrives after a subscription
         # opened a stream, and subscribing always creates the handler context
@@ -253,13 +260,11 @@ class SubscriptionManager:
             path = self._default_data_stream_path
         stream = self._data_streams.get(path)
         if stream is None:
-            # Bind the ``origin`` for ``_receive`` to the path key so the
-            # callback resolves to the current ``_data_streams[path]`` at the
-            # time the message arrives.  This survives reconnects that may
-            # swap the underlying :class:`Stream` instance via aioretry.
-            async def on_message_bound(msg, _key=path):
-                origin = self._data_streams.get(_key)
-                await self._receive(msg, origin=origin)
+            stream_holder: Dict[str, Stream] = {}
+
+            async def on_message_bound(msg):
+                await self._receive(msg, origin=stream_holder['stream'])
+
             stream = Stream(
                 self._stream_host + path,
                 on_message=on_message_bound,
@@ -270,6 +275,7 @@ class SubscriptionManager:
                 rate_limiter=self._rate_limiter,
                 connection_id=_data_connection_id(path),
             ).connect()
+            stream_holder['stream'] = stream
             self._data_streams[path] = stream
         return stream
 
@@ -296,12 +302,12 @@ class SubscriptionManager:
         every response into the shared rate-limit core.
         """
         if self._user_stream is None:
-            # Bind ``origin`` for ``_receive`` so a ``serverShutdown`` arriving
-            # over the WS-API connection (per 2026-05-06 Spot changelog) recycles
-            # THIS connection rather than the market-data stream.
+            stream_holder: Dict[str, Stream] = {}
+
             async def on_message_bound(msg):
-                await self._receive(msg, origin=self._user_stream)
-            self._user_stream = Stream(
+                await self._receive(msg, origin=stream_holder['stream'])
+
+            stream = Stream(
                 self._ws_api_host,
                 on_message=on_message_bound,
                 on_connected=self._on_ws_api_connected,
@@ -312,6 +318,8 @@ class SubscriptionManager:
                 rate_limiter=self._rate_limiter,
                 connection_id='user'
             ).connect()
+            stream_holder['stream'] = stream
+            self._user_stream = stream
 
         return self._user_stream
 
@@ -814,21 +822,15 @@ class SubscriptionManager:
         if (
             not self._want_user_stream
             or self._user_unsubscribe_inflight
-            or self._user_recovering
             or (SubType.USER,) not in self._subscribed
         ):
             return False
 
-        self._user_recovering = True
-
-        try:
-            await self._subscribe_user_only(True, ((SubType.USER,),))
-            self._logger.warning(
-                'Recovered user stream subscription after eventStreamTerminated.'
-            )
-            return True
-        finally:
-            self._user_recovering = False
+        await self._subscribe_user_only(True, ((SubType.USER,),))
+        self._logger.warning(
+            'Recovered user stream subscription after eventStreamTerminated.'
+        )
+        return True
 
     async def subscribe(self, *args):
         """Subscribe to one or more market or user-data streams.

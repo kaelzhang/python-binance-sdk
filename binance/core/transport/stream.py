@@ -6,6 +6,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Set,
 )
 from logging import Logger
 
@@ -35,6 +36,7 @@ from binance.core.common.utils import (
 
 from binance.core.common.exceptions import (
     StreamDisconnectedException,
+    StreamResponseTimeoutException,
     StreamSubscribeException,
     StreamRateLimitException
 )
@@ -83,6 +85,7 @@ class Stream:
     _open_future: Optional[Future[Any]]
     _conn_task: Optional[Task[None]]
     _connected_task: Optional[Task[None]]
+    _message_tasks: Set[Task[None]]
     _message_futures: Dict[int, Future]
     _retry_policy: RetryPolicy
     _rate_limiter: RateLimiter
@@ -130,6 +133,7 @@ class Stream:
         self._socket = None
         self._conn_task = None
         self._connected_task = None
+        self._message_tasks = set()
 
         # message_id
         self._message_id = 0
@@ -153,7 +157,8 @@ class Stream:
 
     def _set_socket(self, socket) -> None:
         if self._open_future:
-            self._open_future.set_result(socket)
+            if not self._open_future.done():
+                self._open_future.set_result(socket)
             self._open_future = None
 
         self._socket = socket
@@ -208,18 +213,51 @@ class Stream:
             if not future.done():
                 future.set_exception(exception)
 
+    def _reject_open_future(self, exception: Exception) -> None:
+        open_future = getattr(self, '_open_future', None)
+        self._open_future = None
+        if open_future is not None and not open_future.done():
+            open_future.add_done_callback(self._consume_future_exception)
+            open_future.set_exception(exception)
+
+    def _consume_future_exception(self, future: Future) -> None:
+        try:
+            future.exception()
+        except asyncio.CancelledError:
+            pass
+
+    def _schedule_message_callback(self, msg) -> None:
+        task = asyncio.get_running_loop().create_task(
+            self._emit(ON_MESSAGE, msg)
+        )
+        message_tasks = getattr(self, '_message_tasks', None)
+        if message_tasks is None:
+            message_tasks = set()
+            self._message_tasks = message_tasks
+        message_tasks.add(task)
+        task.add_done_callback(self._handle_message_task_exception)
+
+    def _handle_message_task_exception(self, task: Task) -> None:
+        message_tasks = getattr(self, '_message_tasks', None)
+        if message_tasks is not None:
+            message_tasks.discard(task)
+        self._handle_task_exception(task)
+
     async def _handle_message(self, msg) -> None:
         # > The id used in the JSON payloads is an unsigned INT used as
         # > an identifier to uniquely identify the messages going back and forth
-        if (
-            STREAM_KEY_ID not in msg
-        ) or (
-            msg[STREAM_KEY_ID] not in self._message_futures
-        ):
-            await self._emit(ON_MESSAGE, msg)
+        if STREAM_KEY_ID not in msg:
+            self._schedule_message_callback(msg)
             return
 
         message_id = msg[STREAM_KEY_ID]
+        if message_id not in self._message_futures:
+            self._logger.warning(format_msg(
+                'ignoring late or unknown stream response id %s',
+                message_id
+            ))
+            return
+
         future = self._message_futures[message_id]
 
         # Hand the full message to the reconcile hook (WS-API `rateLimits`)
@@ -254,7 +292,9 @@ class Stream:
         del self._message_futures[message_id]
 
     def _before_connect(self) -> None:
-        self._open_future = create_future()
+        open_future = getattr(self, '_open_future', None)
+        if open_future is None or open_future.done():
+            self._open_future = create_future()
 
     async def _receive(self) -> None:
         socket = self._socket
@@ -418,7 +458,9 @@ class Stream:
         #   is closed by socket.close() or network connection error.
         # So just set up a flag to do the trick
         self._closing = True
-        self._reject_pending(StreamDisconnectedException(self._uri))
+        disconnected = StreamDisconnectedException(self._uri)
+        self._reject_pending(disconnected)
+        self._reject_open_future(disconnected)
 
         tasks: List[Any] = [self._conn_task]
 
@@ -434,6 +476,14 @@ class Stream:
         if self._connected_task:
             self._connected_task.cancel()
 
+        current_task = asyncio.current_task()
+        for task in list(getattr(self, '_message_tasks', set())):
+            if task is current_task:
+                continue
+            if not task.done():
+                task.cancel()
+            tasks.append(task)
+
         # Make sure:
         # - conn_task is cancelled
         # - socket is closed
@@ -444,6 +494,8 @@ class Stream:
         for coro in asyncio.as_completed(tasks):
             try:
                 await coro
+            except asyncio.CancelledError:
+                pass
             except Exception as e:
                 self._logger.error(
                     format_msg('close tasks error: %s', e)
@@ -519,8 +571,26 @@ class Stream:
         msg[STREAM_KEY_ID] = message_id
         self._message_futures[message_id] = future
 
-        await socket.send(json_stringify(msg))
-        return await future
+        try:
+            await socket.send(json_stringify(msg))
+            timeout = getattr(self, '_timeout', DEFAULT_STREAM_TIMEOUT)
+            return await asyncio.wait_for(future, timeout=timeout)
+        except asyncio.TimeoutError as e:
+            self._message_futures.pop(message_id, None)
+            timeout = getattr(self, '_timeout', DEFAULT_STREAM_TIMEOUT)
+            raise StreamResponseTimeoutException(
+                self._uri,
+                message_id,
+                timeout
+            ) from e
+        except asyncio.CancelledError:
+            self._message_futures.pop(message_id, None)
+            if not future.done():
+                future.cancel()
+            raise
+        except Exception:
+            self._message_futures.pop(message_id, None)
+            raise
 
     def _handle_task_exception(self, task):
         """Handle exceptions from background tasks to prevent 'Future exception was never retrieved' warnings"""

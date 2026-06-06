@@ -51,6 +51,7 @@ from binance.core.common.types import StreamError, StreamName, StreamErrorPhase,
 from binance.core.handlers.context import HandlerContext
 from binance.core.market import MarketSpec
 from binance.core.rate_limit import RateLimiter
+from binance.core.transport.control import ControlTaskSupervisor
 from binance.core.transport.stream import Stream
 
 # listenKey keepalive interval (seconds) — ping every 50 min; key expires after 60 min.
@@ -112,6 +113,7 @@ class FuturesUserStreamMixin:
     _rate_limiter: RateLimiter
     _handler_ctx: Optional[HandlerContext]
     _logger: Logger
+    _control_tasks: ControlTaskSupervisor
     _get_handler_ctx: Callable[[], HandlerContext]
     _ws_api_request: Callable[..., Awaitable[Any]]
     # ``MARKET`` is bound on the concrete client subclass (UM / CM) and read
@@ -160,9 +162,11 @@ class FuturesUserStreamMixin:
         # _extract_event_type, duplicated here to avoid importing a private symbol).
         event_type = _extract_event_type(msg)
         if event_type == _EVENT_LISTEN_KEY_EXPIRED and self._want_user_stream:
-            asyncio.get_running_loop().create_task(
-                self._on_futures_listen_key_expired()
+            self._control_tasks.run_once(
+                'listenKeyExpired:futures-user-recovery',
+                self._on_futures_listen_key_expired
             )
+            await asyncio.sleep(0)
         await super()._receive(msg, origin=origin)  # type: ignore[misc]
 
     # ------------------------------------------------------------------
@@ -262,12 +266,12 @@ class FuturesUserStreamMixin:
         template = self.MARKET.user_stream_path_template
         uri = self._stream_host + template.format(listen_key=listen_key)
 
-        # Bind ``origin`` so a ``serverShutdown`` arriving over the dedicated
-        # fstream connection recycles it (and not the data stream / WS-API).
-        async def on_message_bound(msg):
-            await self._receive(msg, origin=self._futures_user_stream)
+        stream_holder: dict[str, Stream] = {}
 
-        self._futures_user_stream = Stream(
+        async def on_message_bound(msg):
+            await self._receive(msg, origin=stream_holder['stream'])
+
+        stream = Stream(
             uri,
             on_message=on_message_bound,
             retry_policy=self._stream_retry_policy,
@@ -276,6 +280,8 @@ class FuturesUserStreamMixin:
             rate_limiter=self._rate_limiter,
             connection_id=_FUTURES_USER_CONN_ID,
         ).connect()
+        stream_holder['stream'] = stream
+        self._futures_user_stream = stream
 
         self._futures_keepalive_task = asyncio.get_running_loop().create_task(
             self._futures_keepalive_loop()

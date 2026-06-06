@@ -23,6 +23,7 @@ from binance.core.common.types import Timeout
 from binance.core.market import MarketSpec
 from binance.core.rate_limit import RateLimiter, RateLimitSnapshot
 from binance.core.transport.rest import RestTransport
+from binance.core.transport.control import ControlTaskSupervisor
 from binance.core.transport.subscription import SubscriptionManager
 from binance.core.transport.ws_api import WsApiTransport, _apply_time_unit
 
@@ -162,7 +163,7 @@ class BaseClient(  # type: ignore[misc]  # diamond mixin: _ws_api_request is a C
         self._stream_names = set()
         self._want_user_stream = False
         self._user_unsubscribe_inflight = False
-        self._user_recovering = False
+        self._control_tasks = ControlTaskSupervisor(logger)
         # Captured ``subscriptionId`` from the Spot
         # ``userDataStream.subscribe.signature`` response (2025-08-12 Spot
         # CHANGELOG). Cleared on unsubscribe.  Other markets leave it None.

@@ -24,6 +24,7 @@ from binance.core.common.constants import (
 from binance.core.common.exceptions import (
     UserStreamNotSubscribedException,
     StreamDisconnectedException,
+    StreamResponseTimeoutException,
     StreamSubscribeException,
     APIKeyNotDefinedException,
     APISecretNotDefinedException,
