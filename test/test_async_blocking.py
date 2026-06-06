@@ -238,6 +238,29 @@ async def test_raw_stream_on_message_long_task_does_not_block_recv():
 
 
 @pytest.mark.asyncio
+async def test_sync_raw_stream_on_message_long_task_does_not_block_event_loop():
+    def on_message(_msg):
+        time.sleep(0.2)
+
+    stream = Stream(
+        'ws://fake',
+        on_message=on_message,
+        logger=logger,
+        rate_limiter=RateLimiter(enabled=False),
+    )
+
+    started_at = time.perf_counter()
+    try:
+        await stream._handle_message({'stream': 'one'})
+        await asyncio.sleep(0.05)
+
+        assert time.perf_counter() - started_at < 0.12
+    finally:
+        await asyncio.sleep(0.2)
+        await stream._events().close()
+
+
+@pytest.mark.asyncio
 async def test_sync_stream_handler_long_task_does_not_block_event_loop():
     client = SpotClient(Credentials('key')).start()
 

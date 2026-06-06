@@ -66,7 +66,11 @@ def wrap_event_callback(
 
     async def callback(*args):
         try:
-            await wrap_coroutine(fn(*args))
+            if inspect.iscoroutinefunction(fn):
+                ret = fn(*args)
+            else:
+                ret = await asyncio.to_thread(fn, *args)
+            await wrap_coroutine(ret)
         except Exception as e:
             # This is a bug which is blamed to the user and
             # should be fixed.
