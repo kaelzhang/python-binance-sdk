@@ -1,5 +1,3 @@
-import asyncio
-import inspect
 from typing import (
     Any,
     ClassVar,
@@ -20,6 +18,7 @@ from binance.core.common.constants import (
     KEY_PAYLOAD_TYPE
 )
 from binance.core.handlers.base import Handler
+from binance.core.handlers.dispatcher import HandlerDispatcher
 
 
 class Processor:
@@ -41,6 +40,7 @@ class Processor:
         self._client = client
 
         self._handlers = set()
+        self._dispatcher = HandlerDispatcher()
 
         if self.PAYLOAD_TYPE == ATOM and self.SUB_TYPE is not None:
             self.PAYLOAD_TYPE = self.SUB_TYPE.value
@@ -118,12 +118,4 @@ class Processor:
         payload,
         handlers: Set[Handler]
     ):
-        coro = []
-
-        for handler in handlers:
-            ret = handler.receiveDispatch(payload)
-            if inspect.iscoroutine(ret):
-                coro.append(ret)
-
-        if len(coro) > 0:
-            await asyncio.gather(*coro)
+        await self._dispatcher.dispatch(payload, handlers)

@@ -12,7 +12,8 @@ market client keeps one private instance, surfaced only through
 
 import asyncio
 import time
-from typing import Dict, Iterable, List, Optional
+from dataclasses import dataclass
+from typing import Dict, Iterable, List, Optional, Union
 
 from binance.core.rate_limit.types import RateLimitType, RateLimitRule, RateLimitSource
 from binance.core.rate_limit.bucket import RateLimitBucket
@@ -29,6 +30,25 @@ _EXCHANGE_INFO_TYPE = {
 }
 
 _INTERVAL_SECONDS = {'SECOND': 1, 'MINUTE': 60, 'HOUR': 3600, 'DAY': 86400}
+
+
+@dataclass(frozen=True)
+class ConnectionLease:
+    """Opaque per-websocket lease for per-connection rate-limit buckets."""
+
+    id: str
+    label: str
+    kind: str
+    route: Optional[str] = None
+
+
+@dataclass
+class _ConnectionState:
+    lease: ConnectionLease
+    buckets: Dict[RateLimitType, RateLimitBucket]
+
+
+ConnectionRef = Union[str, ConnectionLease]
 
 
 class RateLimiter:
@@ -65,7 +85,8 @@ class RateLimiter:
         """
         self._enabled = enabled
         self._shared: List[RateLimitBucket] = [RateLimitBucket(r) for r in rules]
-        self._connections: Dict[str, Dict[RateLimitType, RateLimitBucket]] = {}
+        self._connections: Dict[str, _ConnectionState] = {}
+        self._connection_sequence = 0
         self._retry_after_until: Optional[float] = None
         # Conservative fallback: 5/s (Spot) matches the previous module-level
         # default and is safe even if a caller forgets to inject a market rule.
@@ -76,6 +97,31 @@ class RateLimiter:
 
     def _buckets_of(self, limit_type: RateLimitType) -> List[RateLimitBucket]:
         return [b for b in self._shared if b.rule.type == limit_type]
+
+    def _connection_id(self, connection: ConnectionRef) -> str:
+        if isinstance(connection, ConnectionLease):
+            return connection.id
+        return connection
+
+    def _legacy_lease(self, connection_id: str) -> ConnectionLease:
+        return ConnectionLease(
+            id=connection_id,
+            label=connection_id,
+            kind='legacy',
+            route=None,
+        )
+
+    def _make_connection_state(
+        self,
+        lease: ConnectionLease,
+    ) -> _ConnectionState:
+        return _ConnectionState(
+            lease=lease,
+            buckets={
+                RateLimitType.WS_MESSAGES: RateLimitBucket(self._ws_message_rule),
+                RateLimitType.WS_STREAMS: RateLimitBucket(WS_STREAMS_RULE),
+            },
+        )
 
     # ---- configuration / reconciliation ------------------------------
     def configure_from_exchange_info(self, rate_limits) -> None:
@@ -256,7 +302,26 @@ class RateLimiter:
         await self._await_retry_after()
         await self._consume(RateLimitType.WS_CONNECTIONS, 1)
 
-    def register_connection(self, connection_id: str) -> None:
+    def open_connection(
+        self,
+        *,
+        kind: str,
+        route: Optional[str] = None,
+        label: Optional[str] = None,
+    ) -> ConnectionLease:
+        """Create a unique per-connection lease for one physical websocket."""
+        self._connection_sequence += 1
+        display_label = label or kind
+        lease = ConnectionLease(
+            id=f'{display_label}:{self._connection_sequence}',
+            label=display_label,
+            kind=kind,
+            route=route,
+        )
+        self._connections[lease.id] = self._make_connection_state(lease)
+        return lease
+
+    def register_connection(self, connection_id: ConnectionRef) -> None:
         """Create the per-connection message and stream buckets for ``connection_id``.
 
         Idempotent: an already-registered id is left untouched (its live counts
@@ -267,20 +332,22 @@ class RateLimiter:
             connection_id: Stable id for one WebSocket connection (e.g.
                 ``'data'`` or ``'user'``).
         """
-        if connection_id not in self._connections:
-            self._connections[connection_id] = {
-                RateLimitType.WS_MESSAGES: RateLimitBucket(self._ws_message_rule),
-                RateLimitType.WS_STREAMS: RateLimitBucket(WS_STREAMS_RULE),
-            }
+        if isinstance(connection_id, ConnectionLease):
+            lease = connection_id
+        else:
+            lease = self._legacy_lease(connection_id)
 
-    def unregister_connection(self, connection_id: str) -> None:
+        if lease.id not in self._connections:
+            self._connections[lease.id] = self._make_connection_state(lease)
+
+    def unregister_connection(self, connection_id: ConnectionRef) -> None:
         """Drop a connection's message and stream buckets (e.g. on close).
 
         Their usage no longer appears in a snapshot. Unknown ids are ignored.
         """
-        self._connections.pop(connection_id, None)
+        self._connections.pop(self._connection_id(connection_id), None)
 
-    async def acquire_message(self, connection_id: str) -> None:
+    async def acquire_message(self, connection_id: ConnectionRef) -> None:
         """Account one outgoing message on ``connection_id`` (5/s per connection).
 
         Auto-registers the connection if needed. May ``await`` when the guard is
@@ -292,13 +359,19 @@ class RateLimiter:
         """
         await self._await_retry_after()
         self.register_connection(connection_id)
-        bucket = self._connections[connection_id][RateLimitType.WS_MESSAGES]
+        bucket = self._connections[
+            self._connection_id(connection_id)
+        ].buckets[RateLimitType.WS_MESSAGES]
         if self._enabled:
             await bucket.acquire(1)
         else:
             bucket.record(1)
 
-    def reserve_streams(self, connection_id: str, projected_total: int) -> None:
+    def reserve_streams(
+        self,
+        connection_id: ConnectionRef,
+        projected_total: int
+    ) -> None:
         """Enforce the 1024-streams-per-connection cap (absolute set).
 
         Auto-registers the connection, then sets its stream count to
@@ -313,18 +386,20 @@ class RateLimiter:
             TooManyStreamsException: If ``projected_total`` exceeds the cap.
         """
         self.register_connection(connection_id)
-        bucket = self._connections[connection_id][RateLimitType.WS_STREAMS]
+        bucket = self._connections[
+            self._connection_id(connection_id)
+        ].buckets[RateLimitType.WS_STREAMS]
         bucket.reserve(projected_total)
 
-    def release_streams(self, connection_id: str, count: int) -> None:
+    def release_streams(self, connection_id: ConnectionRef, count: int) -> None:
         """Decrease a connection's reserved stream count by ``count``.
 
         The inverse of :meth:`reserve_streams` when streams are unsubscribed.
         No-op for an unknown connection id.
         """
-        conn = self._connections.get(connection_id)
+        conn = self._connections.get(self._connection_id(connection_id))
         if conn is not None:
-            conn[RateLimitType.WS_STREAMS].release(count)
+            conn.buckets[RateLimitType.WS_STREAMS].release(count)
 
     # ---- monitoring ---------------------------------------------------
     def snapshot(self) -> RateLimitSnapshot:
@@ -341,8 +416,8 @@ class RateLimiter:
             windows.append(self._window(bucket))
             total_pending += bucket.pending
         for conn in self._connections.values():
-            for bucket in conn.values():
-                windows.append(self._window(bucket))
+            for bucket in conn.buckets.values():
+                windows.append(self._window(bucket, conn.lease))
                 total_pending += bucket.pending
         retry_after = self._retry_after()
         return RateLimitSnapshot(
@@ -353,7 +428,11 @@ class RateLimiter:
             at=time.time(),
         )
 
-    def _window(self, bucket: RateLimitBucket) -> RateLimitWindow:
+    def _window(
+        self,
+        bucket: RateLimitBucket,
+        lease: Optional[ConnectionLease] = None,
+    ) -> RateLimitWindow:
         used = bucket.used
         limit = bucket.effective_limit
         return RateLimitWindow(
@@ -366,4 +445,8 @@ class RateLimiter:
             utilization=used / limit,
             pending=bucket.pending,
             source=RateLimitSource.HEADER if bucket.has_authoritative else RateLimitSource.CLIENT,
+            connection_id=lease.id if lease is not None else None,
+            connection_label=lease.label if lease is not None else None,
+            connection_kind=lease.kind if lease is not None else None,
+            connection_route=lease.route if lease is not None else None,
         )

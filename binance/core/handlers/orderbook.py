@@ -19,6 +19,7 @@ the historical behaviour that a reference captured *before*
 ``set_client`` keeps working *after* the handler is bound.
 """
 
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from aioretry import RetryPolicy
@@ -184,6 +185,7 @@ class OrderBookHandlerBase(Handler):
         # ``_PendingOrderBook`` wrappers; the handler swaps them for real
         # instances in-place inside ``set_client``.
         self._orderbooks: Dict[str, Any] = {}
+        self._orderbook_locks: Dict[str, asyncio.Lock] = {}
 
         # Symbols requested via ``orderbook(symbol, limit)`` BEFORE the
         # handler is bound to a client.  The list holds the same
@@ -305,7 +307,13 @@ class OrderBookHandlerBase(Handler):
         Args:
             payload: the message payload of the stream
         """
-        self.orderbook(payload[KEY_SYMBOL]).update(payload)
+        symbol = normalize_symbol(payload[KEY_SYMBOL])
+        lock = self._orderbook_locks.setdefault(symbol, asyncio.Lock())
+        async with lock:
+            await asyncio.to_thread(
+                self.orderbook(symbol).update,
+                payload,
+            )
 
         if self._has_receive:
             await wrap_coroutine(self.receive(payload))

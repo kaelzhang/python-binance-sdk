@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 
-from binance import Stream
+from binance import Credentials, SpotClient, Stream
 from binance.core.rate_limit import (
     RateLimiter,
     RateLimitRule,
@@ -95,6 +95,43 @@ def test_extract_event_type_handles_documented_shapes():
         {'event': {'e': 'eventStreamTerminated'}}) == 'eventStreamTerminated'
     assert _extract_event_type({'data': {'e': 'depthUpdate'}}) == 'depthUpdate'
     assert _extract_event_type('not-a-dict') is None
+
+
+@pytest.mark.asyncio
+async def test_shared_rate_limiter_uses_unique_data_stream_leases(monkeypatch):
+    def fake_connect(self):
+        return self
+
+    async def fake_close(self, code=4999):
+        return None
+
+    monkeypatch.setattr(Stream, 'connect', fake_connect)
+    monkeypatch.setattr(Stream, 'close', fake_close)
+
+    shared = RateLimiter(enabled=False)
+    client_a = SpotClient(Credentials('key-a'), rate_limiter=shared).start()
+    client_b = SpotClient(Credentials('key-b'), rate_limiter=shared).start()
+
+    stream_a = client_a._get_data_stream()
+    stream_b = client_b._get_data_stream()
+
+    assert stream_a._connection_lease.id != stream_b._connection_lease.id
+    assert stream_a._connection_lease.label == 'data'
+    assert stream_b._connection_lease.label == 'data'
+
+    client_a._rate_limiter.reserve_streams(stream_a._connection_lease, 3)
+    client_b._rate_limiter.reserve_streams(stream_b._connection_lease, 5)
+
+    await client_a.close()
+
+    streams = [
+        window for window in shared.snapshot().windows
+        if window.type == RateLimitType.WS_STREAMS
+    ]
+    assert [window.used for window in streams] == [5]
+    assert streams[0].connection_id == stream_b._connection_lease.id
+
+    await client_b.close()
 
 
 @pytest.mark.asyncio

@@ -44,6 +44,7 @@ from binance.core.common.exceptions import (
 )
 
 from binance.core.rate_limit import (
+    ConnectionLease,
     RateLimiter,
     RateLimitSnapshot,
     RateLimitWindow

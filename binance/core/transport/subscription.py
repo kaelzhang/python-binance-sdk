@@ -46,7 +46,7 @@ from binance.core.common.utils import (
     repr_exception
 )
 from binance.core.transport.rest import _reject_float_params
-from binance.core.rate_limit import RateLimiter
+from binance.core.rate_limit import ConnectionLease, RateLimiter
 
 from .stream import Stream
 from .control import ControlTaskSupervisor
@@ -95,10 +95,12 @@ class SubscriptionManager:
     # ``'/public/stream'`` or ``'/market/stream'`` for UM).  Lazily opened on
     # the first subscription whose stream name routes to that path.
     _data_streams: Dict[str, Stream]
+    _data_connection_leases: Dict[str, ConnectionLease]
     # The shared WS-API request/response connection (wss://ws-api...). It
     # carries BOTH the user-data stream subscription and every `_ws_api_request`
     # (former REST) call -- one connection, lazily opened.
     _user_stream: Optional[Stream]
+    _user_connection_lease: Optional[ConnectionLease]
     _subscribed: Set[tuple]
     _stream_names: Set[str]
     _stream_host: str
@@ -176,13 +178,19 @@ class SubscriptionManager:
         # ws-message accounting independent from the WS-API ``user`` bucket.
         for path, stream in list(self._data_streams.items()):
             await stream.close(code)
-            self._rate_limiter.unregister_connection(_data_connection_id(path))
+            lease = self._data_connection_leases.pop(path, None)
+            if lease is not None:
+                self._rate_limiter.unregister_connection(lease)
         self._data_streams = {}
 
         if self._user_stream:
             await self._user_stream.close(code)
             self._user_stream = None
-            self._rate_limiter.unregister_connection('user')
+            if self._user_connection_lease is not None:
+                self._rate_limiter.unregister_connection(
+                    self._user_connection_lease
+                )
+                self._user_connection_lease = None
 
         self._handler_ctx = None
 
@@ -243,6 +251,41 @@ class SubscriptionManager:
 
         return self._handler_ctx
 
+    def _get_data_connection_lease(self, path: str) -> ConnectionLease:
+        lease = self._data_connection_leases.get(path)
+        if lease is None:
+            lease = self._rate_limiter.open_connection(
+                kind='data',
+                route=path,
+                label=_data_connection_id(path),
+            )
+            self._data_connection_leases[path] = lease
+        return lease
+
+    def _drop_unopened_data_connection_lease(self, path: str) -> None:
+        if path in self._data_streams:
+            return
+        lease = self._data_connection_leases.pop(path, None)
+        if lease is not None:
+            self._rate_limiter.unregister_connection(lease)
+
+    def _get_user_connection_lease(self) -> ConnectionLease:
+        lease = self._user_connection_lease
+        if lease is None:
+            lease = self._rate_limiter.open_connection(
+                kind='ws_api',
+                route=self._ws_api_host,
+                label='user',
+            )
+            self._user_connection_lease = lease
+        return lease
+
+    def _schedule_recycle(self, key: tuple, stream: Stream) -> None:
+        self._control_tasks.run_once(
+            ('stream-error-recycle', *key, id(stream)),
+            stream.recycle,
+        )
+
     def _get_data_stream(self, path: Optional[str] = None) -> Stream:
         """Return the data stream for ``path``, opening it lazily.
 
@@ -261,6 +304,7 @@ class SubscriptionManager:
         stream = self._data_streams.get(path)
         if stream is None:
             stream_holder: Dict[str, Stream] = {}
+            connection_lease = self._get_data_connection_lease(path)
 
             async def on_message_bound(msg):
                 await self._receive(msg, origin=stream_holder['stream'])
@@ -274,6 +318,7 @@ class SubscriptionManager:
                 logger=self._logger,
                 rate_limiter=self._rate_limiter,
                 connection_id=_data_connection_id(path),
+                connection_lease=connection_lease,
             ).connect()
             stream_holder['stream'] = stream
             self._data_streams[path] = stream
@@ -303,6 +348,7 @@ class SubscriptionManager:
         """
         if self._user_stream is None:
             stream_holder: Dict[str, Stream] = {}
+            connection_lease = self._get_user_connection_lease()
 
             async def on_message_bound(msg):
                 await self._receive(msg, origin=stream_holder['stream'])
@@ -316,7 +362,8 @@ class SubscriptionManager:
                 timeout=self._stream_timeout,
                 logger=self._logger,
                 rate_limiter=self._rate_limiter,
-                connection_id='user'
+                connection_id='user',
+                connection_lease=connection_lease,
             ).connect()
             stream_holder['stream'] = stream
             self._user_stream = stream
@@ -375,12 +422,13 @@ class SubscriptionManager:
                 exception=e,
                 recovering=True
             )
+            if self._user_stream is not None:
+                self._schedule_recycle(
+                    (StreamName.USER, StreamErrorPhase.LOGON),
+                    self._user_stream,
+                )
             if self._handler_ctx is not None:
                 await self._handler_ctx.dispatch_stream_error(error)
-            if self._user_stream is not None:
-                asyncio.get_running_loop().create_task(
-                    self._user_stream.recycle()
-                )
             return
         await self._resubscribe_user()
 
@@ -585,22 +633,25 @@ class SubscriptionManager:
         for name in params:
             per_path.setdefault(self._data_stream_router(name), []).append(name)
 
-        # Reserve stream slots per-path against each path's own ws-streams pool.
-        # Compute the projected per-path total from the currently committed
-        # names so reserve_streams is idempotent across resubscribes.
-        if subscribe:
-            for path, names in per_path.items():
-                current = {
-                    n for n in self._stream_names
-                    if self._data_stream_router(n) == path
-                }
-                projected = current | set(names)
-                self._rate_limiter.reserve_streams(
-                    _data_connection_id(path), len(projected)
-                )
-
+        reserved_paths: List[str] = []
         sent_ok: List[Tuple[str, List[str]]] = []
         try:
+            # Reserve stream slots per-path against each path's own
+            # ws-streams pool. Compute the projected per-path total from the
+            # currently committed names so reserve_streams is idempotent across
+            # resubscribes.
+            if subscribe:
+                for path, names in per_path.items():
+                    current = {
+                        n for n in self._stream_names
+                        if self._data_stream_router(n) == path
+                    }
+                    projected = current | set(names)
+                    self._rate_limiter.reserve_streams(
+                        self._get_data_connection_lease(path), len(projected)
+                    )
+                    reserved_paths.append(path)
+
             for path, names in per_path.items():
                 stream = self._get_data_stream(path)
                 await stream.send({
@@ -613,14 +664,16 @@ class SubscriptionManager:
                 # Roll back the optimistic stream reservation on EVERY path
                 # whose reserve was raised by this call; ``len(committed)`` is
                 # always <= cap so this never raises.
-                for path, _names in per_path.items():
+                for path in reserved_paths:
                     committed = sum(
                         1 for n in self._stream_names
                         if self._data_stream_router(n) == path
                     )
-                    self._rate_limiter.reserve_streams(
-                        _data_connection_id(path), committed
-                    )
+                    lease = self._data_connection_leases.get(path)
+                    if lease is not None:
+                        self._rate_limiter.reserve_streams(lease, committed)
+                for path in per_path:
+                    self._drop_unopened_data_connection_lease(path)
             raise
 
         if subscribe:
@@ -631,7 +684,7 @@ class SubscriptionManager:
                 removed = self._stream_names & set(names)
                 self._stream_names.difference_update(names)
                 self._rate_limiter.release_streams(
-                    _data_connection_id(path), len(removed)
+                    self._get_data_connection_lease(path), len(removed)
                 )
 
     async def _subscribe_user_only(
@@ -743,11 +796,13 @@ class SubscriptionManager:
                 exception=e,
                 recovering=True
             )
+            for stream in list(self._data_streams.values()):
+                self._schedule_recycle(
+                    (StreamName.DATA, StreamErrorPhase.RESUBSCRIBE),
+                    stream,
+                )
             if self._handler_ctx is not None:
                 await self._handler_ctx.dispatch_stream_error(error)
-            # Recycle every data stream so aioretry restarts each of them.
-            for stream in list(self._data_streams.values()):
-                asyncio.get_running_loop().create_task(stream.recycle())
 
     async def _resubscribe_path(self, path: str) -> None:
         """Resubscribe only the streams whose router result equals ``path``.
@@ -787,13 +842,14 @@ class SubscriptionManager:
                 exception=e,
                 recovering=True
             )
-            if self._handler_ctx is not None:
-                await self._handler_ctx.dispatch_stream_error(error)
             stream_to_recycle = self._data_streams.get(path)
             if stream_to_recycle is not None:
-                asyncio.get_running_loop().create_task(
-                    stream_to_recycle.recycle()
+                self._schedule_recycle(
+                    (StreamName.DATA, StreamErrorPhase.RESUBSCRIBE, path),
+                    stream_to_recycle,
                 )
+            if self._handler_ctx is not None:
+                await self._handler_ctx.dispatch_stream_error(error)
 
     async def _resubscribe_user(self) -> None:
         _, user_subscriptions = self._split_subscriptions(self._subscribed)
@@ -811,12 +867,13 @@ class SubscriptionManager:
                 exception=e,
                 recovering=True
             )
+            if self._user_stream is not None:
+                self._schedule_recycle(
+                    (StreamName.USER, StreamErrorPhase.RESUBSCRIBE),
+                    self._user_stream,
+                )
             if self._handler_ctx is not None:
                 await self._handler_ctx.dispatch_stream_error(error)
-            if self._user_stream is not None:
-                asyncio.get_running_loop().create_task(
-                    self._user_stream.recycle()
-                )
 
     async def _recover_user_stream_if_needed(self) -> bool:
         if (

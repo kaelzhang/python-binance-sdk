@@ -55,12 +55,14 @@ from binance.core.common.constants import (
     HTTP_TOO_MANY_REQUESTS
 )
 
-from binance.core.rate_limit import RateLimiter
+from binance.core.rate_limit import ConnectionLease, RateLimiter
 
 from binance.core.common.types import (
     EventCallback,
     Timeout
 )
+
+from .request_registry import RequestRegistry
 
 
 ON_MESSAGE = 'on_message'
@@ -86,10 +88,11 @@ class Stream:
     _conn_task: Optional[Task[None]]
     _connected_task: Optional[Task[None]]
     _message_tasks: Set[Task[None]]
-    _message_futures: Dict[int, Future]
+    _request_registry: RequestRegistry
     _retry_policy: RetryPolicy
     _rate_limiter: RateLimiter
     _connection_id: str
+    _connection_lease: ConnectionLease
 
     def __init__(
         self,
@@ -104,7 +107,8 @@ class Stream:
         retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
         timeout: Timeout = DEFAULT_STREAM_TIMEOUT,
         rate_limiter: Optional[RateLimiter] = None,
-        connection_id: str = 'default'
+        connection_id: str = 'default',
+        connection_lease: Optional[ConnectionLease] = None
     ) -> None:
         # Will be used by `self._emit`
         self._on_message = wrap_event_callback(on_message, ON_MESSAGE, True)
@@ -136,8 +140,7 @@ class Stream:
         self._message_tasks = set()
 
         # message_id
-        self._message_id = 0
-        self._message_futures = {}
+        self._request_registry = RequestRegistry()
 
         self._open_future = None
         self._closing = False
@@ -151,9 +154,43 @@ class Stream:
         self._rate_limiter = rate_limiter if rate_limiter is not None \
             else RateLimiter()
         self._connection_id = connection_id
-        self._rate_limiter.register_connection(connection_id)
+        self._connection_lease = (
+            connection_lease if connection_lease is not None
+            else self._rate_limiter.open_connection(
+                kind='raw_stream',
+                route=uri,
+                label=connection_id,
+            )
+        )
+        self._rate_limiter.register_connection(self._connection_lease)
 
         self._logger = logger
+
+    def _connection_ref(self):
+        return getattr(self, '_connection_lease', self._connection_id)
+
+    def _requests(self) -> RequestRegistry:
+        registry = getattr(self, '_request_registry', None)
+        if registry is None:
+            registry = RequestRegistry()
+            self._request_registry = registry
+        return registry
+
+    @property
+    def _message_id(self) -> int:
+        return self._requests().next_id
+
+    @_message_id.setter
+    def _message_id(self, value: int) -> None:
+        self._requests().next_id = value
+
+    @property
+    def _message_futures(self) -> Dict[int, Future]:
+        return self._requests().pending
+
+    @_message_futures.setter
+    def _message_futures(self, value: Dict[int, Future]) -> None:
+        self._requests().replace_pending(value)
 
     def _set_socket(self, socket) -> None:
         if self._open_future:
@@ -205,13 +242,7 @@ class Stream:
         drops between sending a request and receiving its id-correlated response
         (only :meth:`_handle_message` ever resolves these futures).
         """
-        if not self._message_futures:
-            return
-        pending = self._message_futures
-        self._message_futures = {}
-        for future in pending.values():
-            if not future.done():
-                future.set_exception(exception)
+        self._requests().reject_all(exception)
 
     def _reject_open_future(self, exception: Exception) -> None:
         open_future = getattr(self, '_open_future', None)
@@ -251,27 +282,28 @@ class Stream:
             return
 
         message_id = msg[STREAM_KEY_ID]
-        if message_id not in self._message_futures:
+        requests = self._requests()
+        future = requests.get(message_id)
+        if future is None:
             self._logger.warning(format_msg(
                 'ignoring late or unknown stream response id %s',
                 message_id
             ))
             return
 
-        future = self._message_futures[message_id]
-
         # Hand the full message to the reconcile hook (WS-API `rateLimits`)
         # before resolving. A buggy hook must not break response delivery or
         # kill the connection, so its errors are caught and logged.
-        if self._on_response is not None:
+        on_response = getattr(self, '_on_response', None)
+        if on_response is not None:
             try:
-                self._on_response(msg)
+                on_response(msg)
             except Exception as e:
                 self._logger.error(
                     format_msg('on_response hook error: %s', repr_exception(e)))
 
         if STREAM_KEY_RESULT in msg:
-            future.set_result(msg[STREAM_KEY_RESULT])
+            requests.resolve_result(message_id, msg[STREAM_KEY_RESULT])
 
         elif STREAM_KEY_ERROR in msg:
             error = msg[STREAM_KEY_ERROR]
@@ -284,12 +316,21 @@ class Stream:
                 or status in (HTTP_IP_BANNED, HTTP_TOO_MANY_REQUESTS)
             ):
                 data = error.get('data') or {}
-                future.set_exception(StreamRateLimitException(
-                    code, message, data.get('retryAfter')))
+                requests.resolve_error(
+                    message_id,
+                    StreamRateLimitException(
+                        code,
+                        message,
+                        data.get('retryAfter'),
+                    )
+                )
             else:
-                future.set_exception(StreamSubscribeException(code, message))
-
-        del self._message_futures[message_id]
+                requests.resolve_error(
+                    message_id,
+                    StreamSubscribeException(code, message),
+                )
+        else:
+            requests.remove(message_id)
 
     def _before_connect(self) -> None:
         open_future = getattr(self, '_open_future', None)
@@ -305,7 +346,7 @@ class Stream:
         except asyncio.TimeoutError:
             try:
                 # Apply rate limiting before sending ping
-                await self._rate_limiter.acquire_message(self._connection_id)
+                await self._rate_limiter.acquire_message(self._connection_ref())
 
                 # Send ping and wait for pong with a shorter timeout
                 pong_waiter = await socket.ping()
@@ -503,6 +544,9 @@ class Stream:
 
         self._socket = None
         self._closing = False
+        connection_lease = getattr(self, '_connection_lease', None)
+        if connection_lease is not None:
+            self._rate_limiter.unregister_connection(connection_lease)
 
     async def recycle(self) -> None:
         """Proactively drop the current socket so aioretry reconnects.
@@ -553,7 +597,7 @@ class Stream:
         """
 
         # Apply rate limiting before sending
-        await self._rate_limiter.acquire_message(self._connection_id)
+        await self._rate_limiter.acquire_message(self._connection_ref())
 
         socket = self._socket
 
@@ -563,20 +607,16 @@ class Stream:
             else:
                 raise StreamDisconnectedException(self._uri)
 
-        future = create_future()
-
-        message_id = self._message_id
-        self._message_id += 1
+        requests = self._requests()
+        message_id, future = requests.create()
 
         msg[STREAM_KEY_ID] = message_id
-        self._message_futures[message_id] = future
 
         try:
             await socket.send(json_stringify(msg))
             timeout = getattr(self, '_timeout', DEFAULT_STREAM_TIMEOUT)
-            return await asyncio.wait_for(future, timeout=timeout)
+            return await requests.wait_for(message_id, timeout=timeout)
         except asyncio.TimeoutError as e:
-            self._message_futures.pop(message_id, None)
             timeout = getattr(self, '_timeout', DEFAULT_STREAM_TIMEOUT)
             raise StreamResponseTimeoutException(
                 self._uri,
@@ -584,12 +624,12 @@ class Stream:
                 timeout
             ) from e
         except asyncio.CancelledError:
-            self._message_futures.pop(message_id, None)
+            requests.remove(message_id)
             if not future.done():
                 future.cancel()
             raise
         except Exception:
-            self._message_futures.pop(message_id, None)
+            requests.remove(message_id)
             raise
 
     def _handle_task_exception(self, task):

@@ -56,6 +56,10 @@ class RateLimitWindow:
     utilization: float
     pending: int
     source: RateLimitSource
+    connection_id: Optional[str] = None
+    connection_label: Optional[str] = None
+    connection_kind: Optional[str] = None
+    connection_route: Optional[str] = None
 
 
 @dataclass(frozen=True)

@@ -8,7 +8,7 @@ from binance.core.rate_limit.types import (
 )
 from binance.core.rate_limit.bucket import RateLimitBucket
 from binance.core.rate_limit.snapshot import RateLimitWindow, RateLimitSnapshot
-from binance.core.rate_limit.core import RateLimiter
+from binance.core.rate_limit.core import ConnectionLease, RateLimiter
 from binance.core.rate_limit.defaults import (
     parse_retry_after,
 )
@@ -16,5 +16,5 @@ from binance.core.rate_limit.defaults import (
 __all__ = [
     'RateLimitScope', 'RateLimitType', 'RateLimitSource', 'RateLimitKind',
     'EnforceMode', 'RateLimitRule', 'RateLimitBucket', 'RateLimitWindow',
-    'RateLimitSnapshot', 'RateLimiter', 'parse_retry_after',
+    'RateLimitSnapshot', 'ConnectionLease', 'RateLimiter', 'parse_retry_after',
 ]

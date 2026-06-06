@@ -1,11 +1,21 @@
 import asyncio
 import json
+import time
 from contextlib import suppress
 from logging import getLogger
 
 import pytest
 
-from binance import Credentials, SpotClient, Stream, SubType, UMFuturesClient
+from binance import (
+    Credentials,
+    HandlerExceptionHandlerBase,
+    SpotClient,
+    Stream,
+    StreamErrorHandlerBase,
+    SubType,
+    TickerHandlerBase,
+    UMFuturesClient,
+)
 from binance.core.common.exceptions import StreamDisconnectedException
 from binance.core.rate_limit import RateLimiter
 
@@ -138,6 +148,100 @@ async def test_raw_stream_on_message_long_task_does_not_block_recv():
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
+
+
+@pytest.mark.asyncio
+async def test_sync_stream_handler_long_task_does_not_block_event_loop():
+    client = SpotClient(Credentials('key')).start()
+
+    class SlowTickerHandler(TickerHandlerBase):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def receive(self, payload):
+            self.calls += 1
+            if self.calls == 1:
+                time.sleep(0.2)
+
+    client.handler(SlowTickerHandler())
+
+    started_at = time.perf_counter()
+    task = asyncio.create_task(client._receive({
+        'stream': 'btcusdt@ticker',
+        'data': {'e': '24hrTicker', 's': 'BTCUSDT'},
+    }))
+    try:
+        await asyncio.sleep(0.05)
+        assert time.perf_counter() - started_at < 0.12
+    finally:
+        with suppress(Exception):
+            await task
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_sync_exception_handler_long_task_does_not_block_event_loop():
+    client = SpotClient(Credentials('key')).start()
+
+    class RaisingTickerHandler(TickerHandlerBase):
+        def receive(self, payload):
+            raise RuntimeError('handler failure')
+
+    class SlowExceptionHandler(HandlerExceptionHandlerBase):
+        def receive(self, error):
+            time.sleep(0.2)
+            return error
+
+    client.handler(SlowExceptionHandler())
+    client.handler(RaisingTickerHandler())
+
+    started_at = time.perf_counter()
+    task = asyncio.create_task(client._receive({
+        'stream': 'btcusdt@ticker',
+        'data': {'e': '24hrTicker', 's': 'BTCUSDT'},
+    }))
+    try:
+        await asyncio.sleep(0.05)
+        assert time.perf_counter() - started_at < 0.12
+    finally:
+        with suppress(Exception):
+            await task
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_sync_stream_error_handler_long_task_does_not_delay_recycle():
+    client = SpotClient(Credentials('key')).start()
+    recycled = asyncio.Event()
+
+    class SlowStreamErrorHandler(StreamErrorHandlerBase):
+        def receive(self, error):
+            time.sleep(0.2)
+
+    class FakeDataStream:
+        async def recycle(self):
+            recycled.set()
+
+    async def failing_subscribe_only(subscribe, subscriptions):
+        raise RuntimeError('subscribe failed')
+
+    client.handler(SlowStreamErrorHandler())
+    client._subscribe_only = failing_subscribe_only
+    client._data_streams = {'/stream': FakeDataStream()}
+    client._subscribed = {(SubType.TRADE, 'BTCUSDT')}
+
+    started_at = time.perf_counter()
+    task = asyncio.create_task(client._resubscribe())
+    try:
+        await asyncio.sleep(0.05)
+        assert time.perf_counter() - started_at < 0.12
+        assert recycled.is_set()
+    finally:
+        with suppress(Exception):
+            await asyncio.wait_for(task, timeout=0.5)
+        client._data_streams = {}
+        await client.close()
 
 
 @pytest.mark.asyncio

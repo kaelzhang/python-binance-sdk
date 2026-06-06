@@ -1,3 +1,4 @@
+import asyncio
 import time
 import pytest
 
@@ -199,6 +200,41 @@ def test_reserve_and_release_streams():
     rl.release_streams('c1', 24)
     assert _windows_by(rl.snapshot(), RateLimitType.WS_STREAMS)[0].used == 1000
     rl.release_streams('nope', 5)        # unknown connection -> no-op, no error
+
+
+@pytest.mark.asyncio
+async def test_connection_leases_with_same_label_have_independent_message_buckets():
+    rule = RateLimitRule(
+        RateLimitScope.CONNECTION,
+        RateLimitType.WS_MESSAGES,
+        1.0,
+        1,
+        RateLimitKind.COUNT,
+        EnforceMode.SLEEP,
+    )
+    rl = RateLimiter(ws_message_rule=rule)
+    first = rl.open_connection(kind='data', route='/stream', label='data')
+    second = rl.open_connection(kind='data', route='/stream', label='data')
+
+    assert first.id != second.id
+    assert first.label == second.label == 'data'
+
+    await rl.acquire_message(first)
+    await asyncio.wait_for(rl.acquire_message(second), timeout=0.05)
+
+
+def test_closing_one_connection_lease_keeps_same_label_peer_buckets():
+    rl = _spot_limiter()
+    first = rl.open_connection(kind='data', route='/stream', label='data')
+    second = rl.open_connection(kind='data', route='/stream', label='data')
+
+    rl.reserve_streams(first, 3)
+    rl.reserve_streams(second, 5)
+    rl.unregister_connection(first)
+
+    streams = _windows_by(rl.snapshot(), RateLimitType.WS_STREAMS)
+    assert [window.used for window in streams] == [5]
+    assert streams[0].connection_label == 'data'
 
 
 def test_note_retry_after_and_throttled():

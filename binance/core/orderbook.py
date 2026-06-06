@@ -32,6 +32,7 @@ order book implementation for whatever client it is registered with.
 import asyncio
 from abc import ABC, abstractmethod
 from asyncio import Future
+from concurrent.futures import Future as ConcurrentFuture
 from typing import (
     Any,
     Dict,
@@ -65,6 +66,7 @@ from binance.core.common.exceptions import (
     OrderBookFetchAbandonedException,
     SnapshotTooOldException,
 )
+from binance.core.orderbook_buffer import OrderBookBufferPolicy
 
 # Diff-event field keys.  Identical on every Binance market venue (Spot,
 # USDⓈ-M, COIN-M) per the public WebSocket reference documentation.
@@ -123,6 +125,7 @@ class OrderBook(ABC):
     _limit: int
     _last_update_id: int
     __updated_future: Optional[Future]
+    _loop: Optional[asyncio.AbstractEventLoop]
 
     # We redundant define the default value of limit,
     #   because OrderBook is also a public class
@@ -147,6 +150,8 @@ class OrderBook(ABC):
 
         # Whether we are still fetching the depth snapshot
         self._fetching = False
+        self._loop = None
+        self._buffer_policy = OrderBookBufferPolicy()
 
         self.set_retry_policy(retry_policy)
         self.set_limit(limit)
@@ -166,6 +171,26 @@ class OrderBook(ABC):
             self.__updated_future = future
 
         return future
+
+    def _capture_loop(self) -> Optional[asyncio.AbstractEventLoop]:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return self._loop
+        self._loop = loop
+        return loop
+
+    def _get_loop(self) -> asyncio.AbstractEventLoop:
+        loop = self._capture_loop()
+        if loop is None or loop.is_closed():
+            raise RuntimeError('orderbook needs a running event loop')
+        return loop
+
+    def _is_owning_loop_thread(self) -> bool:
+        try:
+            return asyncio.get_running_loop() is self._loop
+        except RuntimeError:
+            return False
 
     @property
     def ready(self) -> bool:
@@ -259,6 +284,7 @@ class OrderBook(ABC):
         if not client:
             return
 
+        self._capture_loop()
         self._client = client
 
         if not self.ready:
@@ -271,6 +297,13 @@ class OrderBook(ABC):
             # we will not emit the event
             return
 
+        if not self._is_owning_loop_thread():
+            self._get_loop().call_soon_threadsafe(self._emit_updated_in_loop, exc)
+            return
+
+        self._emit_updated_in_loop(exc)
+
+    def _emit_updated_in_loop(self, exc: Optional[Exception] = None) -> None:
         if exc is None:
             self._updated_future.set_result(None)
         else:
@@ -353,6 +386,9 @@ class OrderBook(ABC):
                 del self._unsolved_queue[:counter]
                 raise RuntimeError('fails to merge')
 
+            if self._buffer_policy.should_yield_after(counter):
+                await asyncio.sleep(self._buffer_policy.replay_yield_seconds)
+
         self._unsolved_queue.clear()
 
     async def _fetch(self) -> None:
@@ -375,11 +411,19 @@ class OrderBook(ABC):
     def _start_fetching(self) -> None:
         if not self._fetching:
             self._fetching = True
-            task = asyncio.create_task(self._fetch())
+            loop = self._get_loop()
+            task: Any
+            if self._is_owning_loop_thread():
+                task = loop.create_task(self._fetch())
+            else:
+                task = asyncio.run_coroutine_threadsafe(self._fetch(), loop)
             # Add exception handler to prevent "Future exception was never retrieved" warnings
             task.add_done_callback(self._handle_fetch_exception)
 
-    def _handle_fetch_exception(self, task):
+    def _handle_fetch_exception(
+        self,
+        task: Future | ConcurrentFuture
+    ) -> None:
         """Handle exceptions from fetch task to prevent 'Future exception was never retrieved' warnings"""
 
         if task.cancelled():
@@ -428,7 +472,7 @@ class OrderBook(ABC):
             # If fetching is not completed, we should not merge orderbook,
             # We put the payload into the queue and will **try** to merge the
             #   payload into orderbook
-            self._unsolved_queue.append(payload)
+            self._buffer_policy.append(self._unsolved_queue, payload)
             return False
 
         updated = self._update(payload)

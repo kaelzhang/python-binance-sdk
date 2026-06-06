@@ -154,11 +154,13 @@ class BaseClient(  # type: ignore[misc]  # diamond mixin: _ws_api_request is a C
         # by the market's ``data_stream_router``.  Lazily opened on the first
         # subscription whose stream name routes to that path.
         self._data_streams = {}
+        self._data_connection_leases = {}
         # Wire the market's stream-routing config so the subscription manager
         # partitions stream names across the right per-path connections.
         self._data_stream_router = market.data_stream_router
         self._default_data_stream_path = market.data_stream_paths[0]
         self._user_stream = None
+        self._user_connection_lease = None
         self._subscribed = set()
         self._stream_names = set()
         self._want_user_stream = False

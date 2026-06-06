@@ -50,7 +50,7 @@ from binance.core.common.utils import format_msg, repr_exception
 from binance.core.common.types import StreamError, StreamName, StreamErrorPhase, Timeout
 from binance.core.handlers.context import HandlerContext
 from binance.core.market import MarketSpec
-from binance.core.rate_limit import RateLimiter
+from binance.core.rate_limit import ConnectionLease, RateLimiter
 from binance.core.transport.control import ControlTaskSupervisor
 from binance.core.transport.stream import Stream
 
@@ -101,6 +101,7 @@ class FuturesUserStreamMixin:
     # Kept as a separate attribute so it does not collide with the
     # SubscriptionManager's ``_user_stream`` (the shared ws-api connection).
     _futures_user_stream: Optional[Stream]
+    _futures_user_connection_lease: Optional[ConnectionLease]
     _futures_keepalive_task: Optional[asyncio.Task]
     _futures_listen_key: Optional[str]
 
@@ -123,6 +124,7 @@ class FuturesUserStreamMixin:
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._futures_user_stream = None
+        self._futures_user_connection_lease = None
         self._futures_keepalive_task = None
         self._futures_listen_key = None
 
@@ -265,6 +267,11 @@ class FuturesUserStreamMixin:
         # CM (legacy, unaffected): '/ws/{listen_key}'.
         template = self.MARKET.user_stream_path_template
         uri = self._stream_host + template.format(listen_key=listen_key)
+        connection_lease = self._rate_limiter.open_connection(
+            kind='futures_user',
+            route=uri,
+            label=_FUTURES_USER_CONN_ID,
+        )
 
         stream_holder: dict[str, Stream] = {}
 
@@ -279,9 +286,11 @@ class FuturesUserStreamMixin:
             logger=self._logger,
             rate_limiter=self._rate_limiter,
             connection_id=_FUTURES_USER_CONN_ID,
+            connection_lease=connection_lease,
         ).connect()
         stream_holder['stream'] = stream
         self._futures_user_stream = stream
+        self._futures_user_connection_lease = connection_lease
 
         self._futures_keepalive_task = asyncio.get_running_loop().create_task(
             self._futures_keepalive_loop()
@@ -336,7 +345,11 @@ class FuturesUserStreamMixin:
             except Exception as e:
                 self._logger.error(format_msg(
                     'futures user stream close failed: %s', repr_exception(e)))
-            self._rate_limiter.unregister_connection(_FUTURES_USER_CONN_ID)
+            if self._futures_user_connection_lease is not None:
+                self._rate_limiter.unregister_connection(
+                    self._futures_user_connection_lease
+                )
+                self._futures_user_connection_lease = None
 
     def _cancel_futures_keepalive(self) -> None:
         task = self._futures_keepalive_task

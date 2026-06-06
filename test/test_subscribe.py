@@ -551,3 +551,10 @@ async def test_subscribe_rejects_more_than_1024_streams(monkeypatch):
 
     with pytest.raises(TooManyStreamsException):
         await client._subscribe_only(True, [('trade', 'BTCUSDT')])
+
+    connection_windows = [
+        w for w in client.rate_limit_snapshot().windows
+        if w.connection_id is not None
+    ]
+    assert client._data_connection_leases == {}
+    assert connection_windows == []
