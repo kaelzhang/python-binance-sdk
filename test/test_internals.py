@@ -239,9 +239,10 @@ async def test_stream_on_response_hook_receives_full_message():
     msg = {'id': 7, 'status': 200, 'result': {'ok': 1},
            'rateLimits': [{'count': 3}]}
     await stream._handle_message(msg)
+    result = await asyncio.wait_for(future, timeout=0.1)
 
     assert seen == [msg]                 # full message handed to the hook
-    assert future.result() == {'ok': 1}  # future still resolves to result
+    assert result == {'ok': 1}           # future still resolves to result
 
 
 @pytest.mark.asyncio
@@ -259,7 +260,7 @@ async def test_stream_on_response_hook_error_is_swallowed():
 
     await stream._handle_message({'id': 1, 'result': None})
     # The future still resolves despite the hook raising.
-    assert future.result() is None
+    assert await asyncio.wait_for(future, timeout=0.1) is None
 
 
 @pytest.mark.asyncio

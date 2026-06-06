@@ -261,6 +261,117 @@ async def test_sync_raw_stream_on_message_long_task_does_not_block_event_loop():
 
 
 @pytest.mark.asyncio
+async def test_slow_stream_on_response_hook_does_not_block_recv_loop():
+    def on_response(_msg):
+        time.sleep(0.2)
+
+    received = []
+
+    async def on_message(msg):
+        received.append(msg)
+
+    stream = Stream(
+        'ws://fake',
+        on_message=on_message,
+        on_response=on_response,
+        logger=logger,
+        rate_limiter=RateLimiter(enabled=False),
+    )
+    stream._connection_error = False
+    stream._timeout = 1.0
+    response_future = asyncio.get_running_loop().create_future()
+    stream._message_futures = {0: response_future}
+
+    class FakeSocket:
+        def __init__(self):
+            self.recv_count = 0
+            self.messages = [
+                json.dumps({'id': 0, 'result': 'ok'}),
+                json.dumps({'stream': 'two', 'data': {'e': '24hrTicker'}}),
+            ]
+
+        async def recv(self):
+            self.recv_count += 1
+            return self.messages.pop(0)
+
+    socket = FakeSocket()
+    stream._socket = socket
+
+    async def reader():
+        await stream._receive()
+        await stream._receive()
+
+    started_at = time.perf_counter()
+    task = asyncio.create_task(reader())
+    try:
+        await asyncio.sleep(0.05)
+        assert socket.recv_count == 2
+        assert time.perf_counter() - started_at < 0.12
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        await asyncio.sleep(0.2)
+        await stream._events().close()
+
+
+@pytest.mark.asyncio
+async def test_slow_stream_on_response_preserves_future_ordering():
+    markers = []
+
+    def on_response(_msg):
+        time.sleep(0.05)
+        markers.append('hook')
+
+    async def on_message(_msg):
+        pass
+
+    stream = Stream(
+        'ws://fake',
+        on_message=on_message,
+        on_response=on_response,
+        logger=logger,
+        rate_limiter=RateLimiter(enabled=False),
+    )
+    response_future = asyncio.get_running_loop().create_future()
+    stream._message_futures = {0: response_future}
+
+    await stream._handle_message({'id': 0, 'result': 'ok'})
+    assert not response_future.done()
+
+    assert await asyncio.wait_for(response_future, timeout=0.2) == 'ok'
+    assert markers == ['hook']
+
+
+@pytest.mark.asyncio
+async def test_async_stream_on_response_hook_is_awaited_before_future_resolves():
+    markers = []
+
+    async def on_response(_msg):
+        await asyncio.sleep(0.01)
+        markers.append('hook')
+
+    async def on_message(_msg):
+        pass
+
+    stream = Stream(
+        'ws://fake',
+        on_message=on_message,
+        on_response=on_response,
+        logger=logger,
+        rate_limiter=RateLimiter(enabled=False),
+    )
+    response_future = asyncio.get_running_loop().create_future()
+    stream._message_futures = {0: response_future}
+
+    await stream._handle_message({'id': 0, 'result': 'ok'})
+    assert not response_future.done()
+
+    assert await asyncio.wait_for(response_future, timeout=0.2) == 'ok'
+    assert markers == ['hook']
+
+
+@pytest.mark.asyncio
 async def test_sync_stream_handler_long_task_does_not_block_event_loop():
     client = SpotClient(Credentials('key')).start()
 

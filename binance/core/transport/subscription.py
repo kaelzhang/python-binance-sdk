@@ -338,11 +338,14 @@ class SubscriptionManager:
             async def on_message_bound(msg):
                 await self._receive(msg, origin=stream_holder['stream'])
 
+            async def on_response_bound(msg):
+                self._reconcile_ws_api_rate_limits(msg)
+
             stream = Stream(
                 self._ws_api_host,
                 on_message=on_message_bound,
                 on_connected=self._on_ws_api_connected,
-                on_response=self._reconcile_ws_api_rate_limits,
+                on_response=on_response_bound,
                 retry_policy=self._stream_retry_policy,
                 timeout=self._stream_timeout,
                 logger=self._logger,

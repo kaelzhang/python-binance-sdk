@@ -1,5 +1,6 @@
 import json
 import asyncio
+import inspect
 from asyncio import Future, Task
 from typing import (
     Any,
@@ -31,6 +32,7 @@ from binance.core.common.utils import (
     format_msg,
     repr_exception,
     wrap_event_callback,
+    wrap_coroutine,
     create_future
 )
 
@@ -93,6 +95,8 @@ class Stream:
     _conn_task: Optional[Task[None]]
     _connected_task: Optional[Task[None]]
     _message_tasks: Set[Task[None]]
+    _response_tasks: Set[Task[None]]
+    _response_lock: Optional[asyncio.Lock]
     _event_dispatcher: StreamEventDispatcher
     _event_overflow_task: Optional[Task[None]]
     _event_dispatch_paused: bool
@@ -147,6 +151,8 @@ class Stream:
         self._conn_task = None
         self._connected_task = None
         self._message_tasks = set()
+        self._response_tasks = set()
+        self._response_lock = None
         self._event_dispatcher = self._new_event_dispatcher()
         self._event_overflow_task = None
         self._event_dispatch_paused = False
@@ -350,34 +356,46 @@ class Stream:
             message_tasks.discard(task)
         self._handle_task_exception(task)
 
-    async def _handle_message(self, msg) -> None:
-        # > The id used in the JSON payloads is an unsigned INT used as
-        # > an identifier to uniquely identify the messages going back and forth
-        if STREAM_KEY_ID not in msg:
-            self._schedule_message_callback(msg)
-            return
+    def _handle_response_task_exception(self, task: Task) -> None:
+        response_tasks = getattr(self, '_response_tasks', None)
+        if response_tasks is not None:
+            response_tasks.discard(task)
+        self._handle_task_exception(task)
 
-        message_id = msg[STREAM_KEY_ID]
-        requests = self._requests()
-        future = requests.get(message_id)
-        if future is None:
-            self._logger.warning(format_msg(
-                'ignoring late or unknown stream response id %s',
-                message_id
-            ))
-            return
+    def _get_response_lock(self) -> asyncio.Lock:
+        lock = getattr(self, '_response_lock', None)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._response_lock = lock
+        return lock
 
-        # Hand the full message to the reconcile hook (WS-API `rateLimits`)
-        # before resolving. A buggy hook must not break response delivery or
-        # kill the connection, so its errors are caught and logged.
+    def _get_response_tasks(self) -> Set[Task[None]]:
+        tasks = getattr(self, '_response_tasks', None)
+        if tasks is None:
+            tasks = set()
+            self._response_tasks = tasks
+        return tasks
+
+    async def _run_response_hook(self, msg) -> None:
         on_response = getattr(self, '_on_response', None)
-        if on_response is not None:
-            try:
-                on_response(msg)
-            except Exception as e:
-                self._logger.error(
-                    format_msg('on_response hook error: %s', repr_exception(e)))
+        if on_response is None:
+            return
+        try:
+            if inspect.iscoroutinefunction(on_response):
+                ret = on_response(msg)
+            else:
+                ret = await asyncio.to_thread(on_response, msg)
+            await wrap_coroutine(ret)
+        except Exception as e:
+            self._logger.error(
+                format_msg('on_response hook error: %s', repr_exception(e)))
 
+    def _resolve_response_message(
+        self,
+        requests: RequestRegistry,
+        message_id: int,
+        msg,
+    ) -> None:
         if STREAM_KEY_RESULT in msg:
             requests.resolve_result(message_id, msg[STREAM_KEY_RESULT])
 
@@ -407,6 +425,46 @@ class Stream:
                 )
         else:
             requests.remove(message_id)
+
+    async def _deliver_response_message(self, message_id: int, msg) -> None:
+        async with self._get_response_lock():
+            requests = self._requests()
+            if requests.get(message_id) is None:
+                return
+            await self._run_response_hook(msg)
+            self._resolve_response_message(requests, message_id, msg)
+
+    def _schedule_response_message(self, message_id: int, msg) -> None:
+        task = asyncio.get_running_loop().create_task(
+            self._deliver_response_message(message_id, msg)
+        )
+        self._get_response_tasks().add(task)
+        task.add_done_callback(self._handle_response_task_exception)
+
+    async def _handle_message(self, msg) -> None:
+        # > The id used in the JSON payloads is an unsigned INT used as
+        # > an identifier to uniquely identify the messages going back and forth
+        if STREAM_KEY_ID not in msg:
+            self._schedule_message_callback(msg)
+            return
+
+        message_id = msg[STREAM_KEY_ID]
+        requests = self._requests()
+        future = requests.get(message_id)
+        if future is None:
+            self._logger.warning(format_msg(
+                'ignoring late or unknown stream response id %s',
+                message_id
+            ))
+            return
+
+        # Hand the full message to the reconcile hook (WS-API `rateLimits`)
+        # before resolving. When a hook exists, deliver the response from a
+        # lifecycle-owned task so a slow hook cannot stop the socket reader loop.
+        if getattr(self, '_on_response', None) is not None:
+            self._schedule_response_message(message_id, msg)
+        else:
+            self._resolve_response_message(requests, message_id, msg)
 
     def _before_connect(self) -> None:
         open_future = getattr(self, '_open_future', None)
@@ -595,6 +653,13 @@ class Stream:
 
         current_task = asyncio.current_task()
         for task in list(getattr(self, '_message_tasks', set())):
+            if task is current_task:
+                continue
+            if not task.done():
+                task.cancel()
+            tasks.append(task)
+
+        for task in list(getattr(self, '_response_tasks', set())):
             if task is current_task:
                 continue
             if not task.done():
