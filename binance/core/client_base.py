@@ -24,6 +24,7 @@ from binance.core.market import MarketSpec
 from binance.core.rate_limit import RateLimiter, RateLimitSnapshot
 from binance.core.transport.rest import RestTransport
 from binance.core.transport.control import ControlTaskSupervisor
+from binance.core.transport.data_streams import DataStreamRegistry
 from binance.core.transport.subscription import SubscriptionManager
 from binance.core.transport.ws_api import WsApiTransport, _apply_time_unit
 
@@ -150,19 +151,27 @@ class BaseClient(  # type: ignore[misc]  # diamond mixin: _ws_api_request is a C
 
         self._receiving = True
         self._handler_ctx = None
-        # Per-path data stream connections keyed by the path string returned
-        # by the market's ``data_stream_router``.  Lazily opened on the first
-        # subscription whose stream name routes to that path.
-        self._data_streams = {}
-        self._data_connection_leases = {}
         # Wire the market's stream-routing config so the subscription manager
         # partitions stream names across the right per-path connections.
         self._data_stream_router = market.data_stream_router
         self._default_data_stream_path = market.data_stream_paths[0]
+        self._data_stream_registry = DataStreamRegistry(
+            stream_host=self._stream_host,
+            retry_policy=self._stream_retry_policy,
+            timeout=self._stream_timeout,
+            logger=logger,
+            rate_limiter=self._rate_limiter,
+            on_message=self._receive_data_stream_message,
+            on_connected=self._build_data_resubscribe,
+        )
+        # Compatibility references for existing white-box tests.
+        self._data_streams = self._data_stream_registry.streams
+        self._data_connection_leases = self._data_stream_registry.leases
         self._user_stream = None
         self._user_connection_lease = None
         self._subscribed = set()
         self._stream_names = set()
+        self._subscription_lock = None
         self._want_user_stream = False
         self._user_unsubscribe_inflight = False
         self._control_tasks = ControlTaskSupervisor(logger)

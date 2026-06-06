@@ -33,6 +33,7 @@ import asyncio
 from abc import ABC, abstractmethod
 from asyncio import Future
 from concurrent.futures import Future as ConcurrentFuture
+from threading import RLock
 from typing import (
     Any,
     Dict,
@@ -150,6 +151,7 @@ class OrderBook(ABC):
 
         # Whether we are still fetching the depth snapshot
         self._fetching = False
+        self._state_lock = RLock()
         self._loop = None
         self._buffer_policy = OrderBookBufferPolicy()
 
@@ -198,7 +200,8 @@ class OrderBook(ABC):
 
         Most usually, you should not rely on this property or polling the value of this property. `await orderbook.updated()` is recommended for this scenario.
         """
-        return not self._fetching and self._last_update_id != 0
+        with self._state_lock:
+            return not self._fetching and self._last_update_id != 0
 
     async def updated(self) -> None:
         """Await for the NEXT time when the orderbook is updated.
@@ -291,7 +294,10 @@ class OrderBook(ABC):
             self._start_fetching()
 
     def _emit_updated(self, exc: Optional[Exception] = None) -> None:
-        if self._fetching:
+        with self._state_lock:
+            fetching = self._fetching
+
+        if fetching:
             # If the orderbook is still fetching,
             # which means the orderbook is not completely updated,
             # we will not emit the event
@@ -336,8 +342,16 @@ class OrderBook(ABC):
             limit=self._limit
         )
 
+        self._capture_loop()
+        return await asyncio.to_thread(self._install_snapshot, snapshot)
+
+    def _install_snapshot(self, snapshot) -> bool:
         snapshot_last_update_id = snapshot[KEY_REST_LAST_UPDATE_ID]
 
+        with self._state_lock:
+            return self._install_snapshot_locked(snapshot, snapshot_last_update_id)
+
+    def _install_snapshot_locked(self, snapshot, snapshot_last_update_id) -> bool:
         # Docs step 4: snapshot must cover the first buffered event.
         #
         # On Spot the rule is ``snapshot.lastUpdateId >= first_buffered.U``;
@@ -386,10 +400,8 @@ class OrderBook(ABC):
                 del self._unsolved_queue[:counter]
                 raise RuntimeError('fails to merge')
 
-            if self._buffer_policy.should_yield_after(counter):
-                await asyncio.sleep(self._buffer_policy.replay_yield_seconds)
-
         self._unsolved_queue.clear()
+        return True
 
     async def _fetch(self) -> None:
         """Should not be invoked directly by user, except for testing purpose
@@ -405,20 +417,29 @@ class OrderBook(ABC):
                 e
             )
 
-        self._fetching = False
+        with self._state_lock:
+            self._fetching = False
         self._emit_updated(exception)
 
-    def _start_fetching(self) -> None:
-        if not self._fetching:
+    def _mark_fetching_started(self) -> bool:
+        with self._state_lock:
+            if self._fetching:
+                return False
             self._fetching = True
-            loop = self._get_loop()
-            task: Any
-            if self._is_owning_loop_thread():
-                task = loop.create_task(self._fetch())
-            else:
-                task = asyncio.run_coroutine_threadsafe(self._fetch(), loop)
-            # Add exception handler to prevent "Future exception was never retrieved" warnings
-            task.add_done_callback(self._handle_fetch_exception)
+            return True
+
+    def _start_fetching(self) -> None:
+        if not self._mark_fetching_started():
+            return
+
+        loop = self._get_loop()
+        task: Any
+        if self._is_owning_loop_thread():
+            task = loop.create_task(self._fetch())
+        else:
+            task = asyncio.run_coroutine_threadsafe(self._fetch(), loop)
+        # Add exception handler to prevent "Future exception was never retrieved" warnings
+        task.add_done_callback(self._handle_fetch_exception)
 
     def _handle_fetch_exception(
         self,
@@ -445,8 +466,7 @@ class OrderBook(ABC):
 
         However, this method is for testing purpose mainly.
         """
-        if not self._fetching:
-            self._fetching = True
+        if self._mark_fetching_started():
             await self._fetch()
 
     def _merge(
@@ -468,14 +488,15 @@ class OrderBook(ABC):
         Returns:
             bool: `True` if the payload is ok to update into the orderbook, otherwise `False`
         """
-        if self._fetching:
-            # If fetching is not completed, we should not merge orderbook,
-            # We put the payload into the queue and will **try** to merge the
-            #   payload into orderbook
-            self._buffer_policy.append(self._unsolved_queue, payload)
-            return False
+        with self._state_lock:
+            if self._fetching:
+                # If fetching is not completed, we should not merge orderbook,
+                # We put the payload into the queue and will **try** to merge the
+                #   payload into orderbook
+                self._buffer_policy.append(self._unsolved_queue, payload)
+                return False
 
-        updated = self._update(payload)
+            updated = self._update(payload)
 
         if not updated:
             self._start_fetching()

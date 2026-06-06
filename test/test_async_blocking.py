@@ -104,6 +104,93 @@ async def test_server_shutdown_receive_does_not_wait_for_recycle_close():
 
 
 @pytest.mark.asyncio
+async def test_raw_stream_non_response_message_tasks_are_bounded():
+    release_handler = asyncio.Event()
+
+    async def on_message(_msg):
+        await release_handler.wait()
+
+    stream = Stream(
+        'ws://fake',
+        on_message=on_message,
+        logger=logger,
+        rate_limiter=RateLimiter(enabled=False),
+    )
+    stream._event_queue_limit = 8
+    stream._event_worker_limit = 2
+
+    for index in range(64):
+        await stream._handle_message({'stream': str(index)})
+
+    dispatcher = getattr(stream, '_event_dispatcher', None)
+    if dispatcher is None:
+        backlog = len(getattr(stream, '_message_tasks', set()))
+    else:
+        backlog = dispatcher.backlog_size
+
+    release_handler.set()
+    await asyncio.sleep(0)
+
+    assert backlog <= stream._event_queue_limit + stream._event_worker_limit
+
+
+@pytest.mark.asyncio
+async def test_raw_stream_overflow_recycles_once_and_drops_stale_queue():
+    release_handler = asyncio.Event()
+    delivered = []
+
+    async def on_message(msg):
+        delivered.append(msg['seq'])
+        await release_handler.wait()
+
+    class FakeSocket:
+        def __init__(self):
+            self.close_calls = 0
+            self.closed = asyncio.Event()
+
+        async def close(self, _code=4999):
+            self.close_calls += 1
+            self.closed.set()
+
+    stream = Stream(
+        'ws://fake',
+        on_message=on_message,
+        logger=logger,
+        rate_limiter=RateLimiter(enabled=False),
+    )
+    stream._event_queue_limit = 2
+    stream._event_worker_limit = 1
+    socket = FakeSocket()
+    stream._socket = socket
+
+    try:
+        for index in range(8):
+            await stream._handle_message({'seq': index})
+
+        await asyncio.wait_for(socket.closed.wait(), timeout=0.1)
+        release_handler.set()
+        await asyncio.sleep(0.05)
+
+        assert socket.close_calls == 1
+        assert delivered == [0]
+
+        stream._set_socket(FakeSocket())
+        await stream._handle_message({'seq': 'after-reconnect'})
+        await asyncio.sleep(0.05)
+
+        assert delivered == [0, 'after-reconnect']
+    finally:
+        release_handler.set()
+        overflow_task = getattr(stream, '_event_overflow_task', None)
+        if overflow_task is not None:
+            with suppress(asyncio.CancelledError):
+                await overflow_task
+        dispatcher = getattr(stream, '_event_dispatcher', None)
+        if dispatcher is not None:
+            await dispatcher.close()
+
+
+@pytest.mark.asyncio
 async def test_raw_stream_on_message_long_task_does_not_block_recv():
     received = []
 
@@ -371,6 +458,108 @@ async def test_event_stream_terminated_recovery_is_single_flight():
 
     assert calls == [(True, ((SubType.USER,),))]
     assert len(handler_ctx.received) == 2
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_waits_for_inflight_resubscribe_to_preserve_remote_order(
+    monkeypatch,
+):
+    client = SpotClient(Credentials('key')).start()
+    client._subscribed = {(SubType.TRADE, 'BTCUSDT')}
+    client._stream_names = {'btcusdt@trade'}
+
+    subscribe_started = asyncio.Event()
+    release_subscribe = asyncio.Event()
+    completed_operations = []
+
+    async def fake_params(_subscribe, _subscriptions):
+        return ['btcusdt@trade']
+
+    class FakeDataStream:
+        async def send(self, msg):
+            if msg['method'] == 'SUBSCRIBE':
+                subscribe_started.set()
+                await release_subscribe.wait()
+                completed_operations.append('SUBSCRIBE')
+            else:
+                completed_operations.append('UNSUBSCRIBE')
+            return None
+
+        async def close(self, code=4999):
+            return None
+
+    client._data_streams = {'/stream': FakeDataStream()}
+    monkeypatch.setattr(
+        client._get_handler_ctx(),
+        'subscribe_params',
+        fake_params,
+    )
+
+    resubscribe_task = asyncio.create_task(client._resubscribe_path('/stream'))
+    await asyncio.wait_for(subscribe_started.wait(), timeout=0.1)
+
+    unsubscribe_task = asyncio.create_task(
+        client.unsubscribe(SubType.TRADE, 'BTCUSDT')
+    )
+    await asyncio.sleep(0.05)
+    release_subscribe.set()
+
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(resubscribe_task, unsubscribe_task),
+            timeout=0.5,
+        )
+    finally:
+        await client.close()
+
+    assert completed_operations[-1] == 'UNSUBSCRIBE'
+    assert (SubType.TRADE, 'BTCUSDT') not in client._subscribed
+
+
+@pytest.mark.asyncio
+async def test_initial_data_stream_subscribe_does_not_replay_on_first_connect(
+    monkeypatch,
+):
+    class ConnectedStream:
+        instances = []
+
+        def __init__(self, _uri, *, on_connected=None, **_kwargs):
+            self.on_connected = on_connected
+            self.sent = []
+            self.connected_task = None
+            ConnectedStream.instances.append(self)
+
+        def connect(self):
+            if self.on_connected is not None:
+                self.connected_task = asyncio.create_task(self.on_connected())
+            return self
+
+        async def send(self, msg):
+            self.sent.append(msg)
+            return None
+
+        async def close(self, code=4999):
+            return None
+
+    monkeypatch.setattr(
+        'binance.core.transport.subscription.Stream',
+        ConnectedStream,
+    )
+    client = SpotClient(Credentials('key')).start()
+
+    try:
+        await client.subscribe(SubType.TRADE, 'BTCUSDT')
+        stream = ConnectedStream.instances[0]
+        if stream.connected_task is not None:
+            await asyncio.wait_for(stream.connected_task, timeout=0.1)
+
+        sub_msgs = [
+            msg for msg in stream.sent if msg.get('method') == 'SUBSCRIBE'
+        ]
+        assert len(sub_msgs) == 1
+        assert sub_msgs[0]['params'] == ('btcusdt@trade',)
+    finally:
+        await client.close()
 
 
 @pytest.mark.asyncio

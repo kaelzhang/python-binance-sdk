@@ -63,6 +63,11 @@ from binance.core.common.types import (
 )
 
 from .request_registry import RequestRegistry
+from .event_dispatcher import (
+    DEFAULT_EVENT_QUEUE_LIMIT,
+    DEFAULT_EVENT_WORKER_LIMIT,
+    StreamEventDispatcher,
+)
 
 
 ON_MESSAGE = 'on_message'
@@ -88,6 +93,9 @@ class Stream:
     _conn_task: Optional[Task[None]]
     _connected_task: Optional[Task[None]]
     _message_tasks: Set[Task[None]]
+    _event_dispatcher: StreamEventDispatcher
+    _event_overflow_task: Optional[Task[None]]
+    _event_dispatch_paused: bool
     _request_registry: RequestRegistry
     _retry_policy: RetryPolicy
     _rate_limiter: RateLimiter
@@ -133,11 +141,15 @@ class Stream:
 
         self._retry_policy = retry_policy
         self._timeout = timeout
+        self._logger = logger
 
         self._socket = None
         self._conn_task = None
         self._connected_task = None
         self._message_tasks = set()
+        self._event_dispatcher = self._new_event_dispatcher()
+        self._event_overflow_task = None
+        self._event_dispatch_paused = False
 
         # message_id
         self._request_registry = RequestRegistry()
@@ -164,8 +176,6 @@ class Stream:
         )
         self._rate_limiter.register_connection(self._connection_lease)
 
-        self._logger = logger
-
     def _connection_ref(self):
         return getattr(self, '_connection_lease', self._connection_id)
 
@@ -175,6 +185,69 @@ class Stream:
             registry = RequestRegistry()
             self._request_registry = registry
         return registry
+
+    def _new_event_dispatcher(self) -> StreamEventDispatcher:
+        return StreamEventDispatcher(
+            self._emit_message,
+            self._logger,
+            max_queue_size=getattr(
+                self,
+                '_event_queue_limit',
+                DEFAULT_EVENT_QUEUE_LIMIT,
+            ),
+            max_workers=getattr(
+                self,
+                '_event_worker_limit',
+                DEFAULT_EVENT_WORKER_LIMIT,
+            ),
+        )
+
+    def _events(self) -> StreamEventDispatcher:
+        dispatcher = getattr(self, '_event_dispatcher', None)
+        queue_limit = getattr(
+            self,
+            '_event_queue_limit',
+            DEFAULT_EVENT_QUEUE_LIMIT,
+        )
+        worker_limit = getattr(
+            self,
+            '_event_worker_limit',
+            DEFAULT_EVENT_WORKER_LIMIT,
+        )
+        if (
+            dispatcher is None
+            or dispatcher._queue.maxsize != queue_limit
+            or dispatcher._max_workers != max(worker_limit, 1)
+        ):
+            dispatcher = self._new_event_dispatcher()
+            self._event_dispatcher = dispatcher
+            self._message_tasks = dispatcher.tasks
+        return dispatcher
+
+    async def _emit_message(self, msg) -> None:
+        await self._emit(ON_MESSAGE, msg)
+
+    def _schedule_event_overflow_recycle(self) -> bool:
+        task = getattr(self, '_event_overflow_task', None)
+        if task is not None and not task.done():
+            return False
+
+        stale_dispatcher = self._events()
+        self._event_dispatch_paused = True
+        self._event_dispatcher = self._new_event_dispatcher()
+        self._message_tasks = self._event_dispatcher.tasks
+
+        async def recycle_after_overflow() -> None:
+            try:
+                await stale_dispatcher.close()
+                await self.recycle()
+            finally:
+                self._event_overflow_task = None
+
+        task = asyncio.get_running_loop().create_task(recycle_after_overflow())
+        self._event_overflow_task = task
+        task.add_done_callback(self._handle_task_exception)
+        return True
 
     @property
     def _message_id(self) -> int:
@@ -193,6 +266,7 @@ class Stream:
         self._requests().replace_pending(value)
 
     def _set_socket(self, socket) -> None:
+        self._event_dispatch_paused = False
         if self._open_future:
             if not self._open_future.done():
                 self._open_future.set_result(socket)
@@ -258,15 +332,17 @@ class Stream:
             pass
 
     def _schedule_message_callback(self, msg) -> None:
-        task = asyncio.get_running_loop().create_task(
-            self._emit(ON_MESSAGE, msg)
-        )
-        message_tasks = getattr(self, '_message_tasks', None)
-        if message_tasks is None:
-            message_tasks = set()
-            self._message_tasks = message_tasks
-        message_tasks.add(task)
-        task.add_done_callback(self._handle_message_task_exception)
+        if getattr(self, '_event_dispatch_paused', False):
+            return
+        dispatcher = self._events()
+        self._message_tasks = dispatcher.tasks
+        if dispatcher.submit(msg):
+            return
+        if self._schedule_event_overflow_recycle():
+            self._logger.error(format_msg(
+                'stream event queue overflow for %s; recycling connection',
+                self._uri,
+            ))
 
     def _handle_message_task_exception(self, task: Task) -> None:
         message_tasks = getattr(self, '_message_tasks', None)
@@ -524,6 +600,16 @@ class Stream:
             if not task.done():
                 task.cancel()
             tasks.append(task)
+
+        event_dispatcher = getattr(self, '_event_dispatcher', None)
+        if event_dispatcher is not None:
+            tasks.append(event_dispatcher.close())
+
+        event_overflow_task = getattr(self, '_event_overflow_task', None)
+        if event_overflow_task is not None and event_overflow_task is not current_task:
+            if not event_overflow_task.done():
+                event_overflow_task.cancel()
+            tasks.append(event_overflow_task)
 
         # Make sure:
         # - conn_task is cancelled

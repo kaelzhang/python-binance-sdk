@@ -50,6 +50,7 @@ from binance.core.rate_limit import ConnectionLease, RateLimiter
 
 from .stream import Stream
 from .control import ControlTaskSupervisor
+from .data_streams import DataStreamRegistry, data_connection_id
 from binance.core.handlers.context import HandlerContext
 
 # pylint: disable=no-member
@@ -73,18 +74,7 @@ def _extract_event_type(msg):
 _USER_DATA_STREAM_SUB_WEIGHT = 2
 
 
-def _data_connection_id(path: str) -> str:
-    """Return the rate-limit connection id for a data stream path.
-
-    Each data stream (one per path key returned by the market's
-    ``data_stream_router``) gets its own connection id so ws-message and
-    ws-stream accounting are independent.  The legacy single-stream case
-    (``path == '/stream'``) collapses to ``'data'`` to preserve the existing
-    bucket label for Spot/CM clients.
-    """
-    if path == '/stream':
-        return 'data'
-    return f'data:{path}'
+_data_connection_id = data_connection_id
 
 
 class SubscriptionManager:
@@ -94,8 +84,7 @@ class SubscriptionManager:
     # the market's ``data_stream_router`` (e.g. ``'/stream'`` for Spot/CM,
     # ``'/public/stream'`` or ``'/market/stream'`` for UM).  Lazily opened on
     # the first subscription whose stream name routes to that path.
-    _data_streams: Dict[str, Stream]
-    _data_connection_leases: Dict[str, ConnectionLease]
+    _data_stream_registry: DataStreamRegistry
     # The shared WS-API request/response connection (wss://ws-api...). It
     # carries BOTH the user-data stream subscription and every `_ws_api_request`
     # (former REST) call -- one connection, lazily opened.
@@ -103,6 +92,7 @@ class SubscriptionManager:
     _user_connection_lease: Optional[ConnectionLease]
     _subscribed: Set[tuple]
     _stream_names: Set[str]
+    _subscription_lock: Optional[asyncio.Lock]
     _stream_host: str
     _ws_api_host: str
     _stream_retry_policy: RetryPolicy
@@ -173,15 +163,8 @@ class SubscriptionManager:
         self._ws_api_authenticated = False
         await self._control_tasks.close()
 
-        # Close every per-path data stream and release its rate-limit bucket.
-        # The connection_id mirrors the path key under ``data:<path>`` to keep
-        # ws-message accounting independent from the WS-API ``user`` bucket.
-        for path, stream in list(self._data_streams.items()):
-            await stream.close(code)
-            lease = self._data_connection_leases.pop(path, None)
-            if lease is not None:
-                self._rate_limiter.unregister_connection(lease)
-        self._data_streams = {}
+        self._sync_data_stream_registry_refs()
+        await self._data_stream_registry.close_all(code)
 
         if self._user_stream:
             await self._user_stream.close(code)
@@ -251,23 +234,42 @@ class SubscriptionManager:
 
         return self._handler_ctx
 
+    def _get_subscription_lock(self) -> asyncio.Lock:
+        lock = getattr(self, '_subscription_lock', None)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._subscription_lock = lock
+        return lock
+
+    @property
+    def _data_streams(self) -> Dict[str, Stream]:
+        return self._data_stream_registry.streams
+
+    @_data_streams.setter
+    def _data_streams(self, streams: Dict[str, Stream]) -> None:
+        self._data_stream_registry.streams = streams
+
+    @property
+    def _data_connection_leases(self) -> Dict[str, ConnectionLease]:
+        return self._data_stream_registry.leases
+
+    @_data_connection_leases.setter
+    def _data_connection_leases(
+        self,
+        leases: Dict[str, ConnectionLease],
+    ) -> None:
+        self._data_stream_registry.leases = leases
+
+    def _sync_data_stream_registry_refs(self) -> None:
+        self._data_stream_registry.set_stream_factory(Stream)
+
     def _get_data_connection_lease(self, path: str) -> ConnectionLease:
-        lease = self._data_connection_leases.get(path)
-        if lease is None:
-            lease = self._rate_limiter.open_connection(
-                kind='data',
-                route=path,
-                label=_data_connection_id(path),
-            )
-            self._data_connection_leases[path] = lease
-        return lease
+        self._sync_data_stream_registry_refs()
+        return self._data_stream_registry.get_lease(path)
 
     def _drop_unopened_data_connection_lease(self, path: str) -> None:
-        if path in self._data_streams:
-            return
-        lease = self._data_connection_leases.pop(path, None)
-        if lease is not None:
-            self._rate_limiter.unregister_connection(lease)
+        self._sync_data_stream_registry_refs()
+        self._data_stream_registry.drop_unopened_lease(path)
 
     def _get_user_connection_lease(self) -> ConnectionLease:
         lease = self._user_connection_lease
@@ -301,28 +303,11 @@ class SubscriptionManager:
         """
         if path is None:
             path = self._default_data_stream_path
-        stream = self._data_streams.get(path)
-        if stream is None:
-            stream_holder: Dict[str, Stream] = {}
-            connection_lease = self._get_data_connection_lease(path)
+        self._sync_data_stream_registry_refs()
+        return self._data_stream_registry.get_stream(path)
 
-            async def on_message_bound(msg):
-                await self._receive(msg, origin=stream_holder['stream'])
-
-            stream = Stream(
-                self._stream_host + path,
-                on_message=on_message_bound,
-                on_connected=self._build_data_resubscribe(path),
-                retry_policy=self._stream_retry_policy,
-                timeout=self._stream_timeout,
-                logger=self._logger,
-                rate_limiter=self._rate_limiter,
-                connection_id=_data_connection_id(path),
-                connection_lease=connection_lease,
-            ).connect()
-            stream_holder['stream'] = stream
-            self._data_streams[path] = stream
-        return stream
+    async def _receive_data_stream_message(self, stream: Stream, msg) -> None:
+        await self._receive(msg, origin=stream)
 
     def _build_data_resubscribe(self, path: str) -> Callable[[], Awaitable[None]]:
         """Return an ``on_connected`` callback that resubscribes streams routed to ``path``.
@@ -740,37 +725,38 @@ class SubscriptionManager:
         subscribe: bool,
         args: Tuple
     ):
-        subscriptions = self._get_handler_ctx().overload_subscriptions(*args)
-        market_subscriptions, user_subscriptions = self._split_subscriptions(
-            subscriptions
-        )
+        async with self._get_subscription_lock():
+            subscriptions = self._get_handler_ctx().overload_subscriptions(*args)
+            market_subscriptions, user_subscriptions = self._split_subscriptions(
+                subscriptions
+            )
 
-        if len(market_subscriptions) > 0:
-            await self._subscribe_only(subscribe, market_subscriptions)
+            if len(market_subscriptions) > 0:
+                await self._subscribe_only(subscribe, market_subscriptions)
 
-        if len(user_subscriptions) > 0:
-            prev_want_user_stream = self._want_user_stream
+            if len(user_subscriptions) > 0:
+                prev_want_user_stream = self._want_user_stream
 
-            if subscribe:
-                self._want_user_stream = True
-            else:
-                self._want_user_stream = False
-                self._user_unsubscribe_inflight = True
+                if subscribe:
+                    self._want_user_stream = True
+                else:
+                    self._want_user_stream = False
+                    self._user_unsubscribe_inflight = True
 
-            try:
-                await self._subscribe_user_only(subscribe, user_subscriptions)
-            except Exception:
-                self._want_user_stream = prev_want_user_stream
-                raise
-            finally:
-                if not subscribe:
-                    self._user_unsubscribe_inflight = False
+                try:
+                    await self._subscribe_user_only(subscribe, user_subscriptions)
+                except Exception:
+                    self._want_user_stream = prev_want_user_stream
+                    raise
+                finally:
+                    if not subscribe:
+                        self._user_unsubscribe_inflight = False
 
-        for param in subscriptions:
-            if subscribe:
-                self._subscribed.add(param)
-            else:
-                self._subscribed.discard(param)
+            for param in subscriptions:
+                if subscribe:
+                    self._subscribed.add(param)
+                else:
+                    self._subscribed.discard(param)
 
     async def _resubscribe(self) -> None:
         """Replay every market subscription on the right data stream(s).
@@ -781,28 +767,29 @@ class SubscriptionManager:
         so production resubscribes only replay the subscriptions whose
         router result matches the reconnecting stream's path.
         """
-        market_subscriptions, _ = self._split_subscriptions(self._subscribed)
-        if len(market_subscriptions) == 0:
-            return
-        try:
-            await self._subscribe_only(True, market_subscriptions)
-        except Exception as e:
-            self._logger.error(format_msg(
-                'data stream resubscribe failed after reconnect: %s',
-                repr_exception(e)))
-            error = StreamError(
-                stream=StreamName.DATA,
-                phase=StreamErrorPhase.RESUBSCRIBE,
-                exception=e,
-                recovering=True
-            )
-            for stream in list(self._data_streams.values()):
-                self._schedule_recycle(
-                    (StreamName.DATA, StreamErrorPhase.RESUBSCRIBE),
-                    stream,
+        async with self._get_subscription_lock():
+            market_subscriptions, _ = self._split_subscriptions(self._subscribed)
+            if len(market_subscriptions) == 0:
+                return
+            try:
+                await self._subscribe_only(True, market_subscriptions)
+            except Exception as e:
+                self._logger.error(format_msg(
+                    'data stream resubscribe failed after reconnect: %s',
+                    repr_exception(e)))
+                error = StreamError(
+                    stream=StreamName.DATA,
+                    phase=StreamErrorPhase.RESUBSCRIBE,
+                    exception=e,
+                    recovering=True
                 )
-            if self._handler_ctx is not None:
-                await self._handler_ctx.dispatch_stream_error(error)
+                for stream in list(self._data_streams.values()):
+                    self._schedule_recycle(
+                        (StreamName.DATA, StreamErrorPhase.RESUBSCRIBE),
+                        stream,
+                    )
+                if self._handler_ctx is not None:
+                    await self._handler_ctx.dispatch_stream_error(error)
 
     async def _resubscribe_path(self, path: str) -> None:
         """Resubscribe only the streams whose router result equals ``path``.
@@ -811,83 +798,86 @@ class SubscriptionManager:
         so reconnecting one path does not re-send subscriptions belonging to
         the other path.
         """
-        market_subscriptions, _ = self._split_subscriptions(self._subscribed)
-        if len(market_subscriptions) == 0:
-            return
+        async with self._get_subscription_lock():
+            market_subscriptions, _ = self._split_subscriptions(self._subscribed)
+            if len(market_subscriptions) == 0:
+                return
 
-        # Filter the recorded subscriptions to those whose generated stream
-        # name would route to ``path``.  Recompute the names here (rather than
-        # caching) so the routing remains a pure function of the live router.
-        raw_params = await self._get_handler_ctx().subscribe_params(
-            True, market_subscriptions
-        )
-        names: Tuple[str, ...] = cast(Tuple[str, ...], raw_params)
-        path_names = [n for n in names if self._data_stream_router(n) == path]
-        if not path_names:
-            return
-
-        try:
-            stream = self._get_data_stream(path)
-            await stream.send({
-                'method': 'SUBSCRIBE',
-                'params': tuple(path_names),
-            })
-        except Exception as e:
-            self._logger.error(format_msg(
-                'data stream resubscribe failed after reconnect: %s',
-                repr_exception(e)))
-            error = StreamError(
-                stream=StreamName.DATA,
-                phase=StreamErrorPhase.RESUBSCRIBE,
-                exception=e,
-                recovering=True
+            # Filter the recorded subscriptions to those whose generated stream
+            # name would route to ``path``.  Recompute the names here (rather than
+            # caching) so the routing remains a pure function of the live router.
+            raw_params = await self._get_handler_ctx().subscribe_params(
+                True, market_subscriptions
             )
-            stream_to_recycle = self._data_streams.get(path)
-            if stream_to_recycle is not None:
-                self._schedule_recycle(
-                    (StreamName.DATA, StreamErrorPhase.RESUBSCRIBE, path),
-                    stream_to_recycle,
+            names: Tuple[str, ...] = cast(Tuple[str, ...], raw_params)
+            path_names = [n for n in names if self._data_stream_router(n) == path]
+            if not path_names:
+                return
+
+            try:
+                stream = self._get_data_stream(path)
+                await stream.send({
+                    'method': 'SUBSCRIBE',
+                    'params': tuple(path_names),
+                })
+            except Exception as e:
+                self._logger.error(format_msg(
+                    'data stream resubscribe failed after reconnect: %s',
+                    repr_exception(e)))
+                error = StreamError(
+                    stream=StreamName.DATA,
+                    phase=StreamErrorPhase.RESUBSCRIBE,
+                    exception=e,
+                    recovering=True
                 )
-            if self._handler_ctx is not None:
-                await self._handler_ctx.dispatch_stream_error(error)
+                stream_to_recycle = self._data_streams.get(path)
+                if stream_to_recycle is not None:
+                    self._schedule_recycle(
+                        (StreamName.DATA, StreamErrorPhase.RESUBSCRIBE, path),
+                        stream_to_recycle,
+                    )
+                if self._handler_ctx is not None:
+                    await self._handler_ctx.dispatch_stream_error(error)
 
     async def _resubscribe_user(self) -> None:
-        _, user_subscriptions = self._split_subscriptions(self._subscribed)
-        if len(user_subscriptions) == 0:
-            return
-        try:
-            await self._subscribe_user_only(True, user_subscriptions)
-        except Exception as e:
-            self._logger.error(format_msg(
-                'user stream resubscribe failed after reconnect: %s',
-                repr_exception(e)))
-            error = StreamError(
-                stream=StreamName.USER,
-                phase=StreamErrorPhase.RESUBSCRIBE,
-                exception=e,
-                recovering=True
-            )
-            if self._user_stream is not None:
-                self._schedule_recycle(
-                    (StreamName.USER, StreamErrorPhase.RESUBSCRIBE),
-                    self._user_stream,
+        async with self._get_subscription_lock():
+            _, user_subscriptions = self._split_subscriptions(self._subscribed)
+            if len(user_subscriptions) == 0:
+                return
+            try:
+                await self._subscribe_user_only(True, user_subscriptions)
+            except Exception as e:
+                self._logger.error(format_msg(
+                    'user stream resubscribe failed after reconnect: %s',
+                    repr_exception(e)))
+                error = StreamError(
+                    stream=StreamName.USER,
+                    phase=StreamErrorPhase.RESUBSCRIBE,
+                    exception=e,
+                    recovering=True
                 )
-            if self._handler_ctx is not None:
-                await self._handler_ctx.dispatch_stream_error(error)
+                if self._user_stream is not None:
+                    self._schedule_recycle(
+                        (StreamName.USER, StreamErrorPhase.RESUBSCRIBE),
+                        self._user_stream,
+                    )
+                if self._handler_ctx is not None:
+                    await self._handler_ctx.dispatch_stream_error(error)
 
     async def _recover_user_stream_if_needed(self) -> bool:
-        if (
-            not self._want_user_stream
-            or self._user_unsubscribe_inflight
-            or (SubType.USER,) not in self._subscribed
-        ):
-            return False
+        async with self._get_subscription_lock():
+            if (
+                not self._want_user_stream
+                or self._user_unsubscribe_inflight
+                or (SubType.USER,) not in self._subscribed
+            ):
+                return False
 
-        await self._subscribe_user_only(True, ((SubType.USER,),))
-        self._logger.warning(
-            'Recovered user stream subscription after eventStreamTerminated.'
-        )
-        return True
+            await self._subscribe_user_only(True, ((SubType.USER,),))
+            self._logger.warning(
+                'Recovered user stream subscription after eventStreamTerminated.'
+            )
+            return True
 
     async def subscribe(self, *args):
         """Subscribe to one or more market or user-data streams.

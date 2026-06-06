@@ -65,6 +65,26 @@ async def test_orderbook_replay_yields_to_event_loop_between_batches():
 
 
 @pytest.mark.asyncio
+async def test_orderbook_snapshot_install_long_task_does_not_block_event_loop():
+    orderbook = SpotOrderBook('BTCUSDT')
+    orderbook._client = _SnapshotClient(last_update_id=1)
+
+    def slow_merge(last_update_id, asks, bids):
+        time.sleep(0.2)
+        orderbook._last_update_id = last_update_id
+
+    orderbook._merge = slow_merge
+
+    started_at = time.perf_counter()
+    task = asyncio.create_task(orderbook._fetch_snapshot())
+    try:
+        await asyncio.sleep(0.05)
+        assert time.perf_counter() - started_at < 0.12
+    finally:
+        await asyncio.wait_for(task, timeout=0.5)
+
+
+@pytest.mark.asyncio
 async def test_orderbook_handler_update_long_task_does_not_block_event_loop():
     handler = OrderBookHandlerBase()
 
