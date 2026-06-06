@@ -149,7 +149,7 @@ class ForceOrderHandlerBase(_ForceOrderHandlerBase):
     from the shared base applies; ``ps`` is one of the nested fields).
 
     Subclass and override ``receive(payload)`` to handle events.  The base ``receive``
-    converts the raw dict into a ``StockDataFrame`` with human-readable column names
+    converts the raw dict into a ``volas.DataFrame`` with human-readable column names
     (e.g. ``symbol``, ``pair``, ``side``, ``price``, ``avg_price``, ``order_status``).
 
     Example::
@@ -295,7 +295,7 @@ class PartialOrderBookHandlerBase(_PartialOrderBookHandlerBase):
 
 
 # CM diff-depth: extend the core ORDER_BOOK_COLUMNS_MAP with ``ps -> pair`` so
-# the diff-event ``info`` StockDataFrame surfaces ``pair`` alongside symbol /
+# the diff-event ``info`` volas.DataFrame surfaces ``pair`` alongside symbol /
 # update IDs.  This is the right layer because the unified core
 # :class:`~binance.core.handlers.orderbook.OrderBookHandlerBase` is what the
 # CM processor routes events to; subclassing here keeps UM unaffected.
@@ -313,7 +313,7 @@ class OrderBookHandlerBase(_OrderBookHandlerBase):
     :class:`~binance.core.handlers.orderbook.OrderBookHandlerBase`; the only
     delta is the column map.  CM diff-depth events publish ``ps`` (pair) which
     USDⓈ-M does not — adding ``'ps': 'pair'`` to ``COLUMNS_MAP`` surfaces it on
-    the ``info`` StockDataFrame returned from ``_receive``.
+    the ``info`` volas.DataFrame returned from ``_receive``.
 
     Docs:
     https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Diff-Book-Depth-Streams

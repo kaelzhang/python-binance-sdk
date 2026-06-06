@@ -258,7 +258,7 @@ async def run_um_handler(client, HandlerBase, payload, stream='btcusdt@markPrice
     })
 
     df = await future
-    return df.iloc[0]  # StockDataFrame -> single-row access
+    return df.iloc[0]  # volas.DataFrame -> single-row access
 
 
 # ---------------------------------------------------------------------------

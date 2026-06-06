@@ -290,7 +290,7 @@ async def run_cm_handler(client, HandlerBase, payload, stream='btcusd_perp@markP
     })
 
     df = await future
-    return df.iloc[0]  # StockDataFrame -> single-row access
+    return df.iloc[0]  # volas.DataFrame -> single-row access
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +322,7 @@ async def test_cm_mark_price_handler_columns(client):
     assert row['funding_rate'] == '0.00006004'
     assert row['next_funding_time'] == 1779724800000
     # COIN-M does NOT have 'ap' / mark_price_avg
-    assert 'mark_price_avg' not in row.index
+    assert 'mark_price_avg' not in row.to_dict()
 
 
 # ---------------------------------------------------------------------------

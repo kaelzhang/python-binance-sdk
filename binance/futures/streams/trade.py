@@ -60,7 +60,7 @@ class AggTradeHandlerBase(Handler):
     ``binance.futures.um.streams.AggTradeHandlerBase``.
 
     Subclass this and override ``receive(payload)`` to handle events.  The base
-    ``receive`` converts the raw dict into a ``StockDataFrame`` with human-readable
+    ``receive`` converts the raw dict into a ``volas.DataFrame`` with human-readable
     column names.
 
     Docs:

@@ -24,7 +24,7 @@ dependencies = [
   "aiohttp >= 3.9",
   "aioretry >= 6.0.0",
   "websockets >= 15.0.0",
-  "stock-pandas >= 5.4.2",
+  "volas >= 0.1.0",
   "cryptography >= 41"
 ]
 classifiers=[
@@ -77,11 +77,6 @@ exclude = ["binance.no_track*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "binance.__version__"}
-
-# [tool.setuptools.package-data]
-# stock_pandas = [
-#   "py.typed"
-# ]
 
 [tool.mypy]
 warn_return_any = true

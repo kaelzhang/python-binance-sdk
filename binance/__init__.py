@@ -5,7 +5,7 @@ from aioretry import (
     RetryPolicyStrategy,
     RetryInfo
 )
-from stock_pandas import TimeFrame
+from volas import TimeFrame
 
 from binance.spot import SpotClient
 from binance.futures.um import UMFuturesClient

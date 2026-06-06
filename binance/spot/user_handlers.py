@@ -95,7 +95,7 @@ class SimpleHandler(Handler):
     """A pass-through handler that returns the raw payload dict unchanged.
 
     Used as the base for all user-data-stream handlers.  Unlike the market-data
-    handlers, user-stream payloads are not converted to a ``StockDataFrame``;
+    handlers, user-stream payloads are not converted to a ``volas.DataFrame``;
     the raw Binance API dict is passed directly to ``receive``.
     """
 

@@ -151,7 +151,7 @@ class PartialOrderBookHandlerBase(Handler):
     as the diff-depth stream — distinct from the Spot REST-snapshot shape
     (``lastUpdateId`` / ``bids`` / ``asks``); do NOT confuse the two.
 
-    The internal ``_receive`` converts each side into a ``StockDataFrame``
+    The internal ``_receive`` converts each side into a ``volas.DataFrame``
     with ``price`` and ``quantity`` columns and surfaces ``u`` (the final
     update id in the event) as ``last_update_id`` so consumers can reconcile
     against the diff-depth cursor.  The handler returns a

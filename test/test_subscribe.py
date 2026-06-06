@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 
-from stock_pandas import StockDataFrame
+from volas import DataFrame
 
 from binance import (
     SpotClient,
@@ -86,7 +86,7 @@ async def test_ticker_handler(client):
     await client._receive(TICKER_RES)
 
     assert TickerPrinter.DATA == TICKER_RES['data']
-    assert isinstance(TickerPrinter.DF, StockDataFrame)
+    assert isinstance(TickerPrinter.DF, DataFrame)
     await client.close()
 
 
@@ -410,9 +410,9 @@ async def run_orderbook_handler(client, monkeypatch, init_orderbook_first):
     await client._receive({'data': _UPDATE_FIRST})
 
     info, [bids, asks] = await f
-    assert isinstance(info, StockDataFrame)
-    assert isinstance(bids, StockDataFrame)
-    assert isinstance(asks, StockDataFrame)
+    assert isinstance(info, DataFrame)
+    assert isinstance(bids, DataFrame)
+    assert isinstance(asks, DataFrame)
 
     if not init_orderbook_first:
         orderbook = handler.orderbook('BTCUSDT')

@@ -9,7 +9,7 @@
 - Routes every Spot request/response call over the **Binance WebSocket API** (`wss://ws-api.binance.com`) for low latency, while keeping a generic `get`/`post`/`put`/`delete` REST escape hatch for arbitrary endpoints.
 - Provides full-surface **USDⓈ-M Futures** (`UMFuturesClient`) and **COIN-M Futures** (`CMFuturesClient`) clients: market-data (open interest, funding rates, mark price), trading (orders, batch orders, position config), account management, WebSocket market-data streams (mark price, liquidations), and futures user-data streams.
 - Futures trading endpoints route over the **Futures WebSocket API** (ws-fapi / ws-dapi) where available; REST otherwise. All signed endpoints require `Credentials`.
-- Returns `StockDataFrame` (from `stock-pandas`) for stream payloads with renamed columns.
+- Returns `volas.DataFrame` (from `volas`) for stream payloads with renamed columns.
 - Uses a first-class `Credentials` object (`SpotClient`, `UMFuturesClient`, `CMFuturesClient` all accept the same `Credentials` instance).
 - Based on Python `async`/`await`.
 - Manages the order book for you (via `OrderBookHandlerBase`), handling WebSocket reconnection and message losses automatically.
@@ -540,7 +540,7 @@ spot = SpotClient(creds)
 async def main():
     class TickerPrinter(TickerHandlerBase):
         async def receive(self, payload):
-            # `ticker_df` is a StockDataFrame with columns renamed
+            # `ticker_df` is a volas.DataFrame with columns renamed
             ticker_df = super().receive(payload)
             print(ticker_df)
 

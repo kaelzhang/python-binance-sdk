@@ -52,7 +52,7 @@ class TradeHandlerBase(Handler):
     user-data ``executionReport`` stream instead.
 
     Subclass this and override ``receive(payload)`` to handle the event.
-    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    The base ``receive`` converts the raw dict into a ``volas.DataFrame`` with
     human-readable column names (e.g. ``trade_id``, ``price``, ``quantity``,
     ``is_maker``).
     """
@@ -86,7 +86,7 @@ class AggTradeHandlerBase(Handler):
     buyer was the market maker.
 
     Subclass this and override ``receive(payload)`` to handle the event.
-    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    The base ``receive`` converts the raw dict into a ``volas.DataFrame`` with
     human-readable column names (e.g. ``agg_trade_id``, ``price``,
     ``quantity``, ``is_maker``).
     """
@@ -112,7 +112,7 @@ class BlockTradeHandlerBase(Handler):
     buyer is the market maker.
 
     Subclass this and override ``receive(payload)`` to handle the event.
-    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    The base ``receive`` converts the raw dict into a ``volas.DataFrame`` with
     human-readable column names (e.g. ``trade_id``, ``price``, ``quantity``,
     ``is_maker``).
     """
@@ -141,7 +141,7 @@ class ReferencePriceHandlerBase(Handler):
     event-time field.
 
     Subclass this and override ``receive(payload)`` to handle the event.
-    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    The base ``receive`` converts the raw dict into a ``volas.DataFrame`` with
     human-readable column names (e.g. ``reference_price``, ``engine_time``).
     """
 
@@ -169,7 +169,7 @@ class BookTickerHandlerBase(Handler):
     best bid price and quantity, and best ask price and quantity.
 
     Subclass this and override ``receive(payload)`` to handle the event.
-    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    The base ``receive`` converts the raw dict into a ``volas.DataFrame`` with
     human-readable column names (e.g. ``best_bid_price``, ``best_ask_price``).
     """
 
@@ -196,7 +196,7 @@ class PartialOrderBookHandlerBase(Handler):
     of the latter being an array of ``[price, quantity]`` string pairs.
 
     Subclass this and override ``receive(payload)`` to handle the event.  The
-    internal ``_receive`` splits the raw payload into two ``StockDataFrame``
+    internal ``_receive`` splits the raw payload into two ``volas.DataFrame``
     objects -- one for bids and one for asks -- each with ``price`` and
     ``quantity`` columns, and surfaces the snapshot's ``lastUpdateId``
     alongside so consumers can reconcile the snapshot against the
@@ -259,7 +259,7 @@ class KlineHandlerBase(Handler):
 
     Subclass this and override ``receive(payload)`` to handle the event.
     The internal ``_receive`` flattens the nested kline payload before
-    converting it; the base ``receive`` then returns a ``StockDataFrame`` with
+    converting it; the base ``receive`` then returns a ``volas.DataFrame`` with
     human-readable column names (e.g. ``open``, ``high``, ``low``, ``close``,
     ``volume``, ``is_closed``).
     """
@@ -301,7 +301,7 @@ class MiniTickerHandlerBase(Handler):
     alternative to the full ``TickerHandlerBase``.
 
     Subclass this and override ``receive(payload)`` to handle the event.
-    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    The base ``receive`` converts the raw dict into a ``volas.DataFrame`` with
     human-readable column names (e.g. ``open``, ``high``, ``volume``).
     """
 
@@ -330,7 +330,7 @@ class AvgPriceHandlerBase(Handler):
     average.
 
     Subclass this and override ``receive(payload)`` to handle the event.
-    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    The base ``receive`` converts the raw dict into a ``volas.DataFrame`` with
     human-readable column names (e.g. ``average_price``, ``interval``,
     ``last_trade_time``).
     """
@@ -371,7 +371,7 @@ class TickerHandlerBase(Handler):
     IDs and total trade count.
 
     Subclass this and override ``receive(payload)`` to handle the event.
-    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    The base ``receive`` converts the raw dict into a ``volas.DataFrame`` with
     human-readable column names (e.g. ``price``, ``percent``,
     ``weighted_average_price``, ``best_bid_price``).
     """
@@ -405,7 +405,7 @@ class WindowTickerHandlerBase(Handler):
     trade count.
 
     Subclass this and override ``receive(payload)`` to handle the event.
-    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    The base ``receive`` converts the raw dict into a ``volas.DataFrame`` with
     human-readable column names (e.g. ``price_change``, ``percent``,
     ``weighted_average_price``).
     """
@@ -424,7 +424,7 @@ class AllMarketMiniTickersHandlerBase(Handler):
 
     Subclass this and override ``receive(payload)`` to handle the event.
     The base ``receive`` converts each element into a row of a
-    ``StockDataFrame`` with the same human-readable columns as
+    ``volas.DataFrame`` with the same human-readable columns as
     ``MiniTickerHandlerBase``.
     """
 
@@ -447,7 +447,7 @@ class AllMarketWindowTickersHandlerBase(Handler):
 
     Subclass this and override ``receive(payload)`` to handle the event.
     The base ``receive`` converts each element into a row of a
-    ``StockDataFrame`` with the same human-readable columns as
+    ``volas.DataFrame`` with the same human-readable columns as
     ``WindowTickerHandlerBase``.
     """
 

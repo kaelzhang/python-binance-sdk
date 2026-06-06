@@ -12,7 +12,7 @@ from binance.spot.processors import (
 )
 from binance.core.common.constants import SubType
 from binance.core.common.exceptions import InvalidSubTypeParamException
-from stock_pandas import TimeFrame
+from volas import TimeFrame
 
 
 def test_block_trade_processor():

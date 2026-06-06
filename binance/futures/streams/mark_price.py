@@ -60,7 +60,7 @@ class MarkPriceHandlerBase(Handler):
     directly (COIN-M does not publish ``ap``).
 
     Subclass and override ``receive(payload)`` to handle events.  The base ``receive``
-    converts the raw dict into a ``StockDataFrame`` with human-readable column names.
+    converts the raw dict into a ``volas.DataFrame`` with human-readable column names.
 
     Example (COIN-M)::
 

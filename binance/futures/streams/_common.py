@@ -25,13 +25,13 @@ Per developers.binance.com (2026-05) -- payload deltas between UM and CM:
   disambiguate the per-symbol ``@bookTicker`` and all-market ``!bookTicker``
   streams that share the same event type.
 - compositeIndex: UM-only.  Payload top-level ``C`` is the composition
-  method label; ``c`` is the composition list.  The list is passed through
-  as a single cell.
+  method label; ``c`` is the composition list.  The list is exposed as compact
+  JSON in the ``composition`` string column.
 - tradingSession: UM-only.  ``S`` = session type, ``t`` = session start time
   (ms), ``T`` = session end time (ms) -- the earlier SDK comment treating
   ``T`` as an open/close string was wrong per docs.
-- contractInfo: UM + CM.  Includes ``bks`` (brackets) -- now exposed as a
-  pass-through cell.
+- contractInfo: UM + CM.  Includes ``bks`` (brackets) -- now exposed as compact
+  JSON in the ``brackets`` string column.
 - partial depth (``@depth<N>[@speed]``): payload includes ``lastUpdateId``;
   the handler now returns ``(last_update_id, bids_df, asks_df)``.
 - kline / continuousKline / indexPriceKline / markPriceKline: futures klines

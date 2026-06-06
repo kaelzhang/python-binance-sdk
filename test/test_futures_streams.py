@@ -16,8 +16,10 @@ Markets tested:
 - CM-specific (via CMFuturesClient): indexPrice, indexPriceKline, markPriceKline
 """
 
+import json
+
 import pytest
-from stock_pandas import TimeFrame
+from volas import TimeFrame
 
 from binance import (
     UMFuturesClient,
@@ -2009,7 +2011,7 @@ async def test_cm_all_market_book_ticker_handler_includes_pair(cm_client):
 # composition array.  Each composition entry has ``b`` (base asset symbol),
 # ``q`` (quote asset), ``w`` (weight in quantity), ``W`` (weight in percentage),
 # and ``i`` (component index price).  The top-level COLUMNS_MAP gains ``C``
-# and the composition list ``c`` as pass-through fields.
+# and the composition list ``c`` as compact JSON.
 # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Composite-Index-Symbol-Information-Streams
 # ===========================================================================
 
@@ -2044,7 +2046,7 @@ async def test_um_composite_index_handler_surfaces_C_and_c(um_client):
     assert row['symbol'] == 'DEFIUSDT'
     assert row['price'] == '580.2'
     assert row['composition_method'] == 'baseAsset'
-    composition = row['composition']
+    composition = json.loads(row['composition'])
     assert isinstance(composition, list)
     assert composition[0]['b'] == 'AAVE'
     assert composition[0]['i'] == '92.0'
@@ -2071,7 +2073,7 @@ def test_um_trading_session_columns_map_has_correct_T_S_t():
 # UM + CM: ContractInfo includes ``bks`` (brackets) per developers.binance.com.
 # The brackets array contains nested elements ({bs, bnf, bnc, mmr, cf, mi, ma})
 # describing the notional brackets.  The handler surfaces the list as the
-# ``brackets`` column so downstream callers can introspect.
+# ``brackets`` column as compact JSON so downstream callers can decode it.
 # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Contract-Info-Stream
 # ===========================================================================
 
@@ -2100,7 +2102,7 @@ async def test_futures_contract_info_handler_surfaces_bks(um_client):
     row = df.iloc[0]
     assert row['type'] == 'contractInfo'
     assert row['symbol'] == 'BTCUSDT_221230'
-    brackets = row['brackets']
+    brackets = json.loads(row['brackets'])
     assert isinstance(brackets, list)
     assert brackets[0]['bs'] == 1
     assert brackets[0]['bnc'] == 50000
@@ -2228,11 +2230,13 @@ async def test_um_rpi_diff_depth_handler_columns(um_client):
     assert row['first_update_id'] == 35092002
     assert row['final_update_id'] == 35092050
     assert row['prev_final_update_id'] == 35091926
-    # bids/asks pass through as lists (single-cell semantics)
-    assert isinstance(row['bids'], list)
-    assert isinstance(row['asks'], list)
-    assert row['bids'][0] == ['9650.0', '0.0']
-    assert row['asks'][0] == ['9651.0', '1.234']
+    # bids/asks pass through as compact JSON strings under volas string columns.
+    bids = json.loads(row['bids'])
+    asks = json.loads(row['asks'])
+    assert isinstance(bids, list)
+    assert isinstance(asks, list)
+    assert bids[0] == ['9650.0', '0.0']
+    assert asks[0] == ['9651.0', '1.234']
 
 
 def test_um_rpi_diff_depth_in_um_processors():

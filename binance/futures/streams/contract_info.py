@@ -4,7 +4,7 @@ Hosts ``ContractInfoHandlerBase`` (``!contractInfo`` stream) and its processor.
 See :mod:`binance.futures.streams._common` for the per-stream verified findings.
 """
 
-from typing import ClassVar, List, Optional
+from typing import ClassVar
 
 from binance.core.common.constants import (
     SubType,
@@ -13,7 +13,6 @@ from binance.core.common.constants import (
     KEY_PAYLOAD,
 )
 from binance.core.common.exceptions import InvalidSubTypeParamException
-from binance.core.common.types import DictPayload
 from binance.core.handlers.base import Handler
 from binance.core.processors.base import Processor
 
@@ -32,8 +31,8 @@ from binance.core.processors.base import Processor
 #   ot onboard time
 #   cs contract status
 #   bks list of brackets (leverage/notional brackets); each element has
-#       {bs, bnf, bnc, mmr, cf, mi, ma}.  Exposed as ``brackets`` pass-through
-#       so downstream consumers can introspect.
+#       {bs, bnf, bnc, mmr, cf, mi, ma}.  Exposed as compact JSON in the
+#       ``brackets`` string column so downstream consumers can decode it.
 # Docs:
 # - UM https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Contract-Info-Stream
 # - CM https://developers.binance.com/docs/derivatives/coin-margined-futures/websocket-market-streams/Contract-Info-Stream
@@ -60,9 +59,9 @@ class ContractInfoHandlerBase(Handler):
     Shared across USDⓈ-M and COIN-M markets.  Receives contract specification
     change events such as listing, settlement, or bracket updates.  Each payload
     carries the symbol, pair, contract type, delivery time, onboard time,
-    contract status, and a ``brackets`` list (raw doc field ``bks``; each
-    element has ``bs, bnf, bnc, mmr, cf, mi, ma``).  The brackets list is
-    surfaced as a pass-through cell so downstream consumers can introspect.
+    contract status, and a ``brackets`` JSON string (raw doc field ``bks``;
+    each element has ``bs, bnf, bnc, mmr, cf, mi, ma``).  Decode the string
+    when bracket-level detail is needed.
 
     Subclass this and override ``receive(payload)`` to handle events.
 
@@ -73,17 +72,6 @@ class ContractInfoHandlerBase(Handler):
 
     COLUMNS_MAP = CONTRACT_INFO_COLUMNS_MAP
     COLUMNS = CONTRACT_INFO_COLUMNS
-
-    def _receive(  # type: ignore[override]
-        self, payload: DictPayload, index: Optional[List[int]] = None
-    ):
-        # ``bks`` is a list-valued field; pandas treats lists as a column
-        # value so a raw assignment expands across rows.  Wrap it in a
-        # single-element outer list so it lands as a single cell while the
-        # rest of the scalar fields flow through unchanged.
-        if 'bks' in payload:
-            payload = {**payload, 'bks': [payload['bks']]}
-        return super()._receive(payload, index)
 
 
 class ContractInfoProcessor(Processor):

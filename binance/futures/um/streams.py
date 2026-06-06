@@ -25,11 +25,10 @@ UM-only streams:
 """
 
 import re
-from typing import ClassVar, List, Optional
+from typing import ClassVar
 
 from binance.core.common.constants import SubType, KEY_STREAM_TYPE, KEY_PAYLOAD
 from binance.core.common.exceptions import InvalidSubTypeParamException
-from binance.core.common.types import DictPayload
 from binance.core.handlers.base import Handler
 from binance.core.processors.base import Processor
 from binance.core.common.utils import normalize_symbol
@@ -115,7 +114,7 @@ class MarkPriceHandlerBase(_MarkPriceHandlerBase):
     in USDⓈ-M payloads but absent from COIN-M.
 
     Subclass this and override ``receive(payload)`` to handle the event.
-    The base ``receive`` converts the raw dict into a ``StockDataFrame`` with
+    The base ``receive`` converts the raw dict into a ``volas.DataFrame`` with
     human-readable column names (e.g. ``mark_price``, ``mark_price_avg``,
     ``funding_rate``, ``next_funding_time``).
 
@@ -301,9 +300,9 @@ class UMRpiDepthHandlerBase(Handler):
     arrays aggregate RPI (Retail Price Improvement) orders alongside the
     normal limit orders.
 
-    The bids and asks arrays are passed through as single-cell lists so
-    downstream consumers can iterate the price/quantity pairs without losing
-    structure.  A price level whose quantity equals zero indicates either a
+    The bids and asks arrays are exposed as compact JSON strings so downstream
+    consumers can decode the price/quantity pairs without losing structure.
+    A price level whose quantity equals zero indicates either a
     filled/cancelled quotation or a hidden crossed RPI order at that level
     (RPI-specific semantics per docs).
 
@@ -315,18 +314,6 @@ class UMRpiDepthHandlerBase(Handler):
 
     COLUMNS_MAP = UM_RPI_DEPTH_COLUMNS_MAP
     COLUMNS = UM_RPI_DEPTH_COLUMNS
-
-    def _receive(  # type: ignore[override]
-        self, payload: DictPayload, index: Optional[List[int]] = None
-    ):
-        # Wrap the bids/asks arrays as single-cell values so pandas treats
-        # each as one cell rather than expanding the price/qty rows.
-        wrapped = dict(payload)
-        if 'b' in wrapped:
-            wrapped['b'] = [wrapped['b']]
-        if 'a' in wrapped:
-            wrapped['a'] = [wrapped['a']]
-        return super()._receive(wrapped, index)
 
 
 class UMRpiDepthProcessor(Processor):
@@ -393,8 +380,8 @@ class UMRpiDepthProcessor(Processor):
 #         W  weight in percentage
 #         i  component index price
 # The top-level COLUMNS_MAP surfaces the scalar fields plus the
-# ``composition_method`` label; the ``composition`` list is exposed as a
-# pass-through cell so downstream consumers can introspect.
+# ``composition_method`` label; the ``composition`` list is exposed as compact
+# JSON in a string column so downstream consumers can decode it.
 # Docs: https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Composite-Index-Symbol-Information-Streams
 # ---------------------------------------------------------------------------
 
@@ -417,8 +404,8 @@ class CompositeIndexHandlerBase(Handler):
     and price for composite index symbols (e.g. ``DEFIUSDT``).  The payload's
     top-level ``C`` is the composition method label (e.g. ``baseAsset``); the
     ``c`` array carries each constituent's base asset symbol, weights and
-    component index price.  The ``composition`` column is passed through as
-    a Python list cell.
+    component index price.  The ``composition`` column carries compact JSON;
+    decode it when constituent-level detail is needed.
 
     Subclass this and override ``receive(payload)`` to handle the event.
 
@@ -428,16 +415,6 @@ class CompositeIndexHandlerBase(Handler):
 
     COLUMNS_MAP = COMPOSITE_INDEX_COLUMNS_MAP
     COLUMNS = COMPOSITE_INDEX_COLUMNS
-
-    def _receive(  # type: ignore[override]
-        self, payload: DictPayload, index: Optional[List[int]] = None
-    ):
-        # ``c`` is the composition list; wrap it as a single-element outer
-        # list so pandas treats it as one cell rather than expanding it to
-        # one row per constituent.
-        if 'c' in payload:
-            payload = {**payload, 'c': [payload['c']]}
-        return super()._receive(payload, index)
 
 
 class CompositeIndexProcessor(Processor):

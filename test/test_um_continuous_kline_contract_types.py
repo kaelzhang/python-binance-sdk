@@ -15,7 +15,7 @@ Refs:
 """
 
 import pytest
-from stock_pandas import TimeFrame
+from volas import TimeFrame
 
 from binance import SubType
 from binance.core.common.exceptions import InvalidSubTypeParamException

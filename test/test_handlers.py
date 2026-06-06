@@ -22,7 +22,55 @@ from binance import (
     BlockTradeHandlerBase,
     ReferencePriceHandlerBase,
 )
+from binance.core.handlers.base import Handler
 from binance.core.common.utils import create_future
+
+
+def test_handler_rejects_non_mapping_payload():
+    with pytest.raises(TypeError, match='dict or a list of dicts'):
+        Handler()._receive('not-a-payload')  # type: ignore[arg-type]
+
+
+def test_handler_rejects_non_mapping_payload_rows():
+    with pytest.raises(TypeError, match='list must contain dict rows'):
+        Handler()._receive([1])  # type: ignore[list-item]
+
+
+def test_handler_infers_columns_without_column_map():
+    df = Handler()._receive([
+        {'a': 1},
+        {'b': 'x'},
+    ])
+
+    assert df.columns == ['a', 'b']
+    assert df.iloc[0]['a'] == 1
+    assert df.iloc[0]['b'] == ''
+    assert df.iloc[1]['b'] == 'x'
+
+
+def test_handler_serializes_non_json_values_to_string():
+    df = Handler()._receive({'nested': [object()]})
+
+    assert df.iloc[0]['nested'].startswith('[<object object at ')
+
+
+def test_handler_fills_missing_bool_columns_with_false():
+    class BoolHandler(Handler):
+        COLUMNS = ('flag',)
+
+    df = BoolHandler()._receive([
+        {'flag': True},
+        {},
+    ])
+
+    assert df.iloc[0]['flag'] is True
+    assert df.iloc[1]['flag'] is False
+
+
+def test_handler_rejects_index_length_mismatch():
+    with pytest.raises(ValueError, match='index length'):
+        Handler()._receive([{'a': 1}], index=[0, 1])
+
 
 @pytest.fixture
 def client():

@@ -146,7 +146,7 @@ def test_overload_all_market_window_tickers_two_arg():
     """F-33: the 2-arg flat form subscribe(ALL_MARKET_WINDOW_TICKERS, TimeFrame.H4)
     must produce the same canonical tuple as the 1-tuple-of-pair form and be
     consistent with the processor's subscribe_param signature."""
-    from stock_pandas import TimeFrame
+    from volas import TimeFrame
     ctx = SpotClient()._get_handler_ctx()
 
     # Flat 2-arg call: subscribe(SubType.ALL_MARKET_WINDOW_TICKERS, TimeFrame.H4)
@@ -164,6 +164,13 @@ def test_overload_all_market_window_tickers_two_arg():
     params_no_window = ctx.overload_subscriptions(
         SubType.ALL_MARKET_WINDOW_TICKERS)
     assert params_no_window == [(SubType.ALL_MARKET_WINDOW_TICKERS,)]
+
+
+def test_public_time_frame_export_uses_volas():
+    from volas import TimeFrame as VolasTimeFrame
+    from binance import TimeFrame
+
+    assert TimeFrame is VolasTimeFrame
 
 
 # --- processors/processors.py: param validation ---------------------------

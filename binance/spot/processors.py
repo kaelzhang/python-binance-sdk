@@ -4,7 +4,8 @@ Ref: https://developers.binance.com/docs/binance-spot-api-docs/web-socket-stream
 
 import re
 from typing import ClassVar
-from stock_pandas import TimeFrame
+
+from volas import TimeFrame
 
 from binance.spot.handlers import (
     KlineHandlerBase,

@@ -77,7 +77,7 @@ class ForceOrderHandlerBase(Handler):
     coverage cannot rely on this stream as a complete feed.
 
     Subclass and override ``receive(payload)`` to handle events.  The base ``receive``
-    converts the raw dict into a ``StockDataFrame`` with human-readable column names.
+    converts the raw dict into a ``volas.DataFrame`` with human-readable column names.
 
     Example (COIN-M)::
 
@@ -145,7 +145,7 @@ class AllMarketLiquidationHandlerBase(Handler):
     events (``forceOrder``) covering all symbols on the market.  Each element has
     the same nested ``o`` structure as the per-symbol ``ForceOrderHandlerBase``.
 
-    The base ``receive`` passes the raw array payload to a ``StockDataFrame`` with
+    The base ``receive`` passes the raw array payload to a ``volas.DataFrame`` with
     only the outer envelope column map (event type and event time per element).
     Subclasses may override to flatten the nested ``o`` objects.
 

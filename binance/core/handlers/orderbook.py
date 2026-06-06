@@ -22,7 +22,7 @@ the historical behaviour that a reference captured *before*
 from typing import Any, Dict, List, Optional
 
 from aioretry import RetryPolicy
-from stock_pandas import StockDataFrame
+from volas import DataFrame
 
 from binance.core.common.constants import (
     STREAM_TYPE_MAP,
@@ -61,10 +61,11 @@ ORDER_BOOK_COLUMNS = ORDER_BOOK_COLUMNS_MAP.keys()
 
 
 def create_depth_df(depth_list: list):
-    """Convert a raw ``[price, quantity]`` depth list into a ``StockDataFrame``."""
-    return StockDataFrame([
-        {'price': x[0], 'quantity': x[1]} for x in depth_list
-    ])
+    """Convert a raw ``[price, quantity]`` depth list into a ``volas.DataFrame``."""
+    return DataFrame({
+        'price': [x[0] for x in depth_list],
+        'quantity': [x[1] for x in depth_list],
+    })
 
 
 METHOD_NAME_RECEIVE = 'receive'

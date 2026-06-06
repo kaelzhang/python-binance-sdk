@@ -81,7 +81,7 @@ class KlineHandlerBase(Handler):
     before column conversion.
 
     Subclass this and override ``receive(payload)`` to handle events.  The base
-    ``receive`` returns a ``StockDataFrame`` with human-readable column names
+    ``receive`` returns a ``volas.DataFrame`` with human-readable column names
     (e.g. ``open``, ``close``, ``volume``, ``is_closed``).
 
     Docs:
