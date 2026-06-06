@@ -50,6 +50,8 @@ class StreamEventDispatcher:
             task.add_done_callback(self._workers.discard)
 
     async def _worker(self) -> None:
+        task = asyncio.current_task()
+        assert task is not None
         while True:
             msg = await self._queue.get()
             self._active += 1
@@ -63,6 +65,8 @@ class StreamEventDispatcher:
             finally:
                 self._active -= 1
                 self._queue.task_done()
+            if task not in self._workers:
+                return
 
     async def close(self) -> None:
         while True:
@@ -74,7 +78,11 @@ class StreamEventDispatcher:
 
         workers = list(self._workers)
         self._workers.clear()
-        for task in workers:
+        current_task = asyncio.current_task()
+        closing_workers = [
+            task for task in workers if task is not current_task
+        ]
+        for task in closing_workers:
             task.cancel()
-        if workers:
-            await asyncio.gather(*workers, return_exceptions=True)
+        if closing_workers:
+            await asyncio.gather(*closing_workers, return_exceptions=True)
