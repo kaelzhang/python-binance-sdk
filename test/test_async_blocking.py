@@ -1,5 +1,7 @@
 import asyncio
 import json
+import subprocess
+import sys
 import time
 from contextlib import suppress
 from logging import getLogger
@@ -258,6 +260,80 @@ async def test_sync_raw_stream_on_message_long_task_does_not_block_event_loop():
     finally:
         await asyncio.sleep(0.2)
         await stream._events().close()
+
+
+@pytest.mark.asyncio
+async def test_stream_can_close_from_own_on_message_callback():
+    close_started = asyncio.Event()
+    close_returned = asyncio.Event()
+
+    async def conn_task():
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            return
+
+    class FakeSocket:
+        def __init__(self):
+            self.closed = asyncio.Event()
+
+        async def close(self, _code=4999):
+            self.closed.set()
+
+    async def on_message(_msg):
+        close_started.set()
+        await stream.close()
+        close_returned.set()
+
+    stream = Stream(
+        'ws://fake',
+        on_message=on_message,
+        logger=logger,
+        rate_limiter=RateLimiter(enabled=False),
+    )
+    stream._conn_task = asyncio.create_task(conn_task())
+    stream._socket = FakeSocket()
+
+    await stream._handle_message({'stream': 'one'})
+    await asyncio.wait_for(close_started.wait(), timeout=0.1)
+
+    await asyncio.wait_for(close_returned.wait(), timeout=0.2)
+
+    assert stream._socket is None
+    assert stream._closing is False
+
+
+def test_control_task_supervisor_can_close_from_own_task():
+    script = """
+import asyncio
+from logging import getLogger
+from binance.core.transport.control import ControlTaskSupervisor
+
+async def main():
+    supervisor = ControlTaskSupervisor(getLogger(__name__))
+    started = asyncio.Event()
+    returned = asyncio.Event()
+
+    async def control_task():
+        started.set()
+        await supervisor.close()
+        returned.set()
+
+    supervisor.run_once('self-close', control_task)
+    await asyncio.wait_for(started.wait(), timeout=0.1)
+    await asyncio.wait_for(returned.wait(), timeout=0.2)
+
+asyncio.run(main())
+"""
+    result = subprocess.run(
+        [sys.executable, '-c', script],
+        text=True,
+        capture_output=True,
+        timeout=1.0,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.asyncio

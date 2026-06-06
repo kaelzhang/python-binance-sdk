@@ -49,10 +49,12 @@ class ControlTaskSupervisor:
     async def close(self) -> None:
         tasks = list(self._tasks.values())
         self._tasks.clear()
+        current_task = asyncio.current_task()
+        closing_tasks = [task for task in tasks if task is not current_task]
 
-        for task in tasks:
+        for task in closing_tasks:
             if not task.done():
                 task.cancel()
 
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        if closing_tasks:
+            await asyncio.gather(*closing_tasks, return_exceptions=True)
