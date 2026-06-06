@@ -733,6 +733,12 @@ class SubscriptionManager:
             market_subscriptions, user_subscriptions = self._split_subscriptions(
                 subscriptions
             )
+            if subscribe and user_subscriptions:
+                user_subscriptions = [
+                    subscription
+                    for subscription in user_subscriptions
+                    if subscription not in self._subscribed
+                ]
 
             if len(market_subscriptions) > 0:
                 await self._subscribe_only(subscribe, market_subscriptions)

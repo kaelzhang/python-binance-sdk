@@ -197,6 +197,8 @@ class FuturesUserStreamMixin:
 
     async def close(self, code: int = DEFAULT_STREAM_CLOSE_CODE) -> None:
         """Close the futures user stream (keepalive + dedicated fstream), then call super().close()."""
+        self._want_user_stream = False
+        await self._control_tasks.close()
         await self._futures_cleanup(code)
         await super().close(code)  # type: ignore[misc]
 
@@ -221,7 +223,9 @@ class FuturesUserStreamMixin:
 
         # Close the old dedicated stream (if any).
         old_stream = self._futures_user_stream
+        old_lease = self._futures_user_connection_lease
         self._futures_user_stream = None
+        self._futures_user_connection_lease = None
         self._futures_listen_key = None
         if old_stream is not None:
             try:
@@ -230,6 +234,8 @@ class FuturesUserStreamMixin:
                 self._logger.error(format_msg(
                     'futures user stream close on listenKeyExpired failed: %s',
                     repr_exception(e)))
+        if old_lease is not None:
+            self._rate_limiter.unregister_connection(old_lease)
 
         # Re-start.
         try:
@@ -253,6 +259,13 @@ class FuturesUserStreamMixin:
 
     async def _futures_user_stream_start(self) -> None:
         """Obtain a listenKey, open the dedicated fstream, start the keepalive."""
+        if (
+            self._futures_user_stream is not None
+            and self._futures_listen_key is not None
+            and self._futures_user_connection_lease is not None
+        ):
+            return
+
         result = await self._ws_api_request(
             _METHOD_START,
             params=None,
@@ -262,39 +275,67 @@ class FuturesUserStreamMixin:
         listen_key: str = result['listenKey']
         self._futures_listen_key = listen_key
 
-        # The per-market path template carries the listenKey verbatim.
-        # UM (post 2026-04-23): '/private/ws/{listen_key}'.
-        # CM (legacy, unaffected): '/ws/{listen_key}'.
-        template = self.MARKET.user_stream_path_template
-        uri = self._stream_host + template.format(listen_key=listen_key)
-        connection_lease = self._rate_limiter.open_connection(
-            kind='futures_user',
-            route=uri,
-            label=_FUTURES_USER_CONN_ID,
-        )
+        connection_lease: Optional[ConnectionLease] = None
+        stream: Optional[Stream] = None
+        try:
+            # The per-market path template carries the listenKey verbatim.
+            # UM (post 2026-04-23): '/private/ws/{listen_key}'.
+            # CM (legacy, unaffected): '/ws/{listen_key}'.
+            template = self.MARKET.user_stream_path_template
+            uri = self._stream_host + template.format(listen_key=listen_key)
+            connection_lease = self._rate_limiter.open_connection(
+                kind='futures_user',
+                route=uri,
+                label=_FUTURES_USER_CONN_ID,
+            )
 
-        stream_holder: dict[str, Stream] = {}
+            stream_holder: dict[str, Stream] = {}
 
-        async def on_message_bound(msg):
-            await self._receive(msg, origin=stream_holder['stream'])
+            async def on_message_bound(msg):
+                await self._receive(msg, origin=stream_holder['stream'])
 
-        stream = Stream(
-            uri,
-            on_message=on_message_bound,
-            retry_policy=self._stream_retry_policy,
-            timeout=self._stream_timeout,
-            logger=self._logger,
-            rate_limiter=self._rate_limiter,
-            connection_id=_FUTURES_USER_CONN_ID,
-            connection_lease=connection_lease,
-        ).connect()
-        stream_holder['stream'] = stream
-        self._futures_user_stream = stream
-        self._futures_user_connection_lease = connection_lease
+            stream = Stream(
+                uri,
+                on_message=on_message_bound,
+                retry_policy=self._stream_retry_policy,
+                timeout=self._stream_timeout,
+                logger=self._logger,
+                rate_limiter=self._rate_limiter,
+                connection_id=_FUTURES_USER_CONN_ID,
+                connection_lease=connection_lease,
+            ).connect()
+            stream_holder['stream'] = stream
+            self._futures_user_stream = stream
+            self._futures_user_connection_lease = connection_lease
 
-        self._futures_keepalive_task = asyncio.get_running_loop().create_task(
-            self._futures_keepalive_loop()
-        )
+            self._futures_keepalive_task = asyncio.get_running_loop().create_task(
+                self._futures_keepalive_loop()
+            )
+        except Exception:
+            self._futures_listen_key = None
+            self._futures_user_stream = None
+            self._futures_user_connection_lease = None
+            if stream is not None:
+                try:
+                    await stream.close(DEFAULT_STREAM_CLOSE_CODE)
+                except Exception as e:
+                    self._logger.error(format_msg(
+                        'futures user stream close after start failure failed: %s',
+                        repr_exception(e)))
+            if connection_lease is not None:
+                self._rate_limiter.unregister_connection(connection_lease)
+            try:
+                await self._ws_api_request(
+                    _METHOD_STOP,
+                    params={'listenKey': listen_key},
+                    security=_USER_STREAM_SECURITY,
+                    weight=_USER_STREAM_WEIGHT,
+                )
+            except Exception as e:
+                self._logger.error(format_msg(
+                    'userDataStream.stop after start failure failed: %s',
+                    repr_exception(e)))
+            raise
 
     async def _futures_user_stream_stop(self) -> None:
         """Cancel keepalive, call ``userDataStream.stop``, close dedicated stream."""

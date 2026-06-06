@@ -904,13 +904,8 @@ def test_handler_bases_are_handler_subclasses():
 def test_futures_user_handlers_no_spot_import():
     """futures/user_handlers.py must not import from binance.spot."""
     import importlib
-    import sys
 
-    # Reload the module fresh to check its actual imports
     mod_name = 'binance.futures.user_handlers'
-    if mod_name in sys.modules:
-        del sys.modules[mod_name]
-
     mod = importlib.import_module(mod_name)
 
     # binance.spot may already be loaded via other imports; what matters is
@@ -923,12 +918,8 @@ def test_futures_user_handlers_no_spot_import():
 def test_futures_user_processor_no_spot_import():
     """futures/user_processor.py must not import from binance.spot."""
     import importlib
-    import sys
 
     mod_name = 'binance.futures.user_processor'
-    if mod_name in sys.modules:
-        del sys.modules[mod_name]
-
     mod = importlib.import_module(mod_name)
 
     # No binance.spot dependency in the module's own namespace
