@@ -637,7 +637,8 @@ class Stream:
         self._reject_pending(disconnected)
         self._reject_open_future(disconnected)
 
-        tasks: List[Any] = [self._conn_task]
+        current_task = asyncio.current_task()
+        tasks: List[Any] = []
 
         if self._socket:
             tasks.append(
@@ -645,13 +646,14 @@ class Stream:
                 self._socket.close(code)
             )
 
-        self._conn_task.cancel()
+        if self._conn_task is not current_task:
+            self._conn_task.cancel()
+            tasks.append(self._conn_task)
 
         # Also cancel the connected task if it exists
-        if self._connected_task:
+        if self._connected_task and self._connected_task is not current_task:
             self._connected_task.cancel()
 
-        current_task = asyncio.current_task()
         for task in list(getattr(self, '_message_tasks', set())):
             if task is current_task:
                 continue
@@ -680,7 +682,7 @@ class Stream:
         # - conn_task is cancelled
         # - socket is closed
         # - connected_task is cancelled
-        if self._connected_task:
+        if self._connected_task and self._connected_task is not current_task:
             tasks.append(self._connected_task)
 
         for coro in asyncio.as_completed(tasks):

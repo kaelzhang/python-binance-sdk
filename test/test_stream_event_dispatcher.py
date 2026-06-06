@@ -58,6 +58,7 @@ from binance.core.rate_limit import RateLimiter
 async def main():
     started = asyncio.Event()
     returned = asyncio.Event()
+    task_cancelling_after_close = None
 
     async def on_message(_msg):
         pass
@@ -69,8 +70,11 @@ async def main():
             return
 
     class FakeSocket:
+        def __init__(self):
+            self.closed = False
+
         async def close(self, _code=4999):
-            pass
+            self.closed = True
 
     stream = Stream(
         'ws://fake',
@@ -79,17 +83,25 @@ async def main():
         rate_limiter=RateLimiter(enabled=False),
     )
     stream._conn_task = asyncio.create_task(conn_task())
-    stream._socket = FakeSocket()
+    socket = FakeSocket()
+    stream._socket = socket
 
     async def connected_callback_task():
+        nonlocal task_cancelling_after_close
         started.set()
         await stream.close()
+        task_cancelling_after_close = asyncio.current_task().cancelling()
         returned.set()
 
     stream._connected_task = asyncio.create_task(connected_callback_task())
 
     await asyncio.wait_for(started.wait(), timeout=0.1)
     await asyncio.wait_for(returned.wait(), timeout=0.2)
+
+    assert task_cancelling_after_close == 0
+    assert socket.closed is True
+    assert stream._socket is None
+    assert stream._closing is False
 
 
 asyncio.run(main())
